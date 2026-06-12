@@ -13,8 +13,14 @@ const firebaseConfig = {
   databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
 };
 
-// Initialize Firebase (singleton pattern)
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+let app;
+
+if (!getApps().length) {
+  app = initializeApp(firebaseConfig);
+} else {
+  app = getApp();
+}
+
 const auth = getAuth(app);
 const rtdb = getDatabase(app);
 const storage = getStorage(app);

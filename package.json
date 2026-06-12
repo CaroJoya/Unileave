@@ -41,11 +41,13 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/firebase": "^2.4.32",
+    "@types/node": "^20.19.43",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "firebase-admin": "^13.10.0",
     "typescript": "^5"
   }
 }

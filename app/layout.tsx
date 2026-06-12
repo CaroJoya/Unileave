@@ -1,14 +1,14 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import './globals.css';
-import { QueryProvider } from '@/providers/QueryProvider';
-import { Toaster } from '@/components/ui/sonner';
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { Providers } from "@/components/providers/Providers";
+import { Toaster } from "@/components/ui/sonner";
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'UniLeave - University Leave Management System',
-  description: 'Manage leave requests, approvals, and balances',
+  title: "UniLeave - University Leave Management System",
+  description: "Manage university leave requests efficiently",
 };
 
 export default function RootLayout({
@@ -19,10 +19,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <QueryProvider>
-          {children}
+        <Providers>
+          <main className="min-h-screen bg-gray-50">{children}</main>
           <Toaster position="bottom-right" />
-        </QueryProvider>
+        </Providers>
       </body>
     </html>
   );
