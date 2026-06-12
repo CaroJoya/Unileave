@@ -2,9 +2,20 @@
 
 import { useAuthStore } from "@/store/authStore";
 import { RoleBadge } from "@/components/layout/RoleBadge";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function DashboardPage() {
   const { user, userRoles, isLoading } = useAuthStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    // Only redirect if not loading AND not authenticated
+    if (!isLoading && !user) {
+      console.log("No user found, redirecting to login");
+      router.push("/login");
+    }
+  }, [user, isLoading, router]);
 
   if (isLoading) {
     return (
@@ -18,8 +29,10 @@ export default function DashboardPage() {
   }
 
   if (!user) {
-    return null;
+    return null; // Will redirect via useEffect
   }
+
+  console.log("Dashboard rendering for user:", user.name);
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -33,7 +46,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {/* Stats cards will go here */}
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold mb-2">Dashboard</h3>
           <p className="text-muted-foreground">Coming soon...</p>

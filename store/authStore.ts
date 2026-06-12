@@ -59,9 +59,14 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         
         try {
+          console.log("1️⃣ Signing in with Firebase...");
           const userCredential = await signInWithEmailAndPassword(auth, email, password);
-          const idToken = await userCredential.user.getIdToken();
+          console.log("2️⃣ Firebase sign-in successful, UID:", userCredential.user.uid);
           
+          const idToken = await userCredential.user.getIdToken();
+          console.log("3️⃣ Got ID token");
+          
+          console.log("4️⃣ Creating session cookie...");
           const response = await fetch("/api/auth/session", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -69,6 +74,7 @@ export const useAuthStore = create<AuthState>()(
           });
           
           const data = await response.json();
+          console.log("5️⃣ Session response:", { ok: response.ok, data });
           
           if (!response.ok) {
             if (response.status === 403 && data.error === "Account deactivated") {
@@ -79,15 +85,18 @@ export const useAuthStore = create<AuthState>()(
             throw new Error(data.error || "Login failed");
           }
           
-          // Use firebaseGet instead of get to avoid conflict with Zustand's get
+          // Fetch user data from Realtime Database
+          console.log("6️⃣ Fetching user data from RTDB...");
           const userRef = ref(rtdb, `users/${userCredential.user.uid}`);
           const snapshot = await firebaseGet(userRef);
           const userData = snapshot.val();
+          console.log("7️⃣ User data from RTDB:", userData);
           
           if (!userData) {
             throw new Error("User data not found");
           }
           
+          // Create user object with actual database values
           const user: User = {
             uid: userCredential.user.uid,
             name: userData.name,
@@ -96,7 +105,7 @@ export const useAuthStore = create<AuthState>()(
             roles: userData.roles || [],
             departmentId: userData.departmentId || "",
             departmentName: userData.departmentName || "",
-            collegeId: userData.collegeId || "college_001",
+            collegeId: userData.collegeId,
             collegeName: userData.collegeName || "",
             status: userData.status || "active",
             isEmployed: userData.isEmployed !== false,
@@ -104,6 +113,12 @@ export const useAuthStore = create<AuthState>()(
             updatedAt: userData.updatedAt || new Date().toISOString(),
             deletedAt: userData.deletedAt || null,
           };
+          
+          console.log("8️⃣ User object created:", { 
+            uid: user.uid, 
+            collegeId: user.collegeId, 
+            roles: user.roles 
+          });
           
           set({ 
             user, 
@@ -113,9 +128,10 @@ export const useAuthStore = create<AuthState>()(
             error: null
           });
           
+          console.log("9️⃣ Login complete, returning true");
           return true;
         } catch (error: unknown) {
-          console.error("Login error:", error);
+          console.error("❌ Login error:", error);
           const err = error as { message?: string };
           set({ 
             error: err.message || "Invalid email or password",
@@ -332,6 +348,8 @@ export const useAuthStore = create<AuthState>()(
               roles: userData.roles || [],
               departmentId: userData.departmentId || "",
               departmentName: userData.departmentName || "",
+              collegeId: userData.collegeId,
+              collegeName: userData.collegeName || "",
               status: userData.status || "active",
               deletedAt: userData.deletedAt || null,
               updatedAt: userData.updatedAt || new Date().toISOString(),

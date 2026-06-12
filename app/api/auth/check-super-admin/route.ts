@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
 import { rtdb } from "@/lib/firebase/admin";
-import { Database } from 'firebase-admin/database';
 
 export async function GET() {
   try {
-    // If rtdb is not initialized (missing env vars), return false
     if (!rtdb) {
-      console.warn("Firebase Admin not initialized - returning false for super admin check");
+      console.warn("Firebase Admin not initialized");
       return NextResponse.json({ hasSuperAdmin: false });
     }
 
-    console.log("Checking for super admin...");
+    console.log("Checking for any super admin...");
     
-    const snapshot = await (rtdb as Database).ref('users').once('value');
+    const snapshot = await rtdb.ref('users').once('value');
     
     let hasSuperAdmin = false;
+    let collegeCount = 0;
     
     if (snapshot.exists()) {
       const users = snapshot.val();
@@ -23,15 +22,19 @@ export async function GET() {
           const user = users[userId];
           if (user && user.roles && Array.isArray(user.roles) && user.roles.includes('super_admin')) {
             hasSuperAdmin = true;
-            break;
+            collegeCount++;
           }
         }
       }
     }
     
-    console.log("Has super admin:", hasSuperAdmin);
-
-    return NextResponse.json({ hasSuperAdmin });
+    console.log(`Found ${collegeCount} college(s) with super admin`);
+    
+    // Return true if ANY super admin exists (any college)
+    return NextResponse.json({ 
+      hasSuperAdmin,
+      collegeCount 
+    });
   } catch (error) {
     console.error("Error checking super admin:", error);
     return NextResponse.json({ hasSuperAdmin: false });

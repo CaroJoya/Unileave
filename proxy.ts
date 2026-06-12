@@ -21,9 +21,11 @@ const protectedRoutes = [
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Check if user is authenticated via cookie/session
-  const session = request.cookies.get("unileave-session")?.value;
+  // ✅ FIX: Check for 'session' cookie (not 'unileave-session')
+  const session = request.cookies.get("session")?.value;
   const isAuthenticated = !!session;
+  
+  console.log(`[Proxy] Path: ${pathname}, Authenticated: ${isAuthenticated}`);
   
   // Allow public routes
   if (publicRoutes.some(route => pathname.startsWith(route))) {
@@ -35,6 +37,7 @@ export function proxy(request: NextRequest) {
     if (!isAuthenticated) {
       const url = new URL("/login", request.url);
       url.searchParams.set("redirect", pathname);
+      console.log(`[Proxy] Redirecting to: ${url.toString()}`);
       return NextResponse.redirect(url);
     }
   }
@@ -44,13 +47,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
     "/((?!_next/static|_next/image|favicon.ico|public/).*)",
   ],
 };
