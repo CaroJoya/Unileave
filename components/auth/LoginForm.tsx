@@ -45,8 +45,17 @@ export function LoginForm() {
     try {
       const success = await login(email, password);
       if (success) {
-        router.push("/dashboard");
-      }
+  // Get user roles from the store after login
+  const { userRoles } = useAuthStore.getState();
+  
+  if (userRoles.includes("super_admin")) {
+    router.push("/super-admin/dashboard");
+  } else if (userRoles.includes("head_clerk")) {
+    router.push("/headclerk/dashboard");
+  } else {
+    router.push("/dashboard");
+  }
+}
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Login failed";
       toast.error(errorMessage);

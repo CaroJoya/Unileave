@@ -87,7 +87,6 @@ export function UserManager({ departments }: UserManagerProps) {
     }
   }, [search, roleFilter, departmentFilter, statusFilter]);
 
-  // ✅ Fixed: Use async function inside useEffect
   useEffect(() => {
     const loadUsers = async () => {
       await fetchUsers();
@@ -187,6 +186,22 @@ export function UserManager({ departments }: UserManagerProps) {
     return labels[role] || role;
   };
 
+  // Helper to convert empty string to "all" for Select value
+  const getSelectValue = (value: string) => value === "" ? "all" : value;
+  
+  // Helper to convert "all" back to empty string for API
+  const handleRoleChange = (value: string) => {
+    setRoleFilter(value === "all" ? "" : value);
+  };
+  
+  const handleDepartmentChange = (value: string) => {
+    setDepartmentFilter(value === "all" ? "" : value);
+  };
+  
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value === "all" ? "" : value);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -206,12 +221,12 @@ export function UserManager({ departments }: UserManagerProps) {
         </div>
         <div>
           <Label>Role</Label>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <Select value={getSelectValue(roleFilter)} onValueChange={handleRoleChange}>
             <SelectTrigger>
               <SelectValue placeholder="All roles" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All roles</SelectItem>
+              <SelectItem value="all">All roles</SelectItem>
               <SelectItem value="super_admin">Super Admin</SelectItem>
               <SelectItem value="head_clerk">Head Clerk</SelectItem>
               <SelectItem value="registrar">Registrar</SelectItem>
@@ -225,12 +240,12 @@ export function UserManager({ departments }: UserManagerProps) {
         </div>
         <div>
           <Label>Department</Label>
-          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+          <Select value={getSelectValue(departmentFilter)} onValueChange={handleDepartmentChange}>
             <SelectTrigger>
               <SelectValue placeholder="All departments" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All departments</SelectItem>
+              <SelectItem value="all">All departments</SelectItem>
               {departments.map((dept) => (
                 <SelectItem key={dept.id} value={dept.id}>
                   {dept.name}
@@ -241,12 +256,12 @@ export function UserManager({ departments }: UserManagerProps) {
         </div>
         <div>
           <Label>Status</Label>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={getSelectValue(statusFilter)} onValueChange={handleStatusChange}>
             <SelectTrigger>
               <SelectValue placeholder="All status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All status</SelectItem>
+              <SelectItem value="all">All status</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="deleted">Deleted</SelectItem>
             </SelectContent>
