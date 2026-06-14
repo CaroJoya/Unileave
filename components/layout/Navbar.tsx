@@ -106,7 +106,6 @@ export function Navbar() {
     }
   }, []);
 
-  // Fixed: Wrap async operation
   useEffect(() => {
     if (isAuthenticated && user) {
       const loadNotifications = async () => {
@@ -155,6 +154,15 @@ export function Navbar() {
         { href: "/hod/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
         { href: "/hod/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> },
         { href: "/hod/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> }
+      );
+    } else if (userRoles.includes("registrar")) {
+      items.push(
+        { href: "/registrar/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+        { href: "/registrar/all-leaves", label: "Leave Requests", icon: <FilePlus2 className="h-4 w-4" /> },
+        { href: "/registrar/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
+        { href: "/registrar/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> },
+        { href: "/registrar/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> },
+        { href: "/registrar/reports", label: "Reports", icon: <BarChart3 className="h-4 w-4" /> }
       );
     } else {
       items.push(
