@@ -1,3 +1,4 @@
+// components/layout/Navbar.tsx
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -13,7 +14,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-//import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Bell,
@@ -30,6 +30,7 @@ import {
   Building2,
   Users,
   Settings,
+  Umbrella,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { RoleBadge } from "./RoleBadge";
@@ -51,7 +52,6 @@ export function Navbar() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
 
-  // ========== DECLARE fetchNotifications FIRST ==========
   const fetchNotifications = useCallback(async () => {
     if (!isAuthenticated || !user) return;
     
@@ -68,7 +68,6 @@ export function Navbar() {
     }
   }, [isAuthenticated, user]);
 
-  // ========== DECLARE markAsRead SECOND ==========
   const markAsRead = useCallback(async (id: string) => {
     try {
       const response = await fetch(`/api/notifications/${id}/read`, {
@@ -88,7 +87,6 @@ export function Navbar() {
     }
   }, []);
 
-  // ========== DECLARE markAllAsRead THIRD ==========
   const markAllAsRead = useCallback(async () => {
     try {
       const response = await fetch("/api/notifications/read-all", {
@@ -108,11 +106,14 @@ export function Navbar() {
     }
   }, []);
 
-  // ========== NOW useEffect can safely call fetchNotifications ==========
+  // Fixed: Wrap async operation
   useEffect(() => {
     if (isAuthenticated && user) {
-      fetchNotifications();
-      const interval = setInterval(fetchNotifications, 30000); // Every 30 seconds
+      const loadNotifications = async () => {
+        await fetchNotifications();
+      };
+      loadNotifications();
+      const interval = setInterval(fetchNotifications, 30000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated, user, fetchNotifications]);
@@ -131,7 +132,6 @@ export function Navbar() {
       .slice(0, 2);
   };
 
-  // Navigation items based on roles
   const getNavItems = () => {
     const items: { href: string; label: string; icon: React.ReactNode }[] = [];
 
@@ -145,16 +145,24 @@ export function Navbar() {
       items.push(
         { href: "/headclerk/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
         { href: "/headclerk/leave-types", label: "Leave Types", icon: <Settings className="h-4 w-4" /> },
-        { href: "/headclerk/attendance", label: "Attendance", icon: <CalendarDays className="h-4 w-4" /> }
+        { href: "/headclerk/attendance", label: "Attendance", icon: <CalendarDays className="h-4 w-4" /> },
+        { href: "/headclerk/faculty", label: "Faculty", icon: <Users className="h-4 w-4" /> }
+      );
+    } else if (userRoles.includes("hod")) {
+      items.push(
+        { href: "/hod/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+        { href: "/hod/faculty-requests", label: "Leave Requests", icon: <FilePlus2 className="h-4 w-4" /> },
+        { href: "/hod/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
+        { href: "/hod/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> },
+        { href: "/hod/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> }
       );
     } else {
-      // Staff items
       items.push(
         { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
         { href: "/request-leave", label: "Request Leave", icon: <FilePlus2 className="h-4 w-4" /> },
         { href: "/status", label: "Status", icon: <ListChecks className="h-4 w-4" /> },
         { href: "/stats", label: "Stats", icon: <BarChart3 className="h-4 w-4" /> },
-        { href: "/vacation", label: "Vacation", icon: <CalendarDays className="h-4 w-4" /> },
+        { href: "/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> },
         { href: "/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
         { href: "/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> }
       );
@@ -172,12 +180,10 @@ export function Navbar() {
     <nav className="sticky top-0 z-50 w-full border-b bg-white shadow-sm">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
-          {/* Logo */}
           <Link href="/dashboard" className="flex items-center space-x-2">
             <span className="text-xl font-bold text-primary">UniLeave</span>
           </Link>
 
-          {/* Desktop Navigation */}
           <div className="hidden md:flex md:items-center md:space-x-6">
             {navItems.map((item) => (
               <Link
@@ -191,9 +197,7 @@ export function Navbar() {
             ))}
           </div>
 
-          {/* Right side */}
           <div className="flex items-center space-x-4">
-            {/* Notifications */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative">
@@ -257,7 +261,6 @@ export function Navbar() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* User Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -291,7 +294,6 @@ export function Navbar() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Mobile Menu Button */}
             <Sheet open={isOpen} onOpenChange={setIsOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="md:hidden">
