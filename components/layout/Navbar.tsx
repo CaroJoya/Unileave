@@ -1,9 +1,8 @@
-// components/layout/Navbar.tsx
+// components/layout/Navbar.tsx (updated)
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,32 +12,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  Menu,
-  LogOut,
-  User,
-  LayoutDashboard,
-  FilePlus2,
-  ListChecks,
-  BarChart3,
-  CalendarDays,
-  Award,
-  Clock,
-  Building2,
-  Users,
-  Settings,
-  Umbrella,
-} from "lucide-react";
+import { LogOut, User } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { RoleBadge } from "./RoleBadge";
 import { NotificationBell } from "./NotificationBell";
+import { MobileNav } from "./MobileNav";
 
 export function Navbar() {
   const router = useRouter();
   const { user, userRoles, isAuthenticated, logout } = useAuthStore();
-  const [isOpen, setIsOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -54,58 +37,6 @@ export function Navbar() {
       .slice(0, 2);
   };
 
-  const getNavItems = () => {
-    const items: { href: string; label: string; icon: React.ReactNode }[] = [];
-
-    if (userRoles.includes("super_admin")) {
-      items.push(
-        { href: "/super-admin/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-        { href: "/super-admin/departments", label: "Departments", icon: <Building2 className="h-4 w-4" /> },
-        { href: "/super-admin/users", label: "Users", icon: <Users className="h-4 w-4" /> },
-        { href: "/super-admin/audit-logs", label: "Audit Logs", icon: <ListChecks className="h-4 w-4" /> }
-      );
-    } else if (userRoles.includes("head_clerk")) {
-      items.push(
-        { href: "/headclerk/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-        { href: "/headclerk/leave-types", label: "Leave Types", icon: <Settings className="h-4 w-4" /> },
-        { href: "/headclerk/attendance", label: "Attendance", icon: <CalendarDays className="h-4 w-4" /> },
-        { href: "/headclerk/faculty", label: "Faculty", icon: <Users className="h-4 w-4" /> }
-      );
-    } else if (userRoles.includes("hod")) {
-      items.push(
-        { href: "/hod/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-        { href: "/hod/faculty-requests", label: "Leave Requests", icon: <FilePlus2 className="h-4 w-4" /> },
-        { href: "/hod/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
-        { href: "/hod/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> },
-        { href: "/hod/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> }
-      );
-    } else if (userRoles.includes("registrar")) {
-      items.push(
-        { href: "/registrar/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-        { href: "/registrar/all-leaves", label: "Leave Requests", icon: <FilePlus2 className="h-4 w-4" /> },
-        { href: "/registrar/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
-        { href: "/registrar/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> },
-        { href: "/registrar/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> },
-        { href: "/registrar/reports", label: "Reports", icon: <BarChart3 className="h-4 w-4" /> }
-      );
-    } else {
-      items.push(
-        { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-        { href: "/request-leave", label: "Request Leave", icon: <FilePlus2 className="h-4 w-4" /> },
-        { href: "/status", label: "Status", icon: <ListChecks className="h-4 w-4" /> },
-        { href: "/stats", label: "Stats", icon: <BarChart3 className="h-4 w-4" /> },
-        { href: "/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> },
-        { href: "/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
-        { href: "/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> }
-      );
-    }
-
-    items.push({ href: "/profile", label: "Profile", icon: <User className="h-4 w-4" /> });
-    return items;
-  };
-
-  const navItems = getNavItems();
-
   if (!isAuthenticated) return null;
 
   return (
@@ -116,23 +47,14 @@ export function Navbar() {
             <span className="text-xl font-bold text-primary">UniLeave</span>
           </Link>
 
+          {/* Desktop Navigation - Hidden on mobile */}
           <div className="hidden md:flex md:items-center md:space-x-6">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center space-x-1 text-sm font-medium text-gray-700 transition-colors hover:text-primary"
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </Link>
-            ))}
+            {/* Desktop nav items can go here if needed */}
           </div>
 
-          <div className="flex items-center space-x-4">
-            {/* Notification Bell */}
+          <div className="flex items-center space-x-2">
             <NotificationBell />
-
+            
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -166,37 +88,8 @@ export function Navbar() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Sheet open={isOpen} onOpenChange={setIsOpen}>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-[250px] sm:w-[300px]">
-                <div className="flex flex-col space-y-4 mt-8">
-                  {navItems.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className="flex items-center space-x-2 text-sm font-medium text-gray-700 transition-colors hover:text-primary"
-                      onClick={() => setIsOpen(false)}
-                    >
-                      {item.icon}
-                      <span>{item.label}</span>
-                    </Link>
-                  ))}
-                  <div className="border-t pt-4">
-                    <button
-                      onClick={handleLogout}
-                      className="flex w-full items-center space-x-2 text-sm font-medium text-red-600"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      <span>Logout</span>
-                    </button>
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
+            {/* Mobile Navigation Trigger */}
+            <MobileNav />
           </div>
         </div>
       </div>

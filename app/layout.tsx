@@ -1,3 +1,4 @@
+// app/layout.tsx (ensure Toaster is included)
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
@@ -21,7 +22,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>
           <main className="min-h-screen bg-gray-50">{children}</main>
-          <Toaster position="bottom-right" />
+          <Toaster position="bottom-right" richColors />
         </Providers>
       </body>
     </html>
