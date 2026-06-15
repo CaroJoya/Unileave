@@ -1,7 +1,7 @@
 // components/layout/Navbar.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,6 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
-  Bell,
   Menu,
   LogOut,
   User,
@@ -34,88 +33,12 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { RoleBadge } from "./RoleBadge";
-import { toast } from "sonner";
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: string;
-  isRead: boolean;
-  createdAt: string;
-}
+import { NotificationBell } from "./NotificationBell";
 
 export function Navbar() {
   const router = useRouter();
   const { user, userRoles, isAuthenticated, logout } = useAuthStore();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
-
-  const fetchNotifications = useCallback(async () => {
-    if (!isAuthenticated || !user) return;
-    
-    try {
-      const response = await fetch("/api/notifications");
-      const data = await response.json();
-      
-      if (response.ok) {
-        setNotifications(data.notifications || []);
-        setUnreadCount(data.notifications?.filter((n: Notification) => !n.isRead).length || 0);
-      }
-    } catch (error) {
-      console.error("Failed to fetch notifications:", error);
-    }
-  }, [isAuthenticated, user]);
-
-  const markAsRead = useCallback(async (id: string) => {
-    try {
-      const response = await fetch(`/api/notifications/${id}/read`, {
-        method: "PUT",
-      });
-      
-      if (response.ok) {
-        setNotifications(prev =>
-          prev.map(n =>
-            n.id === id ? { ...n, isRead: true } : n
-          )
-        );
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      }
-    } catch (error) {
-      console.error("Failed to mark notification as read:", error);
-    }
-  }, []);
-
-  const markAllAsRead = useCallback(async () => {
-    try {
-      const response = await fetch("/api/notifications/read-all", {
-        method: "PUT",
-      });
-      
-      if (response.ok) {
-        setNotifications(prev =>
-          prev.map(n => ({ ...n, isRead: true }))
-        );
-        setUnreadCount(0);
-        toast.success("All notifications marked as read");
-      }
-    } catch (error) {
-      console.error("Failed to mark all as read:", error);
-      toast.error("Failed to mark all as read");
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      const loadNotifications = async () => {
-        await fetchNotifications();
-      };
-      loadNotifications();
-      const interval = setInterval(fetchNotifications, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [isAuthenticated, user, fetchNotifications]);
 
   const handleLogout = async () => {
     await logout();
@@ -138,7 +61,8 @@ export function Navbar() {
       items.push(
         { href: "/super-admin/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
         { href: "/super-admin/departments", label: "Departments", icon: <Building2 className="h-4 w-4" /> },
-        { href: "/super-admin/users", label: "Users", icon: <Users className="h-4 w-4" /> }
+        { href: "/super-admin/users", label: "Users", icon: <Users className="h-4 w-4" /> },
+        { href: "/super-admin/audit-logs", label: "Audit Logs", icon: <ListChecks className="h-4 w-4" /> }
       );
     } else if (userRoles.includes("head_clerk")) {
       items.push(
@@ -206,68 +130,8 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center space-x-4">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80">
-                <DropdownMenuLabel className="flex items-center justify-between">
-                  <span>Notifications</span>
-                  {unreadCount > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={markAllAsRead}
-                      className="text-xs"
-                    >
-                      Mark all as read
-                    </Button>
-                  )}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {notifications.length === 0 ? (
-                  <div className="py-8 text-center text-sm text-muted-foreground">
-                    No notifications
-                  </div>
-                ) : (
-                  notifications.slice(0, 5).map((notification) => (
-                    <DropdownMenuItem
-                      key={notification.id}
-                      className={`flex flex-col items-start p-3 cursor-pointer ${
-                        !notification.isRead ? "bg-primary/5" : ""
-                      }`}
-                      onClick={() => markAsRead(notification.id)}
-                    >
-                      <div className="font-medium text-sm">{notification.title}</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {notification.message}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {new Date(notification.createdAt).toLocaleDateString()}
-                      </div>
-                    </DropdownMenuItem>
-                  ))
-                )}
-                {notifications.length > 5 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="justify-center text-center text-primary"
-                      onClick={() => router.push("/notifications")}
-                    >
-                      View all notifications
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Notification Bell */}
+            <NotificationBell />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

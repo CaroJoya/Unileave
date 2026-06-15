@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { rtdb, auth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { sendEmail, getLeaveApprovedEmail } from "@/lib/utils/email";
+import { createNotification } from "@/lib/services/notification-service";
+import { createAuditLog } from "@/lib/services/audit-service";
+import { NotificationType } from "@/lib/constants/notification-types";
 
 interface LeaveRequest {
   id: string;
@@ -18,6 +21,15 @@ interface LeaveRequest {
   status: string;
   currentApproverId: string | null;
   revisionCount: number;
+}
+
+interface User {
+  uid: string;
+  name: string;
+  email: string;
+  roles: string[];
+  departmentId: string;
+  status: string;
 }
 
 export async function POST(
@@ -40,8 +52,9 @@ export async function POST(
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const hodId = decodedToken.uid;
 
+    // Get HOD user data
     const hodSnapshot = await rtdb.ref(`users/${hodId}`).once("value");
-    const hodData = hodSnapshot.val();
+    const hodData = hodSnapshot.val() as User | null;
 
     if (!hodData?.roles?.includes("hod")) {
       return NextResponse.json({ error: "Not authorized - HOD only" }, { status: 403 });
@@ -73,7 +86,7 @@ export async function POST(
       updatedAt: new Date().toISOString(),
     });
 
-    // Create approval log
+    // Create approval log (legacy - keep for backward compatibility)
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -88,21 +101,40 @@ export async function POST(
       actionAt: new Date().toISOString(),
     });
 
-    // Create notification for applicant
-    const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    await rtdb.ref(`notifications/${notificationId}`).set({
-      id: notificationId,
+    // Create notification using shared service
+    await createNotification({
       userId: leaveRequest.applicantId,
-      title: "Leave Request Approved",
-      message: `Your ${leaveRequest.leaveType} leave request has been approved by HOD.`,
-      type: "leave_approved",
-      isRead: false,
-      createdAt: new Date().toISOString(),
+      type: NotificationType.LEAVE_APPROVED,
+      message: `Your ${leaveRequest.leaveType} leave request (${new Date(leaveRequest.startDate).toLocaleDateString()} - ${new Date(leaveRequest.endDate).toLocaleDateString()}) has been approved by HOD ${hodData.name}.`,
+      metadata: {
+        leaveRequestId: id,
+        approver: "hod",
+        approverName: hodData.name,
+        leaveType: leaveRequest.leaveType,
+        totalDays: leaveRequest.totalDays,
+      },
+    });
+
+    // Create audit log using shared service
+    await createAuditLog({
+      userId: hodId,
+      userName: hodData.name,
+      userRole: "hod",
+      action: "LEAVE_APPROVED",
+      module: "leaveRequests",
+      targetId: id,
+      targetUser: leaveRequest.applicantId,
+      details: {
+        leaveType: leaveRequest.leaveType,
+        totalDays: leaveRequest.totalDays,
+        startDate: leaveRequest.startDate,
+        endDate: leaveRequest.endDate,
+      },
     });
 
     // Send email to applicant
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
-    const applicantData = applicantSnapshot.val();
+    const applicantData = applicantSnapshot.val() as User | null;
 
     if (applicantData?.email) {
       const statusPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/status`;
