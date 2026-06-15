@@ -8,6 +8,51 @@ import { sendEmail, getLeaveSubmittedEmail } from "@/lib/utils/email";
 import type { LeaveRequest, LeaveStatus, LeaveType } from "@/types/leave";
 import type { Role } from "@/types/roles";
 
+// Type definitions
+interface LeaveTypeData {
+  leaveCode: string;
+  isActive: boolean;
+  deductsBalance: boolean;
+  requiresAttachment: boolean;
+}
+
+interface UserData {
+  name: string;
+  roles: string[];
+  collegeId: string;
+  departmentId: string;
+  departmentName: string;
+}
+
+interface DepartmentData {
+  hodId: string | null;
+}
+
+interface RegistrarUserData {
+  roles?: string[];
+  collegeId: string;
+}
+
+interface CollegeData {
+  principalId: string | null;
+}
+
+interface LeaveBalanceDoc {
+  balances: {
+    [key: string]: {
+      pending: number;
+      available: number;
+    };
+  };
+}
+
+interface ExistingLeaveRequest {
+  applicantId: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+}
+
 interface LeaveTypeConfig {
   deductsBalance: boolean;
   requiresAttachment: boolean;
@@ -15,9 +60,9 @@ interface LeaveTypeConfig {
 
 async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
   const typesSnapshot = await rtdb?.ref("leaveTypes").once("value");
-  const types = typesSnapshot?.val() || {};
+  const types = typesSnapshot?.val() as Record<string, LeaveTypeData> | null || {};
   
-  for (const [id, type] of Object.entries(types as Record<string, any>)) {
+  for (const [, type] of Object.entries(types)) {
     if (type.leaveCode === leaveCode && type.isActive) {
       return {
         deductsBalance: type.deductsBalance !== false,
@@ -28,17 +73,21 @@ async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | 
   return null;
 }
 
-async function getApproverUserId(role: "hod" | "registrar" | "principal", collegeId: string, departmentId?: string): Promise<string | null> {
+async function getApproverUserId(
+  role: "hod" | "registrar" | "principal", 
+  collegeId: string, 
+  departmentId?: string
+): Promise<string | null> {
   if (role === "hod" && departmentId) {
     const deptSnapshot = await rtdb?.ref(`departments/${departmentId}`).once("value");
-    const dept = deptSnapshot?.val();
+    const dept = deptSnapshot?.val() as DepartmentData | null;
     return dept?.hodId || null;
   }
   
   if (role === "registrar") {
     const usersSnapshot = await rtdb?.ref("users").once("value");
-    const users = usersSnapshot?.val() || {};
-    for (const [uid, user] of Object.entries(users as Record<string, any>)) {
+    const users = usersSnapshot?.val() as Record<string, RegistrarUserData> | null || {};
+    for (const [uid, user] of Object.entries(users)) {
       if (user.roles?.includes("registrar") && user.collegeId === collegeId) {
         return uid;
       }
@@ -48,7 +97,7 @@ async function getApproverUserId(role: "hod" | "registrar" | "principal", colleg
   
   if (role === "principal") {
     const collegeSnapshot = await rtdb?.ref(`colleges/${collegeId}`).once("value");
-    const college = collegeSnapshot?.val();
+    const college = collegeSnapshot?.val() as CollegeData | null;
     return college?.principalId || null;
   }
   
@@ -73,7 +122,7 @@ export async function POST(request: Request) {
 
     // Get user data
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
-    const userData = userSnapshot.val();
+    const userData = userSnapshot.val() as UserData | null;
 
     if (!userData) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -113,10 +162,14 @@ export async function POST(request: Request) {
 
     // Check for overlapping leave requests
     const existingRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
-    const existingRequests = existingRequestsSnapshot?.val() || {};
-    const hasOverlap = Object.values(existingRequests as Record<string, any>).some((req: any) => {
+    const existingRequests = existingRequestsSnapshot?.val() as Record<string, ExistingLeaveRequest> | null || {};
+    
+    const hasOverlap = Object.values(existingRequests).some((req: ExistingLeaveRequest) => {
       if (req.applicantId !== userId) return false;
-      if (req.status === "Cancelled" || req.status === "Rejected_HOD" || req.status === "Rejected_Registrar" || req.status === "Rejected_Principal") {
+      if (req.status === "Cancelled" || 
+          req.status === "Rejected_HOD" || 
+          req.status === "Rejected_Registrar" || 
+          req.status === "Rejected_Principal") {
         return false;
       }
       const reqStart = new Date(req.startDate);
@@ -135,7 +188,7 @@ export async function POST(request: Request) {
       const academicYear = getCurrentAcademicYear();
       const balanceKey = `${userId}_${academicYear}`;
       const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
-      const balanceDoc = balanceSnapshot.val();
+      const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
       
       if (!balanceDoc) {
         return NextResponse.json({ error: "Leave balance not initialized" }, { status: 400 });
@@ -166,7 +219,7 @@ export async function POST(request: Request) {
       const balanceKey = `${userId}_${academicYear}`;
       const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
       const balanceSnapshot = await balanceRef.once("value");
-      const balanceDoc = balanceSnapshot.val();
+      const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
       
       if (balanceDoc) {
         await balanceRef.update({
@@ -225,7 +278,7 @@ export async function POST(request: Request) {
 
     // Send email notification to approver
     const approverSnapshot = await rtdb.ref(`users/${approverUserId}`).once("value");
-    const approverData = approverSnapshot.val();
+    const approverData = approverSnapshot.val() as { email: string; name: string } | null;
     
     if (approverData?.email) {
       const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard`;
