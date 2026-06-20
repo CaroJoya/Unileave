@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth, db } from "@/lib/firebase/admin";
+import { auth, rtdb } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export async function GET() {
@@ -14,28 +14,36 @@ export async function GET() {
       );
     }
 
+    if (!auth || !rtdb) {
+      console.error("Firebase Admin not initialized");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    const userDoc = await db.collection("users").doc(userId).get();
+    // ✅ FIXED: Using RTDB instead of Firestore
+    const snapshot = await rtdb.ref(`users/${userId}`).once("value");
+    const userData = snapshot.val();
 
-    if (!userDoc.exists) {
+    if (!userData) {
       return NextResponse.json(
         { error: "User not found" },
         { status: 404 }
       );
     }
 
-    const userData = userDoc.data();
-
-    if (userData?.status !== "deleted") {
+    if (userData.status !== "deleted") {
       return NextResponse.json({
         status: "active",
         daysLeft: null,
       });
     }
 
-    const deletedAt = userData.deletedAt?.toDate?.() || new Date(userData.deletedAt);
+    const deletedAt = new Date(userData.deletedAt);
     const now = new Date();
     const daysSinceDeletion = (now.getTime() - deletedAt.getTime()) / (1000 * 60 * 60 * 24);
     const daysLeft = Math.max(0, 30 - Math.floor(daysSinceDeletion));

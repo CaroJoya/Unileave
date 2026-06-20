@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth, db } from "@/lib/firebase/admin";
+import { auth, rtdb } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export async function POST() {
@@ -14,13 +14,22 @@ export async function POST() {
       );
     }
 
+    if (!auth || !rtdb) {
+      console.error("Firebase Admin not initialized");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    const userRef = db.collection("users").doc(userId);
-    const userDoc = await userRef.get();
+    // ✅ FIXED: Using RTDB instead of Firestore
+    const snapshot = await rtdb.ref(`users/${userId}`).once("value");
+    const userData = snapshot.val();
 
-    if (!userDoc.exists) {
+    if (!userData) {
       return NextResponse.json(
         { error: "User not found" },
         { status: 404 }
@@ -29,10 +38,12 @@ export async function POST() {
 
     const deletedAt = new Date().toISOString();
 
-    await userRef.update({
+    // Update user status in RTDB
+    await rtdb.ref(`users/${userId}`).update({
       status: "deleted",
-      deletedAt,
+      deletedAt: deletedAt,
       deletedBy: userId,
+      updatedAt: new Date().toISOString(),
     });
 
     return NextResponse.json({

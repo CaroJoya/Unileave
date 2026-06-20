@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ FIX: Max allowed is 14 days (1,209,600,000 ms)
+    // Max allowed is 14 days (1,209,600,000 ms)
     const expiresIn = 60 * 60 * 24 * 14 * 1000; // 14 days
     console.log("Creating session cookie with expiry (ms):", expiresIn);
     
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     
     console.log("Session cookie created successfully");
 
-    // Set cookie
+    // Set cookie - using "session" (consistent with proxy.ts)
     const cookieStore = await cookies();
     cookieStore.set("session", sessionCookie, {
       maxAge: expiresIn / 1000,

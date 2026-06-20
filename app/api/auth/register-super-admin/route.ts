@@ -58,10 +58,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create UNIQUE college ID
-    const collegeId = `college_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    // ✅ FIXED: Use consistent college_001 (Option A - Quick Fix)
+    // This matches what all other routes expect
+    const collegeId = "college_001";
     
-    // Create college document with UNIQUE ID
+    // Create college document
     const collegeData = {
       id: collegeId,
       name: collegeName,
@@ -109,8 +110,8 @@ export async function POST(request: Request) {
       // Non-critical, continue
     }
 
-    // Create user data for Realtime Database (linked to college)
-    const userData = {
+    // ✅ FIXED: Renamed to userDocData to avoid duplicate declaration
+    const userDocData = {
       uid: userRecord.uid,
       name,
       email,
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
     };
 
     try {
-      await rtdb.ref(`users/${userRecord.uid}`).set(userData);
+      await rtdb.ref(`users/${userRecord.uid}`).set(userDocData);
       console.log("User saved to RTDB with college:", collegeId);
     } catch (rtdbError: unknown) {
       const error = rtdbError as FirebaseError;

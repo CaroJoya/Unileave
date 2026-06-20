@@ -21,7 +21,7 @@ const protectedRoutes = [
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // ✅ FIX: Check for 'session' cookie (not 'unileave-session')
+  // Check for 'session' cookie (matches session/route.ts)
   const session = request.cookies.get("session")?.value;
   const isAuthenticated = !!session;
   

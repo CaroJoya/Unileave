@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { db, auth } from "@/lib/firebase/admin";
+import { auth, rtdb } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export async function POST() {
   try {
-    // Get session cookie
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session")?.value;
 
@@ -15,25 +14,30 @@ export async function POST() {
       );
     }
 
-    // Verify session and get user
+    if (!auth || !rtdb) {
+      console.error("Firebase Admin not initialized");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get user document
-    const userRef = db.collection("users").doc(userId);
-    const userDoc = await userRef.get();
+    // ✅ FIXED: Using RTDB instead of Firestore
+    const snapshot = await rtdb.ref(`users/${userId}`).once("value");
+    const userData = snapshot.val();
 
-    if (!userDoc.exists) {
+    if (!userData) {
       return NextResponse.json(
         { error: "User not found" },
         { status: 404 }
       );
     }
 
-    const userData = userDoc.data();
-
     // Check if account is deleted
-    if (userData?.status !== "deleted") {
+    if (userData.status !== "deleted") {
       return NextResponse.json(
         { error: "Account is not deactivated" },
         { status: 400 }
@@ -41,7 +45,7 @@ export async function POST() {
     }
 
     // Check if within 30-day window
-    const deletedAt = userData.deletedAt?.toDate?.() || new Date(userData.deletedAt);
+    const deletedAt = new Date(userData.deletedAt);
     const now = new Date();
     const daysSinceDeletion = (now.getTime() - deletedAt.getTime()) / (1000 * 60 * 60 * 24);
 
@@ -52,12 +56,13 @@ export async function POST() {
       );
     }
 
-    // Restore account
-    await userRef.update({
+    // Restore account in RTDB
+    await rtdb.ref(`users/${userId}`).update({
       status: "active",
       deletedAt: null,
       restoredAt: new Date().toISOString(),
       restoredBy: userId,
+      updatedAt: new Date().toISOString(),
     });
 
     return NextResponse.json({
