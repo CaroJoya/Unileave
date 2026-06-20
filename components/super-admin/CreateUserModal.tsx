@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,17 +39,40 @@ const ROLES = [
   { id: "office_staff", label: "Office Staff" },
 ];
 
-export function CreateUserModal({ open, onOpenChange, onSuccess, departments }: CreateUserModalProps) {
+const INITIAL_FORM_STATE = {
+  name: "",
+  email: "",
+  phoneNumber: "",
+  password: "",
+  confirmPassword: "",
+  departmentId: "",
+  roles: [] as string[],
+};
+
+export function CreateUserModal({ 
+  open, 
+  onOpenChange, 
+  onSuccess, 
+  departments 
+}: CreateUserModalProps) {
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phoneNumber: "",
-    password: "",
-    confirmPassword: "",
-    departmentId: "",
-    roles: [] as string[],
-  });
+  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+
+  // ✅ Debug: Log departments when modal opens or they change
+  useEffect(() => {
+    if (open) {
+      console.log("CreateUserModal - departments available:", departments?.length || 0);
+      console.log("CreateUserModal - department data:", departments);
+    }
+  }, [open, departments]);
+
+  // Reset form when modal closes
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      setFormData(INITIAL_FORM_STATE);
+    }
+    onOpenChange(newOpen);
+  };
 
   const handleRoleToggle = (roleId: string) => {
     setFormData(prev => ({
@@ -106,17 +129,9 @@ export function CreateUserModal({ open, onOpenChange, onSuccess, departments }: 
       }
 
       toast.success("User created successfully!");
-      setFormData({
-        name: "",
-        email: "",
-        phoneNumber: "",
-        password: "",
-        confirmPassword: "",
-        departmentId: "",
-        roles: [],
-      });
+      setFormData(INITIAL_FORM_STATE);
       onSuccess();
-      onOpenChange(false);
+      handleOpenChange(false);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create user";
       toast.error(errorMessage);
@@ -125,8 +140,11 @@ export function CreateUserModal({ open, onOpenChange, onSuccess, departments }: 
     }
   };
 
+  // ✅ Check if departments are available
+  const hasDepartments = departments && departments.length > 0;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New User</DialogTitle>
@@ -168,17 +186,28 @@ export function CreateUserModal({ open, onOpenChange, onSuccess, departments }: 
               value={formData.departmentId}
               onValueChange={(value) => setFormData({ ...formData, departmentId: value })}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
+              <SelectTrigger className={!hasDepartments ? "border-amber-500 bg-amber-50" : ""}>
+                <SelectValue placeholder={hasDepartments ? "Select department" : "⚠️ No departments available"} />
               </SelectTrigger>
               <SelectContent>
-                {departments.map((dept) => (
-                  <SelectItem key={dept.id} value={dept.id}>
-                    {dept.name}
+                {hasDepartments ? (
+                  departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="no-departments" disabled>
+                    ⚠️ No departments found. Please create one first.
                   </SelectItem>
-                ))}
+                )}
               </SelectContent>
             </Select>
+            {!hasDepartments && (
+              <p className="text-xs text-amber-600">
+                ⚠️ No departments available. Go to the <strong>Departments</strong> tab to create one.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Roles *</Label>
@@ -217,7 +246,7 @@ export function CreateUserModal({ open, onOpenChange, onSuccess, departments }: 
               required
             />
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || !hasDepartments}>
             {loading ? "Creating..." : "Create User"}
           </Button>
         </form>

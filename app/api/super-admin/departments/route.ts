@@ -2,7 +2,38 @@ import { NextResponse } from "next/server";
 import { rtdb, auth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
-export async function GET() {
+// ✅ Define proper types
+interface DepartmentData {
+  id?: string;
+  name: string;
+  collegeId?: string;
+  collegeName?: string;
+  hodId?: string | null;
+  hodName?: string | null;
+  isActive?: boolean;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown; // For any additional fields
+}
+
+interface UserData {
+  uid: string;
+  name: string;
+  email: string;
+  roles: string[];
+  collegeId?: string;
+  collegeName?: string;
+  departmentId?: string;
+  departmentName?: string;
+  status?: string;
+  isEmployed?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
+}
+
+export async function GET(request: Request) {
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session")?.value;
@@ -19,19 +50,45 @@ export async function GET() {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val();
+    const userData = userSnapshot.val() as UserData | null;
     
     if (!userData?.roles?.includes("super_admin")) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const departmentsSnapshot = await rtdb.ref("departments").once("value");
-    const departments = departmentsSnapshot.val() || {};
+    // ✅ Get collegeId from query params or use user's collegeId
+    const { searchParams } = new URL(request.url);
+    const collegeId = searchParams.get("collegeId") || userData.collegeId || "college_001";
 
-    const departmentsList = Object.entries(departments).map(([id, data]) => ({
-      id,
-      ...(data as object),
-    }));
+    console.log("Fetching departments for college:", collegeId);
+
+    const departmentsSnapshot = await rtdb.ref("departments").once("value");
+    const departments = departmentsSnapshot.val() as Record<string, DepartmentData> | null || {};
+
+    // ✅ Filter by collegeId with proper typing
+    const departmentsList = Object.entries(departments)
+      .filter(([, data]) => {
+        // If department has collegeId, filter by it
+        if (data.collegeId) {
+          return data.collegeId === collegeId;
+        }
+        // Otherwise include all (backward compatibility)
+        return true;
+      })
+      .map(([id, data]) => ({
+        id,
+        name: data.name,
+        collegeId: data.collegeId || "",
+        collegeName: data.collegeName || "",
+        hodId: data.hodId || null,
+        hodName: data.hodName || null,
+        isActive: data.isActive !== false,
+        createdBy: data.createdBy || "",
+        createdAt: data.createdAt || "",
+        updatedAt: data.updatedAt || "",
+      }));
+
+    console.log(`Found ${departmentsList.length} departments`);
 
     return NextResponse.json({ departments: departmentsList });
   } catch (error) {
@@ -57,7 +114,7 @@ export async function POST(request: Request) {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val();
+    const userData = userSnapshot.val() as UserData | null;
     
     if (!userData?.roles?.includes("super_admin")) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -70,14 +127,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Department name is required" }, { status: 400 });
     }
 
-    const deptId = `dept_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    const collegeSnapshot = await rtdb.ref("colleges/college_001").once("value");
-    const college = collegeSnapshot.val();
+    // ✅ Use user's collegeId
+    const collegeId = userData.collegeId || "college_001";
+    const collegeSnapshot = await rtdb.ref(`colleges/${collegeId}`).once("value");
+    const college = collegeSnapshot.val() as { name?: string } | null;
 
-    const departmentData = {
+    const deptId = `dept_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const departmentData: DepartmentData = {
       id: deptId,
       name,
-      collegeId: "college_001",
+      collegeId: collegeId,
       collegeName: college?.name || "",
       hodId: null,
       hodName: null,
@@ -89,7 +148,13 @@ export async function POST(request: Request) {
 
     await rtdb.ref(`departments/${deptId}`).set(departmentData);
 
-    return NextResponse.json({ success: true, department: departmentData });
+    return NextResponse.json({ 
+      success: true, 
+      department: {
+        id: deptId,
+        ...departmentData,
+      } 
+    });
   } catch (error) {
     console.error("Error creating department:", error);
     return NextResponse.json({ error: "Failed to create department" }, { status: 500 });

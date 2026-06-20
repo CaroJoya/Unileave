@@ -46,7 +46,11 @@ interface HODCandidate {
   departmentName: string;
 }
 
-export function DepartmentManager() {
+interface DepartmentManagerProps {
+  onRefresh?: () => void;
+}
+
+export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [hodCandidates, setHodCandidates] = useState<HODCandidate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +88,7 @@ export function DepartmentManager() {
     }
   }, []);
 
-  // ✅ Fixed: Use an async function inside useEffect
+  // ✅ FIXED: Use an async function inside useEffect
   useEffect(() => {
     const loadData = async () => {
       await Promise.all([fetchDepartments(), fetchHodCandidates()]);
@@ -115,6 +119,11 @@ export function DepartmentManager() {
       setDeptName("");
       setShowCreateDialog(false);
       await fetchDepartments();
+      
+      // ✅ Call parent refresh if provided
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create department";
       toast.error(errorMessage);
@@ -136,6 +145,11 @@ export function DepartmentManager() {
       toast.success("Department deleted successfully");
       await fetchDepartments();
       setShowDeleteConfirm(null);
+      
+      // ✅ Call parent refresh if provided
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to delete department";
       toast.error(errorMessage);

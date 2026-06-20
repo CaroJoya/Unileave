@@ -49,9 +49,11 @@ interface Department {
 
 interface UserManagerProps {
   departments: Department[];
+  onRefresh?: () => void;
+  isLoading?: boolean;
 }
 
-export function UserManager({ departments }: UserManagerProps) {
+export function UserManager({ departments, onRefresh, isLoading = false }: UserManagerProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -61,6 +63,11 @@ export function UserManager({ departments }: UserManagerProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<string | null>(null);
+
+  // ✅ Debug: Log departments when they change
+  useEffect(() => {
+    console.log("UserManager - departments received:", departments?.length || 0);
+  }, [departments]);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -109,6 +116,10 @@ export function UserManager({ departments }: UserManagerProps) {
       toast.success("User permanently deleted");
       await fetchUsers();
       setShowDeleteConfirm(null);
+      
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to delete user";
       toast.error(errorMessage);
@@ -130,6 +141,10 @@ export function UserManager({ departments }: UserManagerProps) {
       toast.success("User restored successfully");
       await fetchUsers();
       setShowRestoreConfirm(null);
+      
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to restore user";
       toast.error(errorMessage);
@@ -152,6 +167,10 @@ export function UserManager({ departments }: UserManagerProps) {
 
       toast.success("User deactivated. They have 30 days to restore.");
       await fetchUsers();
+      
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to deactivate user";
       toast.error(errorMessage);
@@ -202,12 +221,29 @@ export function UserManager({ departments }: UserManagerProps) {
     setStatusFilter(value === "all" ? "" : value);
   };
 
+  // ✅ Show loading state for departments
+  const hasDepartments = departments && departments.length > 0;
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">User Management</h2>
-        <Button onClick={() => setShowCreateModal(true)}>+ New User</Button>
+        <Button 
+          onClick={() => setShowCreateModal(true)}
+          disabled={!hasDepartments && !isLoading}
+        >
+          + New User
+        </Button>
       </div>
+
+      {/* Show warning if no departments */}
+      {!isLoading && !hasDepartments && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
+          <p className="text-sm">
+            ⚠️ No departments available. Please go to the <strong>Departments</strong> tab to create one before adding users.
+          </p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -242,15 +278,21 @@ export function UserManager({ departments }: UserManagerProps) {
           <Label>Department</Label>
           <Select value={getSelectValue(departmentFilter)} onValueChange={handleDepartmentChange}>
             <SelectTrigger>
-              <SelectValue placeholder="All departments" />
+              <SelectValue placeholder={hasDepartments ? "All departments" : "No departments"} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All departments</SelectItem>
-              {departments.map((dept) => (
-                <SelectItem key={dept.id} value={dept.id}>
-                  {dept.name}
+              {hasDepartments ? (
+                departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </SelectItem>
+                ))
+              ) : (
+                <SelectItem value="no-departments" disabled>
+                  No departments available
                 </SelectItem>
-              ))}
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -368,6 +410,9 @@ export function UserManager({ departments }: UserManagerProps) {
         onSuccess={async () => {
           await fetchUsers();
           setShowCreateModal(false);
+          if (onRefresh) {
+            onRefresh();
+          }
         }}
         departments={departments}
       />
