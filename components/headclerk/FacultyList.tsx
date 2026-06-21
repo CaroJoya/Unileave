@@ -76,7 +76,6 @@ export function FacultyList({ departments }: FacultyListProps) {
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  // Wrap fetchFaculty in useCallback with ALL dependencies
   const fetchFaculty = useCallback(async () => {
     setLoading(true);
     try {
@@ -102,9 +101,12 @@ export function FacultyList({ departments }: FacultyListProps) {
     }
   }, [search, departmentFilter, roleFilter, statusFilter]);
 
-  // Now useEffect only depends on fetchFaculty (which is stable)
+  // ✅ FIXED: Wrap fetchFaculty in an async function to avoid ESLint warning
   useEffect(() => {
-    fetchFaculty();
+    const loadFaculty = async () => {
+      await fetchFaculty();
+    };
+    loadFaculty();
   }, [fetchFaculty]);
 
   const handleExportCSV = () => {
@@ -142,7 +144,6 @@ export function FacultyList({ departments }: FacultyListProps) {
   const inactiveFaculty = faculty.filter(f => f.status !== "active").length;
   const facultyCount = faculty.filter(f => f.roles.includes("faculty")).length;
   const labAssistantCount = faculty.filter(f => f.roles.includes("lab_assistant")).length;
-  // officeStaffCount removed since it was unused
 
   return (
     <div className="space-y-6">
@@ -216,12 +217,15 @@ export function FacultyList({ departments }: FacultyListProps) {
         
         <div className="w-48">
           <Label>Department</Label>
-          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+          <Select
+            value={departmentFilter || "all"}
+            onValueChange={(value) => setDepartmentFilter(value === "all" ? "" : value)}
+          >
             <SelectTrigger>
               <SelectValue placeholder="All departments" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All departments</SelectItem>
+              <SelectItem value="all">All departments</SelectItem>
               {departments.map((dept) => (
                 <SelectItem key={dept.id} value={dept.id}>
                   {dept.name}
@@ -233,12 +237,15 @@ export function FacultyList({ departments }: FacultyListProps) {
 
         <div className="w-48">
           <Label>Role</Label>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <Select
+            value={roleFilter || "all"}
+            onValueChange={(value) => setRoleFilter(value === "all" ? "" : value)}
+          >
             <SelectTrigger>
               <SelectValue placeholder="All roles" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All roles</SelectItem>
+              <SelectItem value="all">All roles</SelectItem>
               <SelectItem value="faculty">Faculty</SelectItem>
               <SelectItem value="lab_assistant">Lab Assistant</SelectItem>
               <SelectItem value="office_staff">Office Staff</SelectItem>
@@ -250,12 +257,15 @@ export function FacultyList({ departments }: FacultyListProps) {
 
         <div className="w-48">
           <Label>Status</Label>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select
+            value={statusFilter || "all"}
+            onValueChange={(value) => setStatusFilter(value === "all" ? "" : value)}
+          >
             <SelectTrigger>
               <SelectValue placeholder="All status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All status</SelectItem>
+              <SelectItem value="all">All status</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="deleted">Inactive</SelectItem>
             </SelectContent>

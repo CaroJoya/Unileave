@@ -56,7 +56,6 @@ export function AttendanceCalendar({ departments, staffUsers, onRefresh }: Atten
     userId: "",
   });
   
-  // Mark attendance form state
   const [markForm, setMarkForm] = useState({
     status: "Present",
     halfDaySession: "First Half",
@@ -67,7 +66,6 @@ export function AttendanceCalendar({ departments, staffUsers, onRefresh }: Atten
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
-  // Fetch attendance data - DECLARED FIRST with useCallback
   const fetchAttendance = useCallback(async () => {
     setLoading(true);
     try {
@@ -94,12 +92,14 @@ export function AttendanceCalendar({ departments, staffUsers, onRefresh }: Atten
     }
   }, [year, month, filters.departmentId, filters.userId]);
 
-  // NOW useEffect - depends on fetchAttendance
+  // ✅ FIXED: Wrap fetchAttendance in an async function
   useEffect(() => {
-    fetchAttendance();
+    const loadAttendance = async () => {
+      await fetchAttendance();
+    };
+    loadAttendance();
   }, [fetchAttendance]);
 
-  // Get days in month
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
@@ -229,14 +229,14 @@ export function AttendanceCalendar({ departments, staffUsers, onRefresh }: Atten
         <div className="w-48">
           <Label>Department</Label>
           <Select
-            value={filters.departmentId}
-            onValueChange={(value) => setFilters({ ...filters, departmentId: value, userId: "" })}
+            value={filters.departmentId || "all"}
+            onValueChange={(value) => setFilters({ ...filters, departmentId: value === "all" ? "" : value, userId: "" })}
           >
             <SelectTrigger>
               <SelectValue placeholder="All departments" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All departments</SelectItem>
+              <SelectItem value="all">All departments</SelectItem>
               {departments.map((dept) => (
                 <SelectItem key={dept.id} value={dept.id}>
                   {dept.name}
@@ -249,14 +249,14 @@ export function AttendanceCalendar({ departments, staffUsers, onRefresh }: Atten
         <div className="w-64">
           <Label>Staff Member</Label>
           <Select
-            value={filters.userId}
-            onValueChange={(value) => setFilters({ ...filters, userId: value })}
+            value={filters.userId || "all"}
+            onValueChange={(value) => setFilters({ ...filters, userId: value === "all" ? "" : value })}
           >
             <SelectTrigger>
               <SelectValue placeholder="All staff" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All staff</SelectItem>
+              <SelectItem value="all">All staff</SelectItem>
               {filteredStaff.map((user) => (
                 <SelectItem key={user.uid} value={user.uid}>
                   {user.name} ({user.departmentName})

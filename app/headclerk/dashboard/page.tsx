@@ -378,15 +378,33 @@ export default function HeadClerkDashboardPage() {
 
   // ========== VACATION PERIODS FUNCTIONS ==========
   const fetchVacations = useCallback(async () => {
-    try {
-      const response = await fetch("/api/headclerk/vacation-periods");
-      const data = await response.json();
-      setVacations(data.vacations || []);
-    } catch (error) {
-      console.error("Failed to fetch vacations:", error);
-      toast.error("Failed to fetch vacation periods");
+  try {
+    const response = await fetch("/api/headclerk/vacation-periods");
+    
+    // Check if response is OK before parsing JSON
+    if (!response.ok) {
+      // Try to get error message from response
+      let errorMessage = `Failed to fetch vacation periods: ${response.status}`;
+      try {
+        const data = await response.json();
+        errorMessage = data.error || errorMessage;
+      } catch {
+        // If response is not JSON, use status text
+        errorMessage = `Failed to fetch vacation periods: ${response.statusText}`;
+      }
+      toast.error(errorMessage);
+      setVacations([]);
+      return;
     }
-  }, []);
+    
+    const data = await response.json();
+    setVacations(data.vacations || []);
+  } catch (error) {
+    console.error("Failed to fetch vacations:", error);
+    toast.error("Failed to fetch vacation periods");
+    setVacations([]);
+  }
+}, []);
 
   const calculateTotalDays = (startDate: string, endDate: string) => {
     if (!startDate || !endDate) return 0;
@@ -515,15 +533,21 @@ export default function HeadClerkDashboardPage() {
   }, [user, isLoading, router]);
 
   // Fetch all data - NOW functions are declared before this useEffect
-  useEffect(() => {
-    if (user?.roles?.includes("head_clerk")) {
-      fetchLeaveTypes();
-      fetchPolicies();
-      fetchOverworkConfig();
-      fetchVacations();
-      fetchAttendanceData();
-    }
-  }, [user, fetchLeaveTypes, fetchPolicies, fetchOverworkConfig, fetchVacations, fetchAttendanceData]);
+  // Replace the existing useEffect that calls fetch functions directly
+useEffect(() => {
+  if (user?.roles?.includes("head_clerk")) {
+    const loadAllData = async () => {
+      await Promise.all([
+        fetchLeaveTypes(),
+        fetchPolicies(),
+        fetchOverworkConfig(),
+        fetchVacations(),
+        fetchAttendanceData()
+      ]);
+    };
+    loadAllData();
+  }
+}, [user, fetchLeaveTypes, fetchPolicies, fetchOverworkConfig, fetchVacations, fetchAttendanceData]);
 
   if (isLoading || loading) {
     return (
