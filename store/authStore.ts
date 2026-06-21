@@ -15,6 +15,13 @@ import { auth, rtdb } from "@/lib/firebase/client";
 import { User } from "@/types/user";
 import { Role } from "@/types/roles";
 
+// Define Firebase Auth error type
+interface FirebaseAuthError {
+  code?: string;
+  message?: string;
+  name?: string;
+}
+
 interface AuthState {
   user: User | null;
   userRoles: Role[];
@@ -59,13 +66,50 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         
         try {
-          console.log("1️⃣ Signing in with Firebase...");
-          const userCredential = await signInWithEmailAndPassword(auth, email, password);
+          console.log("1️⃣ Attempting login with email:", email);
+          
+          // Validate inputs
+          if (!email || !password) {
+            throw new Error("Email and password are required");
+          }
+          
+          // Try to sign in
+          let userCredential;
+          try {
+            userCredential = await signInWithEmailAndPassword(auth, email, password);
+          } catch (authError) {
+            const error = authError as FirebaseAuthError;
+            console.error("Firebase Auth error:", {
+              code: error.code,
+              message: error.message
+            });
+            
+            // Handle specific Firebase auth errors
+            if (error.code === "auth/user-not-found") {
+              throw new Error("User not found. Please check your email.");
+            }
+            if (error.code === "auth/wrong-password") {
+              throw new Error("Incorrect password. Please try again.");
+            }
+            if (error.code === "auth/invalid-email") {
+              throw new Error("Invalid email address.");
+            }
+            if (error.code === "auth/invalid-credential") {
+              throw new Error("Invalid credentials. Please check your email and password.");
+            }
+            if (error.code === "auth/too-many-requests") {
+              throw new Error("Too many failed attempts. Please try again later.");
+            }
+            throw new Error(error.message || "Authentication failed");
+          }
+          
           console.log("2️⃣ Firebase sign-in successful, UID:", userCredential.user.uid);
           
+          // Get ID token for session
           const idToken = await userCredential.user.getIdToken();
           console.log("3️⃣ Got ID token");
           
+          // Create session cookie
           console.log("4️⃣ Creating session cookie...");
           const response = await fetch("/api/auth/session", {
             method: "POST",
@@ -74,15 +118,10 @@ export const useAuthStore = create<AuthState>()(
           });
           
           const data = await response.json();
-          console.log("5️⃣ Session response:", { ok: response.ok, data });
+          console.log("5️⃣ Session response:", { ok: response.ok });
           
           if (!response.ok) {
-            if (response.status === 403 && data.error === "Account deactivated") {
-              set({ isLoading: false, error: "Account deactivated. Please restore your account." });
-              window.location.href = "/restore";
-              return false;
-            }
-            throw new Error(data.error || "Login failed");
+            throw new Error(data.error || "Failed to create session");
           }
           
           // Fetch user data from Realtime Database
@@ -90,10 +129,20 @@ export const useAuthStore = create<AuthState>()(
           const userRef = ref(rtdb, `users/${userCredential.user.uid}`);
           const snapshot = await firebaseGet(userRef);
           const userData = snapshot.val();
-          console.log("7️⃣ User data from RTDB:", userData);
+          console.log("7️⃣ User data from RTDB:", { 
+            uid: userCredential.user.uid,
+            hasData: !!userData,
+            roles: userData?.roles,
+            status: userData?.status
+          });
           
           if (!userData) {
-            throw new Error("User data not found");
+            throw new Error("User data not found in database. Please contact admin.");
+          }
+          
+          // Check if account is deleted
+          if (userData.status === "deleted") {
+            throw new Error("Account is deactivated. Please restore your account.");
           }
           
           // Create user object with actual database values
@@ -117,7 +166,8 @@ export const useAuthStore = create<AuthState>()(
           console.log("8️⃣ User object created:", { 
             uid: user.uid, 
             collegeId: user.collegeId, 
-            roles: user.roles 
+            roles: user.roles,
+            name: user.name
           });
           
           set({ 
@@ -128,13 +178,15 @@ export const useAuthStore = create<AuthState>()(
             error: null
           });
           
-          console.log("9️⃣ Login complete, returning true");
+          console.log("9️⃣ Login complete");
           return true;
-        } catch (error: unknown) {
+          
+        } catch (error) {
           console.error("❌ Login error:", error);
           const err = error as { message?: string };
+          const errorMessage = err.message || "Invalid email or password";
           set({ 
-            error: err.message || "Invalid email or password",
+            error: errorMessage,
             isLoading: false 
           });
           return false;
@@ -334,7 +386,6 @@ export const useAuthStore = create<AuthState>()(
           const state = get();
           if (!state.user) return;
           
-          // Use firebaseGet instead of get to avoid conflict
           const userRef = ref(rtdb, `users/${state.user.uid}`);
           const snapshot = await firebaseGet(userRef);
           const userData = snapshot.val();

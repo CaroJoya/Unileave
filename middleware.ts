@@ -18,14 +18,19 @@ const protectedRoutes = [
   "/principal",
 ];
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Check for 'session' cookie (matches session/route.ts)
+  // Skip middleware for API routes - THIS IS THE KEY FIX
+  if (pathname.startsWith("/api")) {
+    return NextResponse.next();
+  }
+  
+  // Check for 'session' cookie
   const session = request.cookies.get("session")?.value;
   const isAuthenticated = !!session;
   
-  console.log(`[Proxy] Path: ${pathname}, Authenticated: ${isAuthenticated}`);
+  console.log(`[Middleware] Path: ${pathname}, Authenticated: ${isAuthenticated}`);
   
   // Allow public routes
   if (publicRoutes.some(route => pathname.startsWith(route))) {
@@ -37,7 +42,7 @@ export function proxy(request: NextRequest) {
     if (!isAuthenticated) {
       const url = new URL("/login", request.url);
       url.searchParams.set("redirect", pathname);
-      console.log(`[Proxy] Redirecting to: ${url.toString()}`);
+      console.log(`[Middleware] Redirecting to: ${url.toString()}`);
       return NextResponse.redirect(url);
     }
   }
