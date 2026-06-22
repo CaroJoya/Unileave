@@ -21,6 +21,23 @@ export function MobileNav() {
     setOpen(false);
   };
 
+  // Function to get the correct dashboard URL based on user roles
+  const getDashboardUrl = () => {
+    if (userRoles.includes("super_admin")) {
+      return "/super-admin/dashboard";
+    } else if (userRoles.includes("head_clerk")) {
+      return "/headclerk/dashboard";
+    } else if (userRoles.includes("hod")) {
+      return "/hod/dashboard";
+    } else if (userRoles.includes("registrar")) {
+      return "/registrar/dashboard";
+    } else if (userRoles.includes("principal")) {
+      return "/principal/dashboard";
+    } else {
+      return "/dashboard";
+    }
+  };
+
   const getNavItems = () => {
     const items: { href: string; label: string; icon: React.ReactNode }[] = [];
 
@@ -67,11 +84,13 @@ export function MobileNav() {
       );
     }
 
+    // PROFILE LINK - Always at the end
     items.push({ href: "/profile", label: "Profile", icon: <User className="h-4 w-4" /> });
     return items;
   };
 
   const navItems = getNavItems();
+  const dashboardUrl = getDashboardUrl();
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -92,7 +111,7 @@ export function MobileNav() {
               </div>
               <div>
                 <p className="font-medium">{user?.name}</p>
-                <p className="text-xs text-muted-foreground">{user?.email}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
                 <div className="mt-1">
                   <RoleBadge roles={userRoles} />
                 </div>
@@ -101,7 +120,7 @@ export function MobileNav() {
           </div>
 
           {/* Navigation Items */}
-          <div className="flex-1 space-y-1">
+          <div className="flex-1 space-y-1 overflow-y-auto">
             {navItems.map((item) => (
               <Link
                 key={item.href}
@@ -115,8 +134,17 @@ export function MobileNav() {
             ))}
           </div>
 
-          {/* Logout Button */}
-          <div className="border-t pt-4 mt-4">
+          {/* Logout Button - Always at the bottom */}
+          <div className="border-t pt-4 mt-4 space-y-2">
+            {/* Back to Dashboard button in mobile nav */}
+            <Link
+              href={dashboardUrl}
+              className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              onClick={() => setOpen(false)}
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              <span>Back to Dashboard</span>
+            </Link>
             <button
               onClick={handleLogout}
               className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
