@@ -6,7 +6,23 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Menu, LogOut, User, LayoutDashboard, FilePlus2, ListChecks, BarChart3, CalendarDays, Award, Clock, Building2, Users, Settings, Umbrella } from "lucide-react";
+import {
+  Menu,
+  LogOut,
+  User,
+  LayoutDashboard,
+  FilePlus2,
+  ListChecks,
+  BarChart3,
+  CalendarDays,
+  Award,
+  Clock,
+  Building2,
+  Users,
+  Settings,
+  Umbrella,
+  AlertCircle,
+} from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { RoleBadge } from "./RoleBadge";
 
@@ -21,7 +37,6 @@ export function MobileNav() {
     setOpen(false);
   };
 
-  // Function to get the correct dashboard URL based on user roles
   const getDashboardUrl = () => {
     if (userRoles.includes("super_admin")) {
       return "/super-admin/dashboard";
@@ -41,6 +56,7 @@ export function MobileNav() {
   const getNavItems = () => {
     const items: { href: string; label: string; icon: React.ReactNode }[] = [];
 
+    // Super Admin
     if (userRoles.includes("super_admin")) {
       items.push(
         { href: "/super-admin/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -48,14 +64,22 @@ export function MobileNav() {
         { href: "/super-admin/users", label: "Users", icon: <Users className="h-4 w-4" /> },
         { href: "/super-admin/audit-logs", label: "Audit Logs", icon: <ListChecks className="h-4 w-4" /> }
       );
-    } else if (userRoles.includes("head_clerk")) {
+      return items;
+    }
+
+    // Head Clerk
+    if (userRoles.includes("head_clerk")) {
       items.push(
         { href: "/headclerk/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
         { href: "/headclerk/leave-types", label: "Leave Types", icon: <Settings className="h-4 w-4" /> },
         { href: "/headclerk/attendance", label: "Attendance", icon: <CalendarDays className="h-4 w-4" /> },
         { href: "/headclerk/faculty", label: "Faculty", icon: <Users className="h-4 w-4" /> }
       );
-    } else if (userRoles.includes("hod")) {
+      return items;
+    }
+
+    // HOD
+    if (userRoles.includes("hod")) {
       items.push(
         { href: "/hod/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
         { href: "/hod/faculty-requests", label: "Leave Requests", icon: <FilePlus2 className="h-4 w-4" /> },
@@ -63,29 +87,62 @@ export function MobileNav() {
         { href: "/hod/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> },
         { href: "/hod/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> }
       );
-    } else if (userRoles.includes("registrar")) {
+      // Add staff links for HOD+Faculty
+      if (userRoles.includes("faculty") || userRoles.includes("lab_assistant")) {
+        items.push(
+          { href: "/request-leave", label: "Request Leave", icon: <FilePlus2 className="h-4 w-4" /> },
+          { href: "/status", label: "Status", icon: <ListChecks className="h-4 w-4" /> },
+          { href: "/stats", label: "Stats", icon: <BarChart3 className="h-4 w-4" /> }
+        );
+      }
+      return items;
+    }
+
+    // Registrar
+    if (userRoles.includes("registrar")) {
       items.push(
         { href: "/registrar/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-        { href: "/registrar/all-leaves", label: "Leave Requests", icon: <FilePlus2 className="h-4 w-4" /> },
+        { href: "/registrar/all-leaves", label: "All Leaves", icon: <FilePlus2 className="h-4 w-4" /> },
         { href: "/registrar/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
         { href: "/registrar/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> },
         { href: "/registrar/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> },
         { href: "/registrar/reports", label: "Reports", icon: <BarChart3 className="h-4 w-4" /> }
       );
-    } else {
-      items.push(
-        { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-        { href: "/request-leave", label: "Request Leave", icon: <FilePlus2 className="h-4 w-4" /> },
-        { href: "/status", label: "Status", icon: <ListChecks className="h-4 w-4" /> },
-        { href: "/stats", label: "Stats", icon: <BarChart3 className="h-4 w-4" /> },
-        { href: "/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> },
-        { href: "/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
-        { href: "/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> }
-      );
+      // Add staff links for Registrar+OS
+      if (userRoles.includes("office_staff")) {
+        items.push(
+          { href: "/request-leave", label: "Request Leave", icon: <FilePlus2 className="h-4 w-4" /> },
+          { href: "/status", label: "Status", icon: <ListChecks className="h-4 w-4" /> },
+          { href: "/stats", label: "Stats", icon: <BarChart3 className="h-4 w-4" /> }
+        );
+      }
+      return items;
     }
 
-    // PROFILE LINK - Always at the end
-    items.push({ href: "/profile", label: "Profile", icon: <User className="h-4 w-4" /> });
+    // Principal
+    if (userRoles.includes("principal")) {
+      items.push(
+        { href: "/principal/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+        { href: "/principal/direct-approvals", label: "Direct Approvals", icon: <FilePlus2 className="h-4 w-4" /> },
+        { href: "/principal/override-eligible", label: "Override Eligible", icon: <AlertCircle className="h-4 w-4" /> },
+        { href: "/principal/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
+        { href: "/principal/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> },
+        { href: "/principal/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> }
+      );
+      return items;
+    }
+
+    // Staff (Faculty, Lab Assistant, Office Staff)
+    items.push(
+      { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+      { href: "/request-leave", label: "Request Leave", icon: <FilePlus2 className="h-4 w-4" /> },
+      { href: "/status", label: "Status", icon: <ListChecks className="h-4 w-4" /> },
+      { href: "/stats", label: "Stats", icon: <BarChart3 className="h-4 w-4" /> },
+      { href: "/vacation", label: "Vacation", icon: <Umbrella className="h-4 w-4" /> },
+      { href: "/comp-off", label: "Comp Off", icon: <Award className="h-4 w-4" /> },
+      { href: "/overwork", label: "Overwork", icon: <Clock className="h-4 w-4" /> }
+    );
+
     return items;
   };
 
@@ -136,7 +193,6 @@ export function MobileNav() {
 
           {/* Logout Button - Always at the bottom */}
           <div className="border-t pt-4 mt-4 space-y-2">
-            {/* Back to Dashboard button in mobile nav */}
             <Link
               href={dashboardUrl}
               className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
@@ -144,6 +200,14 @@ export function MobileNav() {
             >
               <LayoutDashboard className="h-4 w-4" />
               <span>Back to Dashboard</span>
+            </Link>
+            <Link
+              href="/profile"
+              className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              onClick={() => setOpen(false)}
+            >
+              <User className="h-4 w-4" />
+              <span>Profile</span>
             </Link>
             <button
               onClick={handleLogout}

@@ -86,141 +86,168 @@ export const useAuthStore = create<AuthState>()(
         console.log("✅ Auth store initialized, isLoading:", false);
       },
 
-      login: async (email: string, password: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          console.log("1️⃣ Attempting login with email:", email);
-          
-          // Validate inputs
-          if (!email || !password) {
-            throw new Error("Email and password are required");
-          }
-          
-          // Try to sign in
-          let userCredential;
-          try {
-            userCredential = await signInWithEmailAndPassword(auth, email, password);
-          } catch (authError) {
-            const error = authError as FirebaseAuthError | null;
-            console.error("Firebase Auth error:", {
-              code: error?.code || "unknown",
-              message: error?.message || "Authentication failed",
-              error: authError
-            });
-            
-            const errorCode = error?.code;
-            if (errorCode === "auth/user-not-found") {
-              throw new Error("User not found. Please check your email.");
-            }
-            if (errorCode === "auth/wrong-password") {
-              throw new Error("Incorrect password. Please try again.");
-            }
-            if (errorCode === "auth/invalid-email") {
-              throw new Error("Invalid email address.");
-            }
-            if (errorCode === "auth/invalid-credential") {
-              throw new Error("Invalid credentials. Please check your email and password.");
-            }
-            if (errorCode === "auth/too-many-requests") {
-              throw new Error("Too many failed attempts. Please try again later.");
-            }
-            throw new Error(error?.message || "Authentication failed");
-          }
-          
-          console.log("2️⃣ Firebase sign-in successful, UID:", userCredential.user.uid);
-          
-          // Get ID token for session
-          const idToken = await userCredential.user.getIdToken();
-          console.log("3️⃣ Got ID token");
-          
-          // Create session cookie
-          console.log("4️⃣ Creating session cookie...");
-          const response = await fetch("/api/auth/session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ idToken }),
-          });
-          
-          const data = await response.json();
-          console.log("5️⃣ Session response:", { ok: response.ok });
-          
-          if (!response.ok) {
-            throw new Error(data.error || "Failed to create session");
-          }
-          
-          // Fetch user data from Realtime Database
-          console.log("6️⃣ Fetching user data from RTDB...");
-          const userRef = ref(rtdb, `users/${userCredential.user.uid}`);
-          const snapshot = await firebaseGet(userRef);
-          const userData = snapshot.val();
-          console.log("7️⃣ User data from RTDB:", { 
-            uid: userCredential.user.uid,
-            hasData: !!userData,
-            roles: userData?.roles,
-            status: userData?.status
-          });
-          
-          if (!userData) {
-            throw new Error("User data not found in database. Please contact admin.");
-          }
-          
-          // Check if account is deleted
-          if (userData.status === "deleted") {
-            throw new Error("Account is deactivated. Please restore your account.");
-          }
-          
-          // Create user object with actual database values
-          const user: User = {
-            uid: userCredential.user.uid,
-            name: userData.name,
-            email: userData.email,
-            phoneNumber: userData.phoneNumber || "",
-            roles: userData.roles || [],
-            departmentId: userData.departmentId || "",
-            departmentName: userData.departmentName || "",
-            collegeId: userData.collegeId,
-            collegeName: userData.collegeName || "",
-            status: userData.status || "active",
-            isEmployed: userData.isEmployed !== false,
-            createdAt: userData.createdAt || new Date().toISOString(),
-            updatedAt: userData.updatedAt || new Date().toISOString(),
-            deletedAt: userData.deletedAt || null,
-          };
-          
-          console.log("8️⃣ User object created:", { 
-            uid: user.uid, 
-            collegeId: user.collegeId, 
-            roles: user.roles,
-            name: user.name
-          });
-          
-          set({ 
-            user, 
-            userRoles: user.roles,
-            isAuthenticated: true,
-            isLoading: false,
-            error: null
-          });
-          
-          // ✅ Small delay to ensure session cookie is set before redirect
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          console.log("9️⃣ Login complete");
-          return true;
-          
-        } catch (error) {
-          console.error("❌ Login error:", error);
-          const err = error as { message?: string };
-          const errorMessage = err.message || "Invalid email or password";
-          set({ 
-            error: errorMessage,
-            isLoading: false 
-          });
-          return false;
-        }
-      },
+      // store/authStore.ts - Fix the login function
+// Replace the login function with this improved version
 
+login: async (email: string, password: string) => {
+  set({ isLoading: true, error: null });
+  
+  try {
+    console.log("1️⃣ Attempting login with email:", email);
+    
+    // Validate inputs
+    if (!email || !password) {
+      throw new Error("Email and password are required");
+    }
+    
+    // Try to sign in
+    let userCredential;
+    try {
+      userCredential = await signInWithEmailAndPassword(auth, email, password);
+    } catch (authError) {
+      const error = authError as FirebaseAuthError | null;
+      console.error("Firebase Auth error:", {
+        code: error?.code || "unknown",
+        message: error?.message || "Authentication failed",
+        error: authError
+      });
+      
+      // More specific error handling
+      const errorCode = error?.code;
+      // store/authStore.ts - Fix the login function
+if (errorCode === "auth/user-not-found") {
+  // Check if user exists in RTDB but not Auth (orphaned account)
+  const userRef = ref(rtdb, `users`);
+  const snapshot = await firebaseGet(userRef);
+  const users = snapshot.val();
+  let foundInDB = false;
+  for (const [, userData] of Object.entries(users || {})) {
+    const data = userData as { email: string };
+    if (data.email === email) {
+      foundInDB = true;
+      console.log("User found in RTDB but not in Auth. Need to recreate Auth user.");
+      break;
+    }
+  }
+  
+  if (foundInDB) {
+    throw new Error("Account exists in database but not in authentication. Please contact admin.");
+  }
+  throw new Error("User not found. Please check your email.");
+}
+      if (errorCode === "auth/wrong-password") {
+        throw new Error("Incorrect password. Please try again.");
+      }
+      if (errorCode === "auth/invalid-email") {
+        throw new Error("Invalid email address.");
+      }
+      if (errorCode === "auth/invalid-credential") {
+        throw new Error("Invalid credentials. Please check your email and password.");
+      }
+      if (errorCode === "auth/too-many-requests") {
+        throw new Error("Too many failed attempts. Please try again later.");
+      }
+      if (errorCode === "auth/network-request-failed") {
+        throw new Error("Network error. Please check your internet connection.");
+      }
+      if (errorCode === "auth/user-disabled") {
+        throw new Error("Account has been disabled. Please contact admin.");
+      }
+      throw new Error(error?.message || "Authentication failed");
+    }
+    
+    console.log("2️⃣ Firebase sign-in successful, UID:", userCredential.user.uid);
+    
+    // Get ID token for session
+    const idToken = await userCredential.user.getIdToken();
+    console.log("3️⃣ Got ID token");
+    
+    // Create session cookie
+    console.log("4️⃣ Creating session cookie...");
+    const response = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+    
+    const data = await response.json();
+    console.log("5️⃣ Session response:", { ok: response.ok });
+    
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to create session");
+    }
+    
+    // Fetch user data from Realtime Database
+    console.log("6️⃣ Fetching user data from RTDB...");
+    const userRef = ref(rtdb, `users/${userCredential.user.uid}`);
+    const snapshot = await firebaseGet(userRef);
+    const userData = snapshot.val();
+    console.log("7️⃣ User data from RTDB:", { 
+      uid: userCredential.user.uid,
+      hasData: !!userData,
+      roles: userData?.roles,
+      status: userData?.status
+    });
+    
+    if (!userData) {
+      throw new Error("User data not found in database. Please contact admin.");
+    }
+    
+    // Check if account is deleted
+    if (userData.status === "deleted") {
+      throw new Error("Account is deactivated. Please restore your account.");
+    }
+    
+    // Create user object with actual database values
+    const user: User = {
+      uid: userCredential.user.uid,
+      name: userData.name || "User",
+      email: userData.email,
+      phoneNumber: userData.phoneNumber || "",
+      roles: userData.roles || [],
+      departmentId: userData.departmentId || "",
+      departmentName: userData.departmentName || "",
+      collegeId: userData.collegeId,
+      collegeName: userData.collegeName || "",
+      status: userData.status || "active",
+      isEmployed: userData.isEmployed !== false,
+      createdAt: userData.createdAt || new Date().toISOString(),
+      updatedAt: userData.updatedAt || new Date().toISOString(),
+      deletedAt: userData.deletedAt || null,
+    };
+    
+    console.log("8️⃣ User object created:", { 
+      uid: user.uid, 
+      collegeId: user.collegeId, 
+      roles: user.roles,
+      name: user.name
+    });
+    
+    set({ 
+      user, 
+      userRoles: user.roles,
+      isAuthenticated: true,
+      isLoading: false,
+      error: null
+    });
+    
+    // Small delay to ensure session cookie is set before redirect
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    console.log("9️⃣ Login complete");
+    return true;
+    
+  } catch (error) {
+    console.error("❌ Login error:", error);
+    const err = error as { message?: string };
+    const errorMessage = err.message || "Invalid email or password";
+    set({ 
+      error: errorMessage,
+      isLoading: false 
+    });
+    return false;
+  }
+},
       logout: async () => {
         set({ isLoading: true });
         

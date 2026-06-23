@@ -1,3 +1,4 @@
+// app/overwork/page.tsx
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -7,74 +8,109 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Clock, TrendingUp } from "lucide-react";
+import { Clock, TrendingUp, Award, Info, CheckCircle, XCircle } from "lucide-react";
 
 interface OverworkEntry {
   id: string;
   hours: number;
   workDate: string;
   reason: string;
-  status: string;
+  status: "pending" | "approved" | "rejected";
   convertedToLeave: boolean;
   earnedLeaveDays: number | null;
   createdAt: string;
+  approvalRemark?: string | null;
 }
 
-interface OverworkConfig {
-  conversionHours: number;
-  minHoursPerEntry: number;
-  maxHoursPerDay: number;
+interface OverworkSummary {
+  totalApprovedHours: number;
+  pendingHours: number;
+  rejectedHours: number;
+  earnedLeaves: number;
+  remainingHoursForNext: number;
+  progressPercent: number;
+  conversionRate: number;
 }
 
 export default function OverworkPage() {
-  const { user, isLoading } = useAuthStore();
+  const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
-  const [entries, setEntries] = useState<OverworkEntry[]>([]);
-  const [config, setConfig] = useState<OverworkConfig | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [entries, setEntries] = useState<OverworkEntry[]>([]);
+  const [summary, setSummary] = useState<OverworkSummary | null>(null);
+  const [config, setConfig] = useState<{ conversionHours: number } | null>(null);
   const [formData, setFormData] = useState({
     workDate: "",
     hours: "",
     reason: "",
   });
 
-  // ========== DECLARE fetchConfig FIRST with useCallback ==========
-  const fetchConfig = useCallback(async () => {
-    try {
-      const response = await fetch("/api/headclerk/overwork-config");
-      const data = await response.json();
-      if (data.config) {
-        setConfig({
-          conversionHours: data.config.conversionHours || 5,
-          minHoursPerEntry: data.config.minHoursPerEntry || 0.5,
-          maxHoursPerDay: data.config.maxHoursPerDay || 24,
-        });
-      }
-    } catch (error) {
-      console.error("Failed to fetch overwork config:", error);
+  // Auth check
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
     }
-  }, []);
+    if (!authLoading && user && user.roles?.includes("principal")) {
+      router.push("/principal/dashboard");
+    }
+  }, [user, authLoading, router]);
 
-  // ========== DECLARE fetchData SECOND with useCallback ==========
+  // Fetch data
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/overwork/my-history");
-      const data = await response.json();
-      if (response.ok) {
-        setEntries(data.entries || []);
+      // Fetch config
+      const configRes = await fetch("/api/headclerk/overwork-config");
+      const configData = await configRes.json();
+      if (configData.config) {
+        setConfig({
+          conversionHours: configData.config.conversionHours || 5,
+        });
+      }
+
+      // Fetch summary
+      const summaryRes = await fetch("/api/overwork/my-summary");
+      const summaryData = await summaryRes.json();
+      if (summaryRes.ok) {
+        setSummary(summaryData.summary);
+      }
+
+      // Fetch history
+      const historyRes = await fetch("/api/overwork/my-history");
+      const historyData = await historyRes.json();
+      if (historyRes.ok) {
+        setEntries(historyData.entries || []);
       }
     } catch (error) {
-      console.error("Failed to fetch overwork entries:", error);
+      console.error("Error fetching overwork data:", error);
+      toast.error("Failed to fetch overwork data");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // ========== DECLARE handleSubmit THIRD ==========
-  const handleSubmit = useCallback(async () => {
+  // Fetch data when user is available
+  useEffect(() => {
+    let isMounted = true;
+    
+    const loadData = async () => {
+      if (user && !user.roles?.includes("principal") && isMounted) {
+        await fetchData();
+      }
+    };
+    
+    loadData();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [user, fetchData]);
+
+  const handleSubmit = async () => {
     if (!formData.workDate) {
       toast.error("Please select a date");
       return;
@@ -85,13 +121,18 @@ export default function OverworkPage() {
     }
 
     const hours = parseFloat(formData.hours);
+    if (isNaN(hours) || hours <= 0) {
+      toast.error("Please enter a valid number of hours");
+      return;
+    }
+
     if (config) {
-      if (hours < config.minHoursPerEntry) {
-        toast.error(`Minimum hours per entry is ${config.minHoursPerEntry}`);
+      if (hours < 0.5) {
+        toast.error("Minimum hours per entry is 0.5");
         return;
       }
-      if (hours > config.maxHoursPerDay) {
-        toast.error(`Maximum hours per day is ${config.maxHoursPerDay}`);
+      if (hours > 24) {
+        toast.error("Maximum hours per day is 24");
         return;
       }
     }
@@ -116,39 +157,51 @@ export default function OverworkPage() {
 
       toast.success("Overwork hours submitted successfully");
       setFormData({ workDate: "", hours: "", reason: "" });
-      fetchData();
+      await fetchData();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to submit";
       toast.error(errorMessage);
     } finally {
       setSubmitting(false);
     }
-  }, [formData, config, fetchData]);
+  };
 
-  // ========== NOW useEffect can safely call them ==========
-  useEffect(() => {
-    if (!user && !isLoading) {
-      router.push("/login");
-      return;
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "approved":
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Approved
+          </span>
+        );
+      case "rejected":
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            <XCircle className="h-3 w-3 mr-1" />
+            Rejected
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+            <Clock className="h-3 w-3 mr-1" />
+            Pending
+          </span>
+        );
     }
-    if (user) {
-      fetchData();
-      fetchConfig();
-    }
-  }, [user, isLoading, router, fetchData, fetchConfig]);
+  };
 
-  // Calculate summary
-  const totalHours = entries.reduce((sum, e) => sum + (e.status === "approved" ? e.hours : 0), 0);
-  const pendingHours = entries.reduce((sum, e) => sum + (e.status === "pending" ? e.hours : 0), 0);
-  const earnedLeaves = Math.floor(totalHours / (config?.conversionHours || 5));
-  const progressToNext = (totalHours % (config?.conversionHours || 5)) / (config?.conversionHours || 5) * 100;
-
-  if (isLoading || loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
       </div>
     );
+  }
+
+  if (!user || user.roles?.includes("principal")) {
+    return null;
   }
 
   return (
@@ -161,15 +214,17 @@ export default function OverworkPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3 mb-8">
+      <div className="grid gap-4 md:grid-cols-4 mb-8">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Hours</p>
-                <p className="text-2xl font-bold">{totalHours.toFixed(1)}</p>
+                <p className="text-sm text-muted-foreground">Approved Hours</p>
+                <p className="text-2xl font-bold text-primary">
+                  {summary?.totalApprovedHours.toFixed(1) || "0"}
+                </p>
               </div>
-              <TrendingUp className="h-8 w-8 text-muted-foreground" />
+              <TrendingUp className="h-8 w-8 text-primary" />
             </div>
           </CardContent>
         </Card>
@@ -178,7 +233,9 @@ export default function OverworkPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Pending Hours</p>
-                <p className="text-2xl font-bold text-yellow-600">{pendingHours.toFixed(1)}</p>
+                <p className="text-2xl font-bold text-yellow-600">
+                  {summary?.pendingHours.toFixed(1) || "0"}
+                </p>
               </div>
               <Clock className="h-8 w-8 text-yellow-600" />
             </div>
@@ -186,34 +243,47 @@ export default function OverworkPage() {
         </Card>
         <Card>
           <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Earned Leaves</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {summary?.earnedLeaves || 0}
+                </p>
+              </div>
+              <Award className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
             <div>
-              <p className="text-sm text-muted-foreground">Earned Leaves</p>
-              <p className="text-2xl font-bold text-green-600">{earnedLeaves}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Every {config?.conversionHours} hours = 1 day
-              </p>
+              <p className="text-sm text-muted-foreground">Conversion Rate</p>
+              <p className="text-2xl font-bold">{config?.conversionHours || 5}h</p>
+              <p className="text-xs text-muted-foreground">= 1 earned leave day</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Progress Bar */}
-      {config && totalHours > 0 && (
+      {summary && summary.totalApprovedHours > 0 && (
         <Card className="mb-8">
           <CardContent className="pt-6">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Progress to next leave day</span>
-                <span>{progressToNext.toFixed(0)}%</span>
+                <span>{summary.progressPercent.toFixed(0)}%</span>
               </div>
               <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${progressToNext}%` }}
+                <div
+                  className="h-full bg-yellow-500 rounded-full transition-all"
+                  style={{ width: `${summary.progressPercent}%` }}
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {(totalHours % (config.conversionHours || 5)).toFixed(1)} / {config.conversionHours} hours
+                {summary.remainingHoursForNext.toFixed(1)} hours to next leave day
+                ({(summary.totalApprovedHours % (config?.conversionHours || 5)).toFixed(1)} /{" "}
+                {config?.conversionHours || 5} hours)
               </p>
             </div>
           </CardContent>
@@ -225,7 +295,7 @@ export default function OverworkPage() {
         <CardHeader>
           <CardTitle>Add Overwork Hours</CardTitle>
           <CardDescription>
-            Record extra work hours for approval
+            Record extra work hours for approval. Every {config?.conversionHours || 5} hours = 1 earned leave day.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -247,31 +317,52 @@ export default function OverworkPage() {
                   id="hours"
                   type="number"
                   step="0.5"
-                  min={config?.minHoursPerEntry || 0.5}
-                  max={config?.maxHoursPerDay || 24}
+                  min="0.5"
+                  max="24"
                   placeholder="e.g., 5"
                   value={formData.hours}
                   onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
                   required
                 />
-                {config && (
-                  <p className="text-xs text-muted-foreground">
-                    Min: {config.minHoursPerEntry} | Max: {config.maxHoursPerDay} hours/day
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  Min: 0.5 | Max: 24 hours/day
+                </p>
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="reason">Reason</Label>
-              <Input
+              <Textarea
                 id="reason"
-                placeholder="e.g., Exam duty on Sunday"
+                placeholder="Describe why you worked extra hours (e.g., Exam duty on Sunday)"
                 value={formData.reason}
                 onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                rows={3}
               />
             </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm text-blue-800 font-medium">About Overwork</p>
+                  <ul className="text-sm text-blue-700 mt-1 list-disc list-inside space-y-1">
+                    <li>Every {config?.conversionHours || 5} approved hours = 1 earned leave day</li>
+                    <li>Your overwork request will be sent for approval</li>
+                    <li>Once approved, comp-off credits will be added to your account</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
             <Button onClick={handleSubmit} disabled={submitting} className="w-full">
-              {submitting ? "Submitting..." : "Submit Overwork"}
+              {submitting ? (
+                <>
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                  Submitting...
+                </>
+              ) : (
+                "Submit Overwork"
+              )}
             </Button>
           </div>
         </CardContent>
@@ -286,7 +377,9 @@ export default function OverworkPage() {
         <CardContent>
           {entries.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No overwork entries found. Submit your first entry above.
+              <Clock className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+              <p>No overwork entries found</p>
+              <p className="text-sm mt-1">Submit your first entry above</p>
             </div>
           ) : (
             <div className="border rounded-lg overflow-x-auto">
@@ -297,28 +390,28 @@ export default function OverworkPage() {
                     <th className="text-left p-3">Hours</th>
                     <th className="text-left p-3">Reason</th>
                     <th className="text-left p-3">Status</th>
+                    <th className="text-left p-3">Earned Leave</th>
                   </tr>
                 </thead>
                 <tbody>
                   {entries.map((entry) => (
                     <tr key={entry.id} className="border-t">
                       <td className="p-3">{new Date(entry.workDate).toLocaleDateString()}</td>
-                      <td className="p-3">{entry.hours}</td>
-                      <td className="p-3">{entry.reason || "-"}</td>
+                      <td className="p-3 font-medium">{entry.hours}</td>
+                      <td className="p-3 max-w-xs truncate">{entry.reason || "-"}</td>
+                      <td className="p-3">{getStatusBadge(entry.status)}</td>
                       <td className="p-3">
-                        <span
-                          className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                            entry.status === "approved"
-                              ? "bg-green-100 text-green-800"
-                              : entry.status === "rejected"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-yellow-100 text-yellow-800"
-                          }`}
-                        >
-                          {entry.status === "approved" && "Approved"}
-                          {entry.status === "rejected" && "Rejected"}
-                          {entry.status === "pending" && "Pending"}
-                        </span>
+                        {entry.convertedToLeave && entry.earnedLeaveDays ? (
+                          <span className="text-green-600 font-medium">
+                            {entry.earnedLeaveDays} day(s)
+                          </span>
+                        ) : entry.status === "approved" ? (
+                          <span className="text-muted-foreground text-xs">
+                            {Math.floor(entry.hours / (config?.conversionHours || 5))} days
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
                       </td>
                     </tr>
                   ))}

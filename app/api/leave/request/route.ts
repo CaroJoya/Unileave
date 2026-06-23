@@ -14,6 +14,7 @@ interface LeaveTypeData {
   isActive: boolean;
   deductsBalance: boolean;
   requiresAttachment: boolean;
+  allowHalfDay: boolean;
 }
 
 interface UserData {
@@ -53,20 +54,18 @@ interface ExistingLeaveRequest {
   endDate: string;
 }
 
-interface LeaveTypeConfig {
-  deductsBalance: boolean;
-  requiresAttachment: boolean;
-}
-
-async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
+async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeData | null> {
   const typesSnapshot = await rtdb?.ref("leaveTypes").once("value");
   const types = typesSnapshot?.val() as Record<string, LeaveTypeData> | null || {};
-  
+
   for (const [, type] of Object.entries(types)) {
     if (type.leaveCode === leaveCode && type.isActive) {
       return {
+        leaveCode: type.leaveCode,
+        isActive: type.isActive,
         deductsBalance: type.deductsBalance !== false,
         requiresAttachment: type.requiresAttachment || false,
+        allowHalfDay: type.allowHalfDay || false,
       };
     }
   }
@@ -74,8 +73,8 @@ async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | 
 }
 
 async function getApproverUserId(
-  role: "hod" | "registrar" | "principal", 
-  collegeId: string, 
+  role: "hod" | "registrar" | "principal",
+  collegeId: string,
   departmentId?: string
 ): Promise<string | null> {
   if (role === "hod" && departmentId) {
@@ -83,7 +82,7 @@ async function getApproverUserId(
     const dept = deptSnapshot?.val() as DepartmentData | null;
     return dept?.hodId || null;
   }
-  
+
   if (role === "registrar") {
     const usersSnapshot = await rtdb?.ref("users").once("value");
     const users = usersSnapshot?.val() as Record<string, RegistrarUserData> | null || {};
@@ -94,13 +93,13 @@ async function getApproverUserId(
     }
     return null;
   }
-  
+
   if (role === "principal") {
     const collegeSnapshot = await rtdb?.ref(`colleges/${collegeId}`).once("value");
     const college = collegeSnapshot?.val() as CollegeData | null;
     return college?.principalId || null;
   }
-  
+
   return null;
 }
 
@@ -128,6 +127,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Principal cannot request leave
+    if (userData.roles?.includes("principal")) {
+      return NextResponse.json(
+        { error: "Principal cannot request leave" },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const {
       leaveType,
@@ -146,8 +153,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    if (totalDays <= 0) {
+      return NextResponse.json({ error: "Total days must be greater than 0" }, { status: 400 });
+    }
+
     if (!alternateFacultyName || alternateFacultyName.trim() === "") {
-      return NextResponse.json({ error: "Alternate faculty name is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Alternate faculty name is required" },
+        { status: 400 }
+      );
+    }
+
+    if (alternateFacultyName.trim().length < 3) {
+      return NextResponse.json(
+        { error: "Alternate faculty name must be at least 3 characters" },
+        { status: 400 }
+      );
     }
 
     // Get leave type config
@@ -156,31 +177,54 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid leave type" }, { status: 400 });
     }
 
+    // Check half-day validation
+    if (isHalfDay && !leaveTypeConfig.allowHalfDay) {
+      return NextResponse.json(
+        { error: "Half-day leave is not allowed for this leave type" },
+        { status: 400 }
+      );
+    }
+
+    if (isHalfDay && !halfDaySession) {
+      return NextResponse.json(
+        { error: "Half-day session is required" },
+        { status: 400 }
+      );
+    }
+
     if (leaveTypeConfig.requiresAttachment && !attachmentUrl) {
-      return NextResponse.json({ error: "Attachment is required for this leave type" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Attachment is required for this leave type" },
+        { status: 400 }
+      );
     }
 
     // Check for overlapping leave requests
     const existingRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const existingRequests = existingRequestsSnapshot?.val() as Record<string, ExistingLeaveRequest> | null || {};
-    
-    const hasOverlap = Object.values(existingRequests).some((req: ExistingLeaveRequest) => {
+
+    const hasOverlap = Object.values(existingRequests).some((req) => {
       if (req.applicantId !== userId) return false;
-      if (req.status === "Cancelled" || 
-          req.status === "Rejected_HOD" || 
-          req.status === "Rejected_Registrar" || 
-          req.status === "Rejected_Principal") {
+      if (
+        req.status === "Cancelled" ||
+        req.status === "Rejected_HOD" ||
+        req.status === "Rejected_Registrar" ||
+        req.status === "Rejected_Principal"
+      ) {
         return false;
       }
       const reqStart = new Date(req.startDate);
       const reqEnd = new Date(req.endDate);
       const newStart = new Date(startDate);
-      const newEnd = new Date(endDate);
-      return (newStart <= reqEnd && newEnd >= reqStart);
+      const newEnd = new Date(endDate || startDate);
+      return newStart <= reqEnd && newEnd >= reqStart;
     });
 
     if (hasOverlap) {
-      return NextResponse.json({ error: "You have an overlapping leave request" }, { status: 400 });
+      return NextResponse.json(
+        { error: "You have an overlapping leave request" },
+        { status: 400 }
+      );
     }
 
     // Check balance if leave type deducts balance
@@ -189,14 +233,22 @@ export async function POST(request: Request) {
       const balanceKey = `${userId}_${academicYear}`;
       const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
       const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
-      
+
       if (!balanceDoc) {
-        return NextResponse.json({ error: "Leave balance not initialized" }, { status: 400 });
+        return NextResponse.json(
+          { error: "Leave balance not initialized" },
+          { status: 400 }
+        );
       }
-      
+
       const currentBalance = balanceDoc.balances[leaveType]?.available || 0;
       if (currentBalance < totalDays) {
-        return NextResponse.json({ error: `Insufficient ${leaveType} balance. Available: ${currentBalance}` }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: `Insufficient ${leaveType} balance. Available: ${currentBalance}, Requested: ${totalDays}`,
+          },
+          { status: 400 }
+        );
       }
     }
 
@@ -204,10 +256,17 @@ export async function POST(request: Request) {
     const userRoles = userData.roles as Role[];
     const route = determineApprover(userRoles, leaveType);
     const approverRole = route.firstApproverRole;
-    const approverUserId = await getApproverUserId(approverRole, userData.collegeId, userData.departmentId);
-    
+    const approverUserId = await getApproverUserId(
+      approverRole,
+      userData.collegeId,
+      userData.departmentId
+    );
+
     if (!approverUserId) {
-      return NextResponse.json({ error: `No ${approverRole} found to approve this request` }, { status: 400 });
+      return NextResponse.json(
+        { error: `No ${approverRole} found to approve this request` },
+        { status: 400 }
+      );
     }
 
     const status = getStatusForApprover(approverRole) as LeaveStatus;
@@ -220,11 +279,13 @@ export async function POST(request: Request) {
       const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
       const balanceSnapshot = await balanceRef.once("value");
       const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
-      
+
       if (balanceDoc) {
         await balanceRef.update({
-          [`balances.${leaveType}.pending`]: (balanceDoc.balances[leaveType]?.pending || 0) + totalDays,
-          [`balances.${leaveType}.available`]: (balanceDoc.balances[leaveType]?.available || 0) - totalDays,
+          [`balances.${leaveType}.pending`]:
+            (balanceDoc.balances[leaveType]?.pending || 0) + totalDays,
+          [`balances.${leaveType}.available`]:
+            (balanceDoc.balances[leaveType]?.available || 0) - totalDays,
           updatedAt: new Date().toISOString(),
         });
       }
@@ -245,10 +306,10 @@ export async function POST(request: Request) {
       isHalfDay: isHalfDay || false,
       halfDaySession: halfDaySession || null,
       reason: reason || "",
-      alternateFacultyName,
+      alternateFacultyName: alternateFacultyName.trim(),
       attachmentUrl: attachmentUrl || null,
       status,
-      approvedBy: approverRole,
+      approvedBy: null,
       currentApproverId: approverUserId,
       revisionCount: 0,
       overriddenBy: null,
@@ -276,10 +337,28 @@ export async function POST(request: Request) {
       actionAt: new Date().toISOString(),
     });
 
+    // Create notification for approver
+    const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    await rtdb.ref(`notifications/${notificationId}`).set({
+      id: notificationId,
+      userId: approverUserId,
+      title: "New Leave Request",
+      message: `${userData.name} has submitted a ${leaveType} leave request for ${totalDays} day(s).`,
+      type: "leave_submitted",
+      isRead: false,
+      metadata: JSON.stringify({
+        leaveRequestId: requestId,
+        leaveType,
+        totalDays,
+        applicantId: userId,
+      }),
+      createdAt: new Date().toISOString(),
+    });
+
     // Send email notification to approver
     const approverSnapshot = await rtdb.ref(`users/${approverUserId}`).once("value");
     const approverData = approverSnapshot.val() as { email: string; name: string } | null;
-    
+
     if (approverData?.email) {
       const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard`;
       const emailHtml = getLeaveSubmittedEmail(
@@ -305,6 +384,9 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Error submitting leave request:", error);
-    return NextResponse.json({ error: "Failed to submit leave request" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to submit leave request" },
+      { status: 500 }
+    );
   }
 }

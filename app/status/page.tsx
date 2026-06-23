@@ -1,11 +1,11 @@
 // app/status/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Edit, XCircle, ChevronDown, ChevronUp, FileText, AlertCircle, History, CheckCircle, Clock, Ban } from "lucide-react";
+import { CalendarIcon, Edit, XCircle, ChevronDown, ChevronUp, FileText, AlertCircle, History, CheckCircle, Clock, Ban, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -79,6 +79,7 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
   EL: "Earned Leave",
   ML: "Medical Leave",
   CO: "Compensatory Off",
+  VL: "Vacation Leave",
   OD: "On Duty",
 };
 
@@ -87,7 +88,6 @@ export default function StatusPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  const [filteredRequests, setFilteredRequests] = useState<LeaveRequest[]>([]);
   const [activeTab, setActiveTab] = useState("all");
   const [leaveTypeFilter, setLeaveTypeFilter] = useState("");
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
@@ -116,6 +116,9 @@ export default function StatusPage() {
     if (!authLoading && !user) {
       router.push("/login");
     }
+    if (!authLoading && user && user.roles?.includes("principal")) {
+      router.push("/principal/dashboard");
+    }
   }, [user, authLoading, router]);
 
   // Fetch leave requests
@@ -137,14 +140,25 @@ export default function StatusPage() {
     }
   }, []);
 
+  // Fetch data when user is available
   useEffect(() => {
-    if (user) {
-      fetchRequests();
-    }
+    let isMounted = true;
+    
+    const loadData = async () => {
+      if (user && !user.roles?.includes("principal") && isMounted) {
+        await fetchRequests();
+      }
+    };
+    
+    loadData();
+    
+    return () => {
+      isMounted = false;
+    };
   }, [user, fetchRequests]);
 
-  // Apply filters
-  useEffect(() => {
+  // Apply filters using useMemo instead of useEffect
+  const filteredRequests = useMemo(() => {
     let filtered = [...requests];
     
     // Tab filter
@@ -183,7 +197,7 @@ export default function StatusPage() {
       filtered = filtered.filter(r => new Date(r.endDate) <= dateRange.to!);
     }
     
-    setFilteredRequests(filtered);
+    return filtered;
   }, [requests, activeTab, leaveTypeFilter, dateRange]);
 
   const handleCancelRequest = async () => {
@@ -204,7 +218,7 @@ export default function StatusPage() {
       toast.success("Leave request cancelled successfully");
       setCancelDialogOpen(false);
       setCancellingRequest(null);
-      fetchRequests();
+      await fetchRequests();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to cancel";
       toast.error(errorMessage);
@@ -249,10 +263,14 @@ export default function StatusPage() {
         throw new Error(data.error || "Failed to update request");
       }
       
-      toast.success("Leave request updated and resubmitted");
+      const successMessage = editingRequest.status === "Pending_Revision"
+        ? "Leave request resubmitted successfully!"
+        : "Leave request updated successfully!";
+      
+      toast.success(successMessage);
       setEditDialogOpen(false);
       setEditingRequest(null);
-      fetchRequests();
+      await fetchRequests();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update";
       toast.error(errorMessage);
@@ -272,8 +290,18 @@ export default function StatusPage() {
     setEditDialogOpen(true);
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, revisionCount: number = 0) => {
     const config = STATUS_CONFIG[status] || { label: status, color: "bg-gray-100 text-gray-800", icon: null };
+    
+    if (status === "Pending_Revision") {
+      return (
+        <Badge className="bg-purple-100 text-purple-800 flex items-center gap-1 w-fit">
+          <RefreshCw className="h-3 w-3" />
+          Revision #{revisionCount}
+        </Badge>
+      );
+    }
+    
     return (
       <Badge className={`${config.color} flex items-center gap-1 w-fit`}>
         {config.icon}
@@ -291,9 +319,42 @@ export default function StatusPage() {
       RESUBMIT: "Resubmitted",
       CANCEL: "Cancelled",
       PRINCIPAL_OVERRIDE: "Principal Override",
+      EDIT: "Edited",
     };
     return labels[action] || action;
   };
+
+  const isEditable = (status: string) => {
+    return status === "Pending_HOD" || 
+           status === "Pending_Registrar" || 
+           status === "Pending_Revision";
+  };
+
+  const isCancellable = (status: string) => {
+    return status === "Pending_HOD" || 
+           status === "Pending_Registrar" || 
+           status === "Pending_Principal" || 
+           status === "Pending_Revision";
+  };
+
+  const getCounts = () => {
+    const pending = requests.filter(r => 
+      r.status === "Pending_HOD" || 
+      r.status === "Pending_Registrar" || 
+      r.status === "Pending_Principal"
+    ).length;
+    const approved = requests.filter(r => r.status === "Approved").length;
+    const rejected = requests.filter(r => 
+      r.status === "Rejected_HOD" || 
+      r.status === "Rejected_Registrar" || 
+      r.status === "Rejected_Principal"
+    ).length;
+    const revision = requests.filter(r => r.status === "Pending_Revision").length;
+    const cancelled = requests.filter(r => r.status === "Cancelled").length;
+    return { pending, approved, rejected, revision, cancelled };
+  };
+
+  const counts = getCounts();
 
   if (authLoading || loading) {
     return (
@@ -303,6 +364,10 @@ export default function StatusPage() {
     );
   }
 
+  if (!user || user.roles?.includes("principal")) {
+    return null;
+  }
+
   return (
     <div className="container mx-auto py-8 px-4 max-w-5xl">
       <div className="mb-8">
@@ -310,6 +375,40 @@ export default function StatusPage() {
         <p className="text-muted-foreground mt-2">
           Track and manage your leave requests
         </p>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-5 mb-6">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Pending</p>
+            <p className="text-2xl font-bold text-yellow-600">{counts.pending}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Approved</p>
+            <p className="text-2xl font-bold text-green-600">{counts.approved}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Rejected</p>
+            <p className="text-2xl font-bold text-red-600">{counts.rejected}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Needs Revision</p>
+            <p className="text-2xl font-bold text-purple-600">{counts.revision}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">Cancelled</p>
+            <p className="text-2xl font-bold text-gray-600">{counts.cancelled}</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filters */}
@@ -402,19 +501,26 @@ export default function StatusPage() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="flex flex-wrap">
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="pending">Pending</TabsTrigger>
-          <TabsTrigger value="approved">Approved</TabsTrigger>
-          <TabsTrigger value="rejected">Rejected</TabsTrigger>
-          <TabsTrigger value="revision">Needs Revision</TabsTrigger>
-          <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+          <TabsTrigger value="all">All ({requests.length})</TabsTrigger>
+          <TabsTrigger value="pending">Pending ({counts.pending})</TabsTrigger>
+          <TabsTrigger value="approved">Approved ({counts.approved})</TabsTrigger>
+          <TabsTrigger value="rejected">Rejected ({counts.rejected})</TabsTrigger>
+          <TabsTrigger value="revision">Needs Revision ({counts.revision})</TabsTrigger>
+          <TabsTrigger value="cancelled">Cancelled ({counts.cancelled})</TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab}>
           {filteredRequests.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
-                No leave requests found
+                <div className="flex flex-col items-center gap-2">
+                  <FileText className="h-12 w-12 text-muted-foreground" />
+                  <p className="text-lg font-medium">No leave requests found</p>
+                  <p className="text-sm">Try adjusting your filters or submit a new request</p>
+                  <Button className="mt-4" onClick={() => router.push("/request-leave")}>
+                    Request Leave
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -423,36 +529,55 @@ export default function StatusPage() {
                 <Card key={request.id} className="overflow-hidden">
                   <CardContent className="p-6">
                     <div className="flex flex-wrap justify-between items-start gap-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <h3 className="font-semibold text-lg">
                             {LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType}
                           </h3>
-                          {getStatusBadge(request.status)}
+                          {getStatusBadge(request.status, request.revisionCount)}
+                          {request.isHalfDay && (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                              Half Day ({request.halfDaySession})
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
                         </p>
                         <p className="text-sm mt-1">
                           Total: <span className="font-medium">{request.totalDays}</span> day{request.totalDays !== 1 ? "s" : ""}
-                          {request.isHalfDay && ` (${request.halfDaySession})`}
                         </p>
                         <p className="text-sm mt-2">
                           Alternate Faculty: <span className="font-medium">{request.alternateFacultyName}</span>
                         </p>
+                        {request.status === "Pending_Revision" && request.revisionHistory && request.revisionHistory.length > 0 && (
+                          <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                            <p className="text-sm text-purple-800 font-medium flex items-center gap-2">
+                              <AlertCircle className="h-4 w-4" />
+                              Latest Remarks:
+                            </p>
+                            <p className="text-sm text-purple-700 mt-1">
+                              {request.revisionHistory[request.revisionHistory.length - 1].remarkText}
+                            </p>
+                            <p className="text-xs text-purple-500 mt-1">
+                              From: {request.revisionHistory[request.revisionHistory.length - 1].remarkSentByName}
+                            </p>
+                          </div>
+                        )}
                       </div>
                       
-                      <div className="flex gap-2">
-                        {request.status === "Pending_Revision" && (
-                          <Button size="sm" onClick={() => openEditDialog(request)}>
+                      <div className="flex flex-wrap gap-2">
+                        {isEditable(request.status) && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => openEditDialog(request)}
+                          >
                             <Edit className="h-4 w-4 mr-1" />
-                            Edit & Resubmit
+                            {request.status === "Pending_Revision" ? "Edit & Resubmit" : "Edit"}
                           </Button>
                         )}
-                        {(request.status === "Pending_HOD" || 
-                          request.status === "Pending_Registrar" || 
-                          request.status === "Pending_Principal" ||
-                          request.status === "Pending_Revision") && (
+                        {isCancellable(request.status) && (
                           <Button 
                             size="sm" 
                             variant="destructive"
@@ -467,7 +592,7 @@ export default function StatusPage() {
                         )}
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="ghost"
                           onClick={() => setExpandedRequest(expandedRequest === request.id ? null : request.id)}
                         >
                           {expandedRequest === request.id ? (
@@ -484,18 +609,20 @@ export default function StatusPage() {
                     {expandedRequest === request.id && (
                       <div className="mt-6 pt-4 border-t space-y-6">
                         {/* Reason */}
-                        <div>
-                          <h4 className="font-medium flex items-center gap-2 mb-2">
-                            <FileText className="h-4 w-4" />
-                            Reason
-                          </h4>
-                          <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-                            {request.reason}
-                          </p>
-                        </div>
+                        {request.reason && (
+                          <div>
+                            <h4 className="font-medium flex items-center gap-2 mb-2">
+                              <FileText className="h-4 w-4" />
+                              Reason
+                            </h4>
+                            <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
+                              {request.reason}
+                            </p>
+                          </div>
+                        )}
 
                         {/* Approval Timeline */}
-                        {request.app approvalLogs && request.approvalLogs.length > 0 && (
+                        {request.approvalLogs && request.approvalLogs.length > 0 && (
                           <div>
                             <h4 className="font-medium flex items-center gap-2 mb-3">
                               <History className="h-4 w-4" />
@@ -504,7 +631,7 @@ export default function StatusPage() {
                             <div className="space-y-3">
                               {request.approvalLogs.map((log) => (
                                 <div key={log.id} className="flex items-start gap-3 text-sm">
-                                  <div className="w-24 flex-shrink-0 text-muted-foreground">
+                                  <div className="w-28 flex-shrink-0 text-muted-foreground">
                                     {new Date(log.actionAt).toLocaleDateString()}
                                   </div>
                                   <div className="flex-1">
@@ -513,7 +640,7 @@ export default function StatusPage() {
                                     <span>{getActionLabel(log.action)}</span>
                                     {log.remark && (
                                       <p className="text-muted-foreground mt-1 text-xs bg-gray-50 p-2 rounded">
-                                        "{log.remark}"
+                                        &quot;{log.remark}&quot;
                                       </p>
                                     )}
                                   </div>
@@ -579,12 +706,37 @@ export default function StatusPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit & Resubmit Leave Request</DialogTitle>
+            <DialogTitle>
+              {editingRequest?.status === "Pending_Revision" ? "Edit & Resubmit Leave Request" : "Edit Leave Request"}
+            </DialogTitle>
             <DialogDescription>
-              Update your leave request details. Your changes will be sent for approval again.
+              {editingRequest?.status === "Pending_Revision" 
+                ? "Update your leave request based on the remarks and resubmit for approval."
+                : "Update your leave request details. Changes will be saved."}
             </DialogDescription>
           </DialogHeader>
+          
+          {editingRequest?.status === "Pending_Revision" && editingRequest.revisionHistory && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-amber-800 font-medium flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                Remarks from Approver:
+              </p>
+              <p className="text-sm text-amber-700 mt-1">
+                {editingRequest.revisionHistory[editingRequest.revisionHistory.length - 1]?.remarkText}
+              </p>
+            </div>
+          )}
+          
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Leave Type</Label>
+              <p className="text-sm font-medium text-muted-foreground">
+                {editingRequest ? LEAVE_TYPE_LABELS[editingRequest.leaveType] : ""} ({editingRequest?.leaveType})
+              </p>
+              <p className="text-xs text-muted-foreground">Leave type cannot be changed</p>
+            </div>
+            
             <div className="space-y-2">
               <Label>Start Date</Label>
               <Input
@@ -610,10 +762,11 @@ export default function StatusPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Alternate Faculty Name</Label>
+              <Label>Alternate Faculty Name *</Label>
               <Input
                 value={editForm.alternateFacultyName}
                 onChange={(e) => setEditForm({ ...editForm, alternateFacultyName: e.target.value })}
+                placeholder="Name of faculty covering your duties"
               />
             </div>
           </div>
@@ -621,8 +774,11 @@ export default function StatusPage() {
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEditRequest} disabled={editLoading}>
-              {editLoading ? "Submitting..." : "Resubmit Request"}
+            <Button 
+              onClick={handleEditRequest} 
+              disabled={editLoading || !editForm.alternateFacultyName.trim()}
+            >
+              {editLoading ? "Submitting..." : editingRequest?.status === "Pending_Revision" ? "Resubmit Request" : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -636,11 +792,17 @@ export default function StatusPage() {
             <DialogDescription>
               Are you sure you want to cancel this leave request? This action cannot be undone.
               {cancellingRequest?.leaveType && (
-                <span className="block mt-2 text-sm font-medium">
-                  Leave Type: {LEAVE_TYPE_LABELS[cancellingRequest.leaveType]}
-                  <br />
-                  Dates: {new Date(cancellingRequest.startDate).toLocaleDateString()} - {new Date(cancellingRequest.endDate).toLocaleDateString()}
-                </span>
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                  <p className="text-sm">
+                    <strong>Leave Type:</strong> {LEAVE_TYPE_LABELS[cancellingRequest.leaveType]}
+                  </p>
+                  <p className="text-sm">
+                    <strong>Dates:</strong> {new Date(cancellingRequest.startDate).toLocaleDateString()} - {new Date(cancellingRequest.endDate).toLocaleDateString()}
+                  </p>
+                  <p className="text-sm">
+                    <strong>Days:</strong> {cancellingRequest.totalDays} day(s)
+                  </p>
+                </div>
               )}
             </DialogDescription>
           </DialogHeader>

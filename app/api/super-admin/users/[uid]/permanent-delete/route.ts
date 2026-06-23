@@ -51,6 +51,7 @@ export async function DELETE(
           message: "User deleted from Auth (RTDB user not found)" 
         });
       } catch {
+        // authError is intentionally not used
         return NextResponse.json({ 
           error: "User not found in database", 
           details: "User may already be deleted" 
@@ -64,7 +65,8 @@ export async function DELETE(
       await auth.deleteUser(uid);
       authDeleted = true;
     } catch {
-      console.error("Auth deletion error");
+      // authError is intentionally not used - we continue even if Auth deletion fails
+      console.error("Auth deletion error - continuing with RTDB deletion");
       // Continue to delete from RTDB even if Auth deletion fails
     }
 

@@ -1,7 +1,7 @@
 // app/vacation/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Sun, Snowflake, AlertCircle, Info } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { CalendarIcon, Sun, Snowflake, AlertCircle, Info, CheckCircle, XCircle, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Textarea } from "@/components/ui/textarea";
 
 interface VacationPeriod {
   id: string;
@@ -27,12 +27,27 @@ interface VacationPeriod {
   isActive: boolean;
 }
 
+interface VacationRequest {
+  id: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  paidDays: number;
+  unpaidDays: number;
+  vacationType: string;
+  status: string;
+  reason: string;
+  createdAt: string;
+}
+
 export default function VacationPage() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [vacations, setVacations] = useState<VacationPeriod[]>([]);
+  const [history, setHistory] = useState<VacationRequest[]>([]);
   const [selectedVacation, setSelectedVacation] = useState<VacationPeriod | null>(null);
   const [formData, setFormData] = useState({
     startDate: "",
@@ -40,100 +55,110 @@ export default function VacationPage() {
     alternateFacultyName: "",
     reason: "",
   });
-  const [calculation, setCalculation] = useState<{
-    totalDays: number;
-    paidDays: number;
-    unpaidDays: number;
-    isValid: boolean;
-    error?: string;
-  } | null>(null);
 
   // Auth check
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
     }
+    if (!authLoading && user && user.roles?.includes("principal")) {
+      router.push("/principal/dashboard");
+    }
   }, [user, authLoading, router]);
 
-  // Fetch vacation periods
-  const fetchVacations = useCallback(async () => {
+  // Fetch data
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/headclerk/vacation-periods");
-      const data = await response.json();
-      if (response.ok) {
-        const activeVacations = (data.vacations || []).filter((v: VacationPeriod) => v.isActive);
+      // Fetch vacation periods
+      const periodsRes = await fetch("/api/headclerk/vacation-periods");
+      const periodsData = await periodsRes.json();
+      if (periodsRes.ok) {
+        const activeVacations = (periodsData.vacations || []).filter(
+          (v: VacationPeriod) => v.isActive
+        );
         setVacations(activeVacations);
-      } else {
-        toast.error(data.error || "Failed to fetch vacation periods");
+      }
+
+      // Fetch vacation history
+      const historyRes = await fetch("/api/leave/my-requests?leaveType=VL");
+      const historyData = await historyRes.json();
+      if (historyRes.ok) {
+        setHistory(historyData.requests || []);
       }
     } catch (error) {
-      console.error("Error fetching vacations:", error);
-      toast.error("Failed to fetch vacation periods");
+      console.error("Error fetching vacation data:", error);
+      toast.error("Failed to fetch vacation data");
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Fetch data when user is available
   useEffect(() => {
-    if (user) {
-      fetchVacations();
-    }
-  }, [user, fetchVacations]);
-
-  // Calculate days when dates change
-  useEffect(() => {
-    if (!selectedVacation || !formData.startDate || !formData.endDate) {
-      if (!selectedVacation || !formData.startDate || !formData.endDate) {
-        setCalculation(null);
-      }
-      return;
-    }
+    let isMounted = true;
     
+    const loadData = async () => {
+      if (user && !user.roles?.includes("principal") && isMounted) {
+        await fetchData();
+      }
+    };
+    
+    loadData();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [user, fetchData]);
+
+  // Calculate vacation days using useMemo instead of useEffect
+  const calculation = useMemo(() => {
+    if (!selectedVacation || !formData.startDate || !formData.endDate) {
+      return null;
+    }
+
     const start = new Date(formData.startDate);
     const end = new Date(formData.endDate);
     const vacationStart = new Date(selectedVacation.startDate);
     const vacationEnd = new Date(selectedVacation.endDate);
-    
+
     // Validate dates are within vacation period
     if (start < vacationStart || end > vacationEnd) {
-      setCalculation({
+      return {
         totalDays: 0,
         paidDays: 0,
         unpaidDays: 0,
         isValid: false,
         error: "Selected dates must be within the vacation period",
-      });
-      return;
+      };
     }
-    
+
     if (start > end) {
-      setCalculation({
+      return {
         totalDays: 0,
         paidDays: 0,
         unpaidDays: 0,
         isValid: false,
         error: "Start date must be before end date",
-      });
-      return;
+      };
     }
-    
+
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    
+
     const paidDays = Math.min(totalDays, selectedVacation.paidLeaveQuota);
     const unpaidDays = totalDays - paidDays;
-    
-    setCalculation({
+
+    return {
       totalDays,
       paidDays,
       unpaidDays,
       isValid: true,
-    });
+    };
   }, [selectedVacation, formData.startDate, formData.endDate]);
 
   const handleVacationChange = (vacationId: string) => {
-    const vacation = vacations.find(v => v.id === vacationId);
+    const vacation = vacations.find((v) => v.id === vacationId);
     setSelectedVacation(vacation || null);
     setFormData({
       startDate: "",
@@ -141,23 +166,6 @@ export default function VacationPage() {
       alternateFacultyName: "",
       reason: "",
     });
-    setCalculation(null);
-  };
-
-  const handleStartDateSelect = (date: Date | undefined) => {
-    setFormData({ ...formData, startDate: date?.toISOString() || "" });
-  };
-
-  const handleEndDateSelect = (date: Date | undefined) => {
-    setFormData({ ...formData, endDate: date?.toISOString() || "" });
-  };
-
-  const handleAlternateFacultyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, alternateFacultyName: e.target.value });
-  };
-
-  const handleReasonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setFormData({ ...formData, reason: e.target.value });
   };
 
   const handleSubmit = async () => {
@@ -165,22 +173,22 @@ export default function VacationPage() {
       toast.error("Please select a vacation period");
       return;
     }
-    
+
     if (!formData.startDate || !formData.endDate) {
       toast.error("Please select start and end dates");
       return;
     }
-    
+
     if (!formData.alternateFacultyName.trim()) {
       toast.error("Alternate faculty name is required");
       return;
     }
-    
+
     if (!calculation?.isValid) {
       toast.error(calculation?.error || "Invalid date selection");
       return;
     }
-    
+
     setSubmitting(true);
     try {
       const response = await fetch("/api/leave/request", {
@@ -194,7 +202,7 @@ export default function VacationPage() {
           isHalfDay: false,
           halfDaySession: null,
           reason: formData.reason || `Vacation request for ${selectedVacation.vacationType}`,
-          alternateFacultyName: formData.alternateFacultyName,
+          alternateFacultyName: formData.alternateFacultyName.trim(),
           attachmentUrl: null,
           vacationDetails: {
             vacationId: selectedVacation.id,
@@ -204,15 +212,17 @@ export default function VacationPage() {
           },
         }),
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || "Failed to submit vacation request");
       }
-      
-      toast.success(`Vacation request submitted! Paid: ${calculation.paidDays} days, Unpaid: ${calculation.unpaidDays} days`);
-      
+
+      toast.success(
+        `Vacation request submitted! Paid: ${calculation.paidDays} days, Unpaid: ${calculation.unpaidDays} days`
+      );
+
       setSelectedVacation(null);
       setFormData({
         startDate: "",
@@ -220,8 +230,11 @@ export default function VacationPage() {
         alternateFacultyName: "",
         reason: "",
       });
-      setCalculation(null);
-      
+      await fetchData();
+
+      setTimeout(() => {
+        router.push("/status");
+      }, 1500);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to submit";
       toast.error(errorMessage);
@@ -237,12 +250,46 @@ export default function VacationPage() {
     return <Snowflake className="h-5 w-5 text-blue-500" />;
   };
 
-  // Helper function to disable dates outside vacation period
   const isDateDisabled = (date: Date, vacation: VacationPeriod | null): boolean => {
     if (!vacation) return true;
     const vacationStart = new Date(vacation.startDate);
     const vacationEnd = new Date(vacation.endDate);
     return date < vacationStart || date > vacationEnd;
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "Approved":
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Approved
+          </span>
+        );
+      case "Rejected_HOD":
+      case "Rejected_Registrar":
+      case "Rejected_Principal":
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            <XCircle className="h-3 w-3 mr-1" />
+            Rejected
+          </span>
+        );
+      case "Pending_Revision":
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+            <AlertCircle className="h-3 w-3 mr-1" />
+            Needs Revision
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+            <Clock className="h-3 w-3 mr-1" />
+            Pending
+          </span>
+        );
+    }
   };
 
   if (authLoading || loading) {
@@ -251,6 +298,10 @@ export default function VacationPage() {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
       </div>
     );
+  }
+
+  if (!user || user.roles?.includes("principal")) {
+    return null;
   }
 
   return (
@@ -266,14 +317,12 @@ export default function VacationPage() {
       <Card className="mb-8 bg-blue-50 border-blue-200">
         <CardContent className="pt-6">
           <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+            <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-sm text-blue-800">
-                <strong>About Vacation Leave</strong>
-              </p>
+              <p className="text-sm text-blue-800 font-medium">About Vacation Leave</p>
               <p className="text-sm text-blue-700 mt-1">
-                Summer Vacation: 40 days total, up to 27 paid days. Winter Vacation: 40 days total, up to 21 paid days.
-                Any days beyond the paid quota will be treated as unpaid leave.
+                Summer Vacation: 40 days total, up to 27 paid days. Winter Vacation: 40 days total,
+                up to 21 paid days. Any days beyond the paid quota will be treated as unpaid leave.
               </p>
             </div>
           </div>
@@ -285,9 +334,7 @@ export default function VacationPage() {
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Active Vacation Periods</CardTitle>
-            <CardDescription>
-              Select the vacation period you want to apply for
-            </CardDescription>
+            <CardDescription>Select the vacation period you want to apply for</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4">
@@ -314,7 +361,8 @@ export default function VacationPage() {
                     <h3 className="font-semibold">{vacation.vacationType} {vacation.year}</h3>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(vacation.startDate).toLocaleDateString()} - {new Date(vacation.endDate).toLocaleDateString()}
+                    {new Date(vacation.startDate).toLocaleDateString()} -{" "}
+                    {new Date(vacation.endDate).toLocaleDateString()}
                   </p>
                   <div className="flex gap-4 mt-2 text-sm">
                     <span>Total: <strong>{vacation.totalDays} days</strong></span>
@@ -329,7 +377,7 @@ export default function VacationPage() {
 
       {/* Application Form */}
       {selectedVacation && (
-        <Card>
+        <Card className="mb-8">
           <CardHeader>
             <CardTitle>Vacation Application</CardTitle>
             <CardDescription>
@@ -358,13 +406,15 @@ export default function VacationPage() {
                     <Calendar
                       mode="single"
                       selected={formData.startDate ? new Date(formData.startDate) : undefined}
-                      onSelect={handleStartDateSelect}
+                      onSelect={(date) =>
+                        setFormData({ ...formData, startDate: date?.toISOString() || "" })
+                      }
                       disabled={(date: Date) => isDateDisabled(date, selectedVacation)}
                     />
                   </PopoverContent>
                 </Popover>
               </div>
-              
+
               <div className="space-y-2">
                 <Label>End Date *</Label>
                 <Popover>
@@ -384,7 +434,9 @@ export default function VacationPage() {
                     <Calendar
                       mode="single"
                       selected={formData.endDate ? new Date(formData.endDate) : undefined}
-                      onSelect={handleEndDateSelect}
+                      onSelect={(date) =>
+                        setFormData({ ...formData, endDate: date?.toISOString() || "" })
+                      }
                       disabled={(date: Date) => {
                         if (isDateDisabled(date, selectedVacation)) return true;
                         const start = formData.startDate ? new Date(formData.startDate) : null;
@@ -399,10 +451,12 @@ export default function VacationPage() {
 
             {/* Calculation Result */}
             {calculation && (
-              <div className={cn(
-                "p-4 rounded-lg",
-                calculation.isValid ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
-              )}>
+              <div
+                className={cn(
+                  "p-4 rounded-lg",
+                  calculation.isValid ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
+                )}
+              >
                 {calculation.isValid ? (
                   <>
                     <p className="font-medium text-green-800 mb-2">Leave Calculation</p>
@@ -438,7 +492,7 @@ export default function VacationPage() {
                 id="alternateFaculty"
                 placeholder="Name of the faculty member covering your duties during vacation"
                 value={formData.alternateFacultyName}
-                onChange={handleAlternateFacultyChange}
+                onChange={(e) => setFormData({ ...formData, alternateFacultyName: e.target.value })}
                 required
               />
             </div>
@@ -450,15 +504,15 @@ export default function VacationPage() {
                 id="reason"
                 placeholder="Any additional information about your vacation request"
                 value={formData.reason}
-                onChange={handleReasonChange}
+                onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                 rows={3}
               />
             </div>
 
             {/* Submit Button */}
             <div className="flex gap-4 pt-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setSelectedVacation(null);
                   setFormData({
@@ -467,13 +521,12 @@ export default function VacationPage() {
                     alternateFacultyName: "",
                     reason: "",
                   });
-                  setCalculation(null);
                 }}
               >
                 Cancel
               </Button>
-              <Button 
-                onClick={handleSubmit} 
+              <Button
+                onClick={handleSubmit}
                 disabled={submitting || !calculation?.isValid}
                 className="flex-1"
               >
@@ -485,11 +538,55 @@ export default function VacationPage() {
       )}
 
       {vacations.length === 0 && (
-        <Card>
+        <Card className="mb-8">
           <CardContent className="py-12 text-center text-muted-foreground">
             <CalendarIcon className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
             <p>No active vacation periods available</p>
             <p className="text-sm mt-1">Please check back during vacation season</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Vacation History */}
+      {history.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Vacation History</CardTitle>
+            <CardDescription>Your past and current vacation requests</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="border rounded-lg overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left p-3">Period</th>
+                    <th className="text-left p-3">Type</th>
+                    <th className="text-left p-3">Total Days</th>
+                    <th className="text-left p-3">Paid/Unpaid</th>
+                    <th className="text-left p-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((request) => (
+                    <tr key={request.id} className="border-t">
+                      <td className="p-3">
+                        {new Date(request.startDate).toLocaleDateString()} -{" "}
+                        {new Date(request.endDate).toLocaleDateString()}
+                      </td>
+                      <td className="p-3">{request.vacationType || "Vacation"}</td>
+                      <td className="p-3 font-medium">{request.totalDays} days</td>
+                      <td className="p-3">
+                        <span className="text-green-600">{request.paidDays} paid</span>
+                        {request.unpaidDays > 0 && (
+                          <span className="text-amber-600 ml-2">{request.unpaidDays} unpaid</span>
+                        )}
+                      </td>
+                      <td className="p-3">{getStatusBadge(request.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
       )}
