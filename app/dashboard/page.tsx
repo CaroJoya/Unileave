@@ -2,10 +2,18 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAuthStore } from "@/store/authStore";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuthStore } from "@/store/authStore";
+import { useRoleStore } from "@/store/roleStore";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   CalendarDays,
   FilePlus2,
@@ -19,8 +27,8 @@ import {
   CheckCircle,
   XCircle,
 } from "lucide-react";
-import Link from "next/link";
 
+// Types
 interface LeaveBalance {
   allocated: number;
   used: number;
@@ -33,6 +41,10 @@ interface DashboardData {
   pendingRequests: number;
   approvedRequests: number;
   rejectedRequests: number;
+  totalAvailable: number;
+  totalAllocated: number;
+  totalUsed: number;
+  utilization: number;
   overworkSummary: {
     totalApprovedHours: number;
     pendingHours: number;
@@ -41,141 +53,200 @@ interface DashboardData {
   };
 }
 
-interface LeaveRequest {
-  id: string;
-  status: string;
-  totalDays: number;
-}
-
 export default function DashboardPage() {
   const { user, userRoles, isLoading: authLoading } = useAuthStore();
+  const { currentRole } = useRoleStore();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<DashboardData>({
+    balances: {},
+    pendingRequests: 0,
+    approvedRequests: 0,
+    rejectedRequests: 0,
+    totalAvailable: 0,
+    totalAllocated: 0,
+    totalUsed: 0,
+    utilization: 0,
+    overworkSummary: {
+      totalApprovedHours: 0,
+      pendingHours: 0,
+      earnedLeaves: 0,
+      progressPercent: 0,
+    },
+  });
 
-  // Auth check - redirect to role-specific dashboards for admin roles
+  // Auth check
   useEffect(() => {
-    if (!authLoading && user) {
-      // Redirect admin roles to their specific dashboards
-      if (userRoles.includes("super_admin")) {
-        router.push("/super-admin/dashboard");
-        return;
-      }
-      if (userRoles.includes("head_clerk")) {
-        router.push("/headclerk/dashboard");
-        return;
-      }
-      if (userRoles.includes("hod")) {
-        router.push("/hod/dashboard");
-        return;
-      }
-      if (userRoles.includes("registrar")) {
-        router.push("/registrar/dashboard");
-        return;
-      }
-      if (userRoles.includes("principal")) {
-        router.push("/principal/dashboard");
-        return;
-      }
-    }
     if (!authLoading && !user) {
       router.push("/login");
+      return;
     }
-  }, [user, userRoles, authLoading, router]);
 
-  // Fetch dashboard data
-  // In the fetchDashboardData function, add better error handling:
+    if (!authLoading && user) {
+      // If user has multiple roles but no role selected, redirect to role selection
+      const staffRoles = ["faculty", "lab_assistant", "office_staff"];
+      const adminRoles = ["super_admin", "head_clerk", "hod", "registrar", "principal"];
+      const hasStaff = userRoles.some((r) => staffRoles.includes(r));
+      const hasAdmin = userRoles.some((r) => adminRoles.includes(r));
 
-const fetchDashboardData = useCallback(async () => {
-  setLoading(true);
-  try {
-    // Fetch balances
-    const balanceRes = await fetch("/api/leave/balances");
-    if (!balanceRes.ok) {
-      console.warn("Failed to fetch balances:", balanceRes.status);
-      // Use empty data instead of failing
-    }
-    const balanceData = await balanceRes.json().catch(() => ({}));
-
-    // Fetch leave requests - with fallback
-    let requestsData = { requests: [] };
-    try {
-      const requestsRes = await fetch("/api/leave/my-requests");
-      if (requestsRes.ok) {
-        requestsData = await requestsRes.json();
-      } else {
-        console.warn("Failed to fetch requests:", requestsRes.status);
+      if (hasStaff && hasAdmin && !currentRole) {
+        router.push("/select-role");
+        return;
       }
-    } catch (e) {
-      console.warn("Error fetching requests:", e);
-    }
 
-    // Fetch overwork summary - with fallback
-    let overworkData = { summary: { totalApprovedHours: 0, pendingHours: 0, earnedLeaves: 0, progressPercent: 0 } };
-    try {
-      const overworkRes = await fetch("/api/overwork/my-summary");
-      if (overworkRes.ok) {
-        overworkData = await overworkRes.json();
-      } else {
-        console.warn("Failed to fetch overwork:", overworkRes.status);
+      // If user has ONLY admin roles (no staff roles), redirect to admin dashboard
+      if (!hasStaff && hasAdmin) {
+        if (userRoles.includes("super_admin")) {
+          router.push("/super-admin/dashboard");
+          return;
+        }
+        if (userRoles.includes("head_clerk")) {
+          router.push("/headclerk/dashboard");
+          return;
+        }
+        if (userRoles.includes("hod")) {
+          router.push("/hod/dashboard");
+          return;
+        }
+        if (userRoles.includes("registrar")) {
+          router.push("/registrar/dashboard");
+          return;
+        }
+        if (userRoles.includes("principal")) {
+          router.push("/principal/dashboard");
+          return;
+        }
       }
-    } catch (e) {
-      console.warn("Error fetching overwork:", e);
+
+      // If user has currentRole set to a staff role OR has only staff roles
+      // Show the regular staff dashboard
+      const isStaffRole =
+        currentRole &&
+        ["faculty", "lab_assistant", "office_staff"].includes(currentRole);
+      const hasOnlyStaffRoles = userRoles.every((r) => staffRoles.includes(r));
+
+      if (isStaffRole || hasOnlyStaffRoles) {
+        // Show staff dashboard - this is the normal faculty/LA/OS experience
+        // The dashboard will display based on the actual roles
+      }
     }
+  }, [user, userRoles, authLoading, router, currentRole]);
 
-    const requests = requestsData.requests || [];
-    
-    const pendingRequests = requests.filter(
-      (req: LeaveRequest) =>
-        req.status === "Pending_HOD" ||
-        req.status === "Pending_Registrar" ||
-        req.status === "Pending_Principal" ||
-        req.status === "Pending_Revision"
-    ).length;
+  // Fetch staff dashboard data
+  const fetchDashboardData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Fetch balances
+      const balanceRes = await fetch("/api/leave/balances");
+      let balanceData = { balances: {} };
+      if (balanceRes.ok) {
+        balanceData = await balanceRes.json();
+      }
 
-    const approvedRequests = requests.filter(
-      (req: LeaveRequest) => req.status === "Approved"
-    ).length;
+      // Fetch leave requests
+      let requestsData = { requests: [] };
+      try {
+        const requestsRes = await fetch("/api/leave/my-requests");
+        if (requestsRes.ok) {
+          requestsData = await requestsRes.json();
+        }
+      } catch {
+        console.warn("Error fetching requests");
+      }
 
-    const rejectedRequests = requests.filter(
-      (req: LeaveRequest) =>
-        req.status === "Rejected_HOD" ||
-        req.status === "Rejected_Registrar" ||
-        req.status === "Rejected_Principal"
-    ).length;
+      // Fetch overwork summary
+      let overworkData = {
+        summary: {
+          totalApprovedHours: 0,
+          pendingHours: 0,
+          earnedLeaves: 0,
+          progressPercent: 0,
+        },
+      };
+      try {
+        const overworkRes = await fetch("/api/overwork/my-summary");
+        if (overworkRes.ok) {
+          overworkData = await overworkRes.json();
+        }
+      } catch {
+        console.warn("Error fetching overwork");
+      }
 
-    setData({
-      balances: balanceData.balances || {},
-      pendingRequests,
-      approvedRequests,
-      rejectedRequests,
-      overworkSummary: overworkData.summary || {
-        totalApprovedHours: 0,
-        pendingHours: 0,
-        earnedLeaves: 0,
-        progressPercent: 0,
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching dashboard data:", error);
-    // Don't show toast for missing API routes - just use empty data
-  } finally {
-    setLoading(false);
-  }
-}, []);
+      const requests = requestsData.requests || [];
+
+      const pendingRequests = requests.filter(
+        (req: { status: string }) =>
+          req.status === "Pending_HOD" ||
+          req.status === "Pending_Registrar" ||
+          req.status === "Pending_Principal" ||
+          req.status === "Pending_Revision"
+      ).length;
+
+      const approvedRequests = requests.filter(
+        (req: { status: string }) => req.status === "Approved"
+      ).length;
+
+      const rejectedRequests = requests.filter(
+        (req: { status: string }) =>
+          req.status === "Rejected_HOD" ||
+          req.status === "Rejected_Registrar" ||
+          req.status === "Rejected_Principal"
+      ).length;
+
+      const balances = balanceData.balances || {};
+      const totalAvailable = Object.values(balances).reduce(
+        (sum: number, b: unknown) => {
+          const balance = b as LeaveBalance;
+          return sum + (balance?.available || 0);
+        },
+        0
+      );
+      const totalAllocated = Object.values(balances).reduce(
+        (sum: number, b: unknown) => {
+          const balance = b as LeaveBalance;
+          return sum + (balance?.allocated || 0);
+        },
+        0
+      );
+      const totalUsed = Object.values(balances).reduce(
+        (sum: number, b: unknown) => {
+          const balance = b as LeaveBalance;
+          return sum + (balance?.used || 0);
+        },
+        0
+      );
+      const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
+
+      setData({
+        balances,
+        pendingRequests,
+        approvedRequests,
+        rejectedRequests,
+        totalAvailable,
+        totalAllocated,
+        totalUsed,
+        utilization,
+        overworkSummary: overworkData.summary,
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // Fetch data when user is available
   useEffect(() => {
     let isMounted = true;
-    
+
     const loadData = async () => {
-      if (user && !user.roles?.some(r => ["super_admin", "head_clerk", "hod", "registrar", "principal"].includes(r)) && isMounted) {
+      if (user && isMounted) {
         await fetchDashboardData();
       }
     };
-    
+
     loadData();
-    
+
     return () => {
       isMounted = false;
     };
@@ -195,15 +266,10 @@ const fetchDashboardData = useCallback(async () => {
 
   if (!user) return null;
 
-  // Admin roles are redirected, so this is for staff only
-  const isStaff =
-    !userRoles.some((r) =>
-      ["super_admin", "head_clerk", "hod", "registrar", "principal"].includes(r)
-    );
-
-  if (!isStaff) {
-    return null;
-  }
+  // ========================================
+  // STAFF DASHBOARD - Same for faculty, lab_assistant, office_staff
+  // This is what multi-role users see when they switch to staff role
+  // ========================================
 
   const getRoleLabel = () => {
     if (userRoles.includes("faculty")) return "Faculty";
@@ -212,20 +278,7 @@ const fetchDashboardData = useCallback(async () => {
     return "Staff";
   };
 
-  const totalAllocated = Object.values(data?.balances || {}).reduce(
-    (sum, b) => sum + (b?.allocated || 0),
-    0
-  );
-  const totalUsed = Object.values(data?.balances || {}).reduce(
-    (sum, b) => sum + (b?.used || 0),
-    0
-  );
-  const totalAvailable = Object.values(data?.balances || {}).reduce(
-    (sum, b) => sum + (b?.available || 0),
-    0
-  );
-  const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
-
+  // Show the same staff dashboard that normal faculty/LA/OS users see
   return (
     <div className="container mx-auto py-8 px-4">
       {/* Welcome Section */}
@@ -238,6 +291,11 @@ const fetchDashboardData = useCallback(async () => {
             <p className="text-muted-foreground mt-2">
               {user.departmentName} • {getRoleLabel()}
             </p>
+            {currentRole && (
+              <p className="text-sm text-primary mt-1">
+                👤 Currently using: <strong>{currentRole.replace("_", " ")}</strong> role
+              </p>
+            )}
           </div>
           <Button onClick={() => router.push("/request-leave")}>
             <FilePlus2 className="h-4 w-4 mr-2" />
@@ -253,9 +311,11 @@ const fetchDashboardData = useCallback(async () => {
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm text-muted-foreground">Total Balance</p>
-                <p className="text-2xl font-bold text-primary">{totalAvailable.toFixed(1)}</p>
+                <p className="text-2xl font-bold text-primary">
+                  {data.totalAvailable?.toFixed(1) || 0}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  of {totalAllocated.toFixed(1)} allocated
+                  of {data.totalAllocated?.toFixed(1) || 0} allocated
                 </p>
               </div>
               <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -265,12 +325,12 @@ const fetchDashboardData = useCallback(async () => {
             <div className="mt-3">
               <div className="flex justify-between text-xs">
                 <span>Utilization</span>
-                <span>{utilization.toFixed(1)}%</span>
+                <span>{data.utilization?.toFixed(1) || 0}%</span>
               </div>
               <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1">
                 <div
                   className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${Math.min(utilization, 100)}%` }}
+                  style={{ width: `${Math.min(data.utilization || 0, 100)}%` }}
                 />
               </div>
             </div>
@@ -283,7 +343,7 @@ const fetchDashboardData = useCallback(async () => {
               <div>
                 <p className="text-sm text-muted-foreground">Pending Requests</p>
                 <p className="text-2xl font-bold text-amber-600">
-                  {data?.pendingRequests || 0}
+                  {data.pendingRequests || 0}
                 </p>
                 <p className="text-xs text-muted-foreground">Awaiting approval</p>
               </div>
@@ -300,7 +360,7 @@ const fetchDashboardData = useCallback(async () => {
               <div>
                 <p className="text-sm text-muted-foreground">Approved</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {data?.approvedRequests || 0}
+                  {data.approvedRequests || 0}
                 </p>
                 <p className="text-xs text-muted-foreground">Total approved</p>
               </div>
@@ -317,7 +377,7 @@ const fetchDashboardData = useCallback(async () => {
               <div>
                 <p className="text-sm text-muted-foreground">Rejected</p>
                 <p className="text-2xl font-bold text-red-600">
-                  {data?.rejectedRequests || 0}
+                  {data.rejectedRequests || 0}
                 </p>
                 <p className="text-xs text-muted-foreground">Total rejected</p>
               </div>
@@ -384,7 +444,7 @@ const fetchDashboardData = useCallback(async () => {
             <CardDescription>Your current leave balances</CardDescription>
           </CardHeader>
           <CardContent>
-            {data?.balances && Object.keys(data.balances).length > 0 ? (
+            {data.balances && Object.keys(data.balances).length > 0 ? (
               <div className="space-y-3">
                 {Object.entries(data.balances).map(([type, balance]) => (
                   <div key={type}>
@@ -426,19 +486,19 @@ const fetchDashboardData = useCallback(async () => {
             <CardDescription>Your overwork hours and earned leave</CardDescription>
           </CardHeader>
           <CardContent>
-            {data?.overworkSummary ? (
+            {data.overworkSummary ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gray-50 rounded-lg p-3 text-center">
                     <p className="text-sm text-muted-foreground">Approved Hours</p>
                     <p className="text-2xl font-bold text-primary">
-                      {data.overworkSummary.totalApprovedHours.toFixed(1)}
+                      {data.overworkSummary.totalApprovedHours?.toFixed(1) || 0}
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-3 text-center">
                     <p className="text-sm text-muted-foreground">Earned Leaves</p>
                     <p className="text-2xl font-bold text-green-600">
-                      {data.overworkSummary.earnedLeaves}
+                      {data.overworkSummary.earnedLeaves || 0}
                     </p>
                   </div>
                 </div>
@@ -455,12 +515,12 @@ const fetchDashboardData = useCallback(async () => {
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
                     <span>Progress to next leave day</span>
-                    <span>{data.overworkSummary.progressPercent.toFixed(0)}%</span>
+                    <span>{data.overworkSummary.progressPercent?.toFixed(0) || 0}%</span>
                   </div>
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-yellow-500 rounded-full transition-all"
-                      style={{ width: `${data.overworkSummary.progressPercent}%` }}
+                      style={{ width: `${data.overworkSummary.progressPercent || 0}%` }}
                     />
                   </div>
                   <p className="text-xs text-muted-foreground text-right">
@@ -468,7 +528,11 @@ const fetchDashboardData = useCallback(async () => {
                   </p>
                 </div>
 
-                <Button variant="outline" className="w-full" onClick={() => router.push("/overwork")}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => router.push("/overwork")}
+                >
                   <TrendingUp className="h-4 w-4 mr-2" />
                   Manage Overwork
                 </Button>

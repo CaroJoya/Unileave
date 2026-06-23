@@ -1,4 +1,4 @@
-// components/layout/Navbar.tsx
+// components/layout/Navbar.tsx - Updated with RoleSwitcher
 "use client";
 
 import Link from "next/link";
@@ -15,16 +15,20 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { LogOut, User } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { useRoleStore } from "@/store/roleStore";
 import { RoleBadge } from "./RoleBadge";
 import { NotificationBell } from "./NotificationBell";
 import { MobileNav } from "./MobileNav";
+import { RoleSwitcher } from "./RoleSwitcher";
 
 export default function Navbar() {
   const router = useRouter();
   const { user, userRoles, isAuthenticated, logout } = useAuthStore();
+  const { currentRole, setCurrentRole } = useRoleStore();
 
   const handleLogout = async () => {
     await logout();
+    setCurrentRole("");
     router.push("/login");
   };
 
@@ -37,21 +41,13 @@ export default function Navbar() {
       .slice(0, 2);
   };
 
-  // Function to get the correct dashboard URL based on user roles
   const getDashboardUrl = () => {
-    if (userRoles.includes("super_admin")) {
-      return "/super-admin/dashboard";
-    } else if (userRoles.includes("head_clerk")) {
-      return "/headclerk/dashboard";
-    } else if (userRoles.includes("hod")) {
-      return "/hod/dashboard";
-    } else if (userRoles.includes("registrar")) {
-      return "/registrar/dashboard";
-    } else if (userRoles.includes("principal")) {
-      return "/principal/dashboard";
-    } else {
-      return "/dashboard";
-    }
+    if (currentRole === "hod") return "/hod/dashboard";
+    if (currentRole === "registrar") return "/registrar/dashboard";
+    if (currentRole === "principal") return "/principal/dashboard";
+    if (currentRole === "head_clerk") return "/headclerk/dashboard";
+    if (currentRole === "super_admin") return "/super-admin/dashboard";
+    return "/dashboard";
   };
 
   // Don't show navbar on login page
@@ -67,7 +63,10 @@ export default function Navbar() {
             <span className="text-xl font-bold text-primary">UniLeave</span>
           </Link>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
+            {/* Role Switcher - Only shown for multi-role users */}
+            <RoleSwitcher />
+            
             <NotificationBell />
             
             <DropdownMenu>
@@ -88,6 +87,15 @@ export default function Navbar() {
                     <div className="mt-1">
                       <RoleBadge roles={userRoles} />
                     </div>
+                    {userRoles.length > 1 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {userRoles.map((role) => (
+                          <span key={role} className="text-[10px] px-1.5 py-0.5 bg-gray-100 rounded-full text-gray-600">
+                            {role.replace("_", " ")}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
