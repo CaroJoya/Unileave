@@ -8,29 +8,26 @@ export async function GET() {
       return NextResponse.json({ hasSuperAdmin: false });
     }
 
-    console.log("Checking for any super admin...");
+    console.log("Checking for any college (super admin indicator)...");
     
-    const snapshot = await rtdb.ref('users').once('value');
+    // ✅ OPTIMIZED: Check if any college exists instead of scanning all users
+    // A college is created when the first super admin registers
+    const snapshot = await rtdb.ref('colleges').limitToFirst(1).once('value');
     
     let hasSuperAdmin = false;
     let collegeCount = 0;
     
     if (snapshot.exists()) {
-      const users = snapshot.val();
-      if (users && typeof users === 'object') {
-        for (const userId in users) {
-          const user = users[userId];
-          if (user && user.roles && Array.isArray(user.roles) && user.roles.includes('super_admin')) {
-            hasSuperAdmin = true;
-            collegeCount++;
-          }
-        }
+      const colleges = snapshot.val();
+      if (colleges && typeof colleges === 'object') {
+        // Count how many colleges exist
+        collegeCount = Object.keys(colleges).length;
+        hasSuperAdmin = collegeCount > 0;
       }
     }
     
-    console.log(`Found ${collegeCount} college(s) with super admin`);
+    console.log(`Found ${collegeCount} college(s) - Super admin exists: ${hasSuperAdmin}`);
     
-    // Return true if ANY super admin exists (any college)
     return NextResponse.json({ 
       hasSuperAdmin,
       collegeCount 

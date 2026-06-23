@@ -44,14 +44,21 @@ export function LoginForm() {
 
     try {
       const success = await login(email, password);
-      if (success) {
+if (success) {
   // Get user roles from the store after login
   const { userRoles } = useAuthStore.getState();
   
+  // ✅ ROLE-BASED REDIRECTION
   if (userRoles.includes("super_admin")) {
     router.push("/super-admin/dashboard");
   } else if (userRoles.includes("head_clerk")) {
     router.push("/headclerk/dashboard");
+  } else if (userRoles.includes("hod")) {
+    router.push("/hod/dashboard");
+  } else if (userRoles.includes("registrar")) {
+    router.push("/registrar/dashboard");
+  } else if (userRoles.includes("principal")) {
+    router.push("/principal/dashboard");
   } else {
     router.push("/dashboard");
   }

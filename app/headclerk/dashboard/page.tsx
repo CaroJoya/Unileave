@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,6 @@ import { Pencil, Plus, Sun, Snowflake } from "lucide-react";
 import { AttendanceCalendar } from "@/components/headclerk/AttendanceCalendar";
 import { FacultyList } from "@/components/headclerk/FacultyList";
 import type { Department, StaffUser } from "@/types/attendance";
-
 interface LeaveType {
   id: string;
   leaveCode: string;
@@ -526,28 +525,39 @@ export default function HeadClerkDashboardPage() {
   };
 
   // Auth check - EARLY return after hooks
+  const hasRedirected = useRef(false);
+  const hasFetched = useRef(false);
+
+  // Auth check - runs only once
   useEffect(() => {
-    if (!isLoading && (!user || !user.roles?.includes("head_clerk"))) {
+    if (!isLoading && !user && !hasRedirected.current) {
+      hasRedirected.current = true;
+      router.push("/login");
+    }
+    if (!isLoading && user && !user.roles?.includes("head_clerk") && !hasRedirected.current) {
+      hasRedirected.current = true;
       router.push("/dashboard");
     }
   }, [user, isLoading, router]);
 
   // Fetch all data - NOW functions are declared before this useEffect
   // Replace the existing useEffect that calls fetch functions directly
-useEffect(() => {
-  if (user?.roles?.includes("head_clerk")) {
-    const loadAllData = async () => {
-      await Promise.all([
-        fetchLeaveTypes(),
-        fetchPolicies(),
-        fetchOverworkConfig(),
-        fetchVacations(),
-        fetchAttendanceData()
-      ]);
-    };
-    loadAllData();
-  }
-}, [user, fetchLeaveTypes, fetchPolicies, fetchOverworkConfig, fetchVacations, fetchAttendanceData]);
+  // Data fetch - runs only once
+  useEffect(() => {
+    if (user?.roles?.includes("head_clerk") && !hasFetched.current) {
+      hasFetched.current = true;
+      const loadAllData = async () => {
+        await Promise.all([
+          fetchLeaveTypes(),
+          fetchPolicies(),
+          fetchOverworkConfig(),
+          fetchVacations(),
+          fetchAttendanceData()
+        ]);
+      };
+      loadAllData();
+    }
+  }, [user, fetchLeaveTypes, fetchPolicies, fetchOverworkConfig, fetchVacations, fetchAttendanceData]);
 
   if (isLoading || loading) {
     return (

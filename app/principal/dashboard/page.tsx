@@ -1,7 +1,6 @@
-// app/principal/dashboard/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,13 +28,17 @@ export default function PrincipalDashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
+  const hasRedirected = useRef(false);
+  const hasFetched = useRef(false);
 
-  // Auth check
+  // Auth check - runs only once
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (!authLoading && !user && !hasRedirected.current) {
+      hasRedirected.current = true;
       router.push("/login");
     }
-    if (!authLoading && user && !user.roles?.includes("principal")) {
+    if (!authLoading && user && !user.roles?.includes("principal") && !hasRedirected.current) {
+      hasRedirected.current = true;
       router.push("/dashboard");
     }
   }, [user, authLoading, router]);
@@ -58,21 +61,12 @@ export default function PrincipalDashboardPage() {
     }
   }, []);
 
-  // Load data when user is authenticated - fixed with isMounted pattern
+  // Data fetch - runs only once
   useEffect(() => {
-    let isMounted = true;
-    
-    const loadData = async () => {
-      if (user?.roles?.includes("principal") && isMounted) {
-        await fetchDashboardData();
-      }
-    };
-    
-    loadData();
-    
-    return () => {
-      isMounted = false;
-    };
+    if (user?.roles?.includes("principal") && !hasFetched.current) {
+      hasFetched.current = true;
+      fetchDashboardData();
+    }
   }, [user, fetchDashboardData]);
 
   if (authLoading || loading) {

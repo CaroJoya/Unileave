@@ -35,6 +35,7 @@ export function NotificationBell() {
   const intervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const hasFetched = useRef(false);
 
+  // ✅ FIX: Wrap fetchNotifications in useCallback with NO dependencies
   const fetchNotifications = useCallback(async () => {
     try {
       const response = await fetch("/api/notifications");
@@ -49,7 +50,7 @@ export function NotificationBell() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []); // ✅ Empty dependency array - function never changes
 
   const markAsRead = useCallback(async (id: string) => {
     try {
@@ -106,21 +107,37 @@ export function NotificationBell() {
     setOpen(false);
   }, [markAsRead, router]);
 
-  // Initial fetch and polling
+  // ✅ FIX: Separate initial fetch and polling
   useEffect(() => {
+    // Initial fetch - only once
     if (!hasFetched.current) {
       hasFetched.current = true;
       fetchNotifications();
     }
     
-    intervalRef.current = setInterval(fetchNotifications, 30000); // Poll every 30 seconds
+    // ✅ FIX: Clean up existing interval before creating new one
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = undefined;
+      }
+    };
+  }, [fetchNotifications]); // ✅ fetchNotifications never changes
+
+  // ✅ FIX: Polling effect - runs only once
+  useEffect(() => {
+    // Start polling after initial fetch
+    if (hasFetched.current) {
+      intervalRef.current = setInterval(fetchNotifications, 60000); // ✅ Changed to 60 seconds
+    }
     
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = undefined;
       }
     };
-  }, [fetchNotifications]);
+  }, [fetchNotifications]); // ✅ fetchNotifications never changes
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);

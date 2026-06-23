@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { 
   signInWithEmailAndPassword, 
   signOut, 
@@ -28,10 +28,12 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  hydrationComplete: boolean;
   
   setUser: (user: User | null) => void;
   setIsLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setHydrationComplete: () => void;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<boolean>;
@@ -42,6 +44,7 @@ interface AuthState {
   getAccountStatus: () => Promise<{ status: string; daysLeft?: number } | null>;
   checkSession: () => Promise<boolean>;
   refreshUserData: () => Promise<void>;
+  initialize: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -52,6 +55,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: true,
       error: null,
+      hydrationComplete: false,
 
       setUser: (user) => set({ 
         user, 
@@ -61,6 +65,26 @@ export const useAuthStore = create<AuthState>()(
       
       setIsLoading: (loading) => set({ isLoading: loading }),
       setError: (error) => set({ error }),
+      setHydrationComplete: () => set({ hydrationComplete: true }),
+
+      // ✅ NEW: Initialize function - called once on app startup
+      initialize: async () => {
+        const state = get();
+        
+        // If hydration is complete and we have a user, check session validity
+        if (state.hydrationComplete && state.user) {
+          console.log("🔄 Checking session validity on startup...");
+          const isValid = await state.checkSession();
+          if (!isValid) {
+            console.log("🔄 Session invalid, logging out...");
+            await state.logout();
+          }
+        }
+        
+        // ✅ CRITICAL: Always set loading to false after initialization
+        set({ isLoading: false });
+        console.log("✅ Auth store initialized, isLoading:", false);
+      },
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -78,29 +102,30 @@ export const useAuthStore = create<AuthState>()(
           try {
             userCredential = await signInWithEmailAndPassword(auth, email, password);
           } catch (authError) {
-            const error = authError as FirebaseAuthError;
+            const error = authError as FirebaseAuthError | null;
             console.error("Firebase Auth error:", {
-              code: error.code,
-              message: error.message
+              code: error?.code || "unknown",
+              message: error?.message || "Authentication failed",
+              error: authError
             });
             
-            // Handle specific Firebase auth errors
-            if (error.code === "auth/user-not-found") {
+            const errorCode = error?.code;
+            if (errorCode === "auth/user-not-found") {
               throw new Error("User not found. Please check your email.");
             }
-            if (error.code === "auth/wrong-password") {
+            if (errorCode === "auth/wrong-password") {
               throw new Error("Incorrect password. Please try again.");
             }
-            if (error.code === "auth/invalid-email") {
+            if (errorCode === "auth/invalid-email") {
               throw new Error("Invalid email address.");
             }
-            if (error.code === "auth/invalid-credential") {
+            if (errorCode === "auth/invalid-credential") {
               throw new Error("Invalid credentials. Please check your email and password.");
             }
-            if (error.code === "auth/too-many-requests") {
+            if (errorCode === "auth/too-many-requests") {
               throw new Error("Too many failed attempts. Please try again later.");
             }
-            throw new Error(error.message || "Authentication failed");
+            throw new Error(error?.message || "Authentication failed");
           }
           
           console.log("2️⃣ Firebase sign-in successful, UID:", userCredential.user.uid);
@@ -177,6 +202,9 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null
           });
+          
+          // ✅ Small delay to ensure session cookie is set before redirect
+          await new Promise(resolve => setTimeout(resolve, 100));
           
           console.log("9️⃣ Login complete");
           return true;
@@ -418,11 +446,21 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "unileave-auth",
+      storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({ 
         user: state.user,
         userRoles: state.userRoles,
         isAuthenticated: state.isAuthenticated 
       }),
+      // ✅ NEW: Handle hydration completion
+      onRehydrateStorage: () => (state) => {
+        console.log("🔄 Zustand hydration complete");
+        if (state) {
+          state.setHydrationComplete();
+          // Initialize the store (check session, set loading to false)
+          state.initialize();
+        }
+      },
     }
   )
 );
