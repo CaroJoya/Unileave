@@ -1,3 +1,4 @@
+// app/super-admin/dashboard/page.tsx (Modified)
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -5,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CollegeProfile } from "@/components/super-admin/CollegeProfile";
 import { DepartmentManager } from "@/components/super-admin/DepartmentManager";
 import { UserManager } from "@/components/super-admin/UserManager";
+import { SystemTools } from "@/components/super-admin/SystemTools";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 
@@ -133,6 +135,7 @@ export default function SuperAdminDashboardPage() {
           <TabsTrigger value="college">College Profile</TabsTrigger>
           <TabsTrigger value="departments">Departments</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
 
         <TabsContent value="college">
@@ -149,6 +152,10 @@ export default function SuperAdminDashboardPage() {
             onRefresh={refreshDepartments}
             isLoading={isLoadingDepartments}
           />
+        </TabsContent>
+
+        <TabsContent value="system">
+          <SystemTools />
         </TabsContent>
       </Tabs>
     </div>

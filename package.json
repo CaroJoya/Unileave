@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed": "tsx scripts/seed-leave-types.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -52,6 +53,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "firebase-admin": "^13.10.0",
+    "tsx": "^4.7.0",
     "typescript": "^5"
   }
 }

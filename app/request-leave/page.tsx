@@ -71,7 +71,7 @@ export default function RequestLeavePage() {
     setLoading(true);
     try {
       // Fetch leave types
-      const typesResponse = await fetch("/api/headclerk/leave-types");
+      const typesResponse = await fetch("/api/leave-types");
       const typesData = await typesResponse.json();
       if (typesResponse.ok) {
         const activeTypes = (typesData.leaveTypes || []).filter(
