@@ -126,6 +126,16 @@ export default function StatusPage() {
     setLoading(true);
     try {
       const response = await fetch("/api/leave/my-requests");
+      
+      // ✅ Check if response is OK before parsing JSON
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("API returned error:", text);
+        toast.error("Failed to fetch leave requests");
+        setRequests([]);
+        return;
+      }
+      
       const data = await response.json();
       if (response.ok) {
         setRequests(data.requests || []);
@@ -135,6 +145,7 @@ export default function StatusPage() {
     } catch (error) {
       console.error("Error fetching requests:", error);
       toast.error("Failed to fetch leave requests");
+      setRequests([]);
     } finally {
       setLoading(false);
     }
@@ -422,7 +433,7 @@ export default function StatusPage() {
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All types</SelectItem>
+                  <SelectItem value="all">All types</SelectItem>
                   {Object.entries(LEAVE_TYPE_LABELS).map(([code, name]) => (
                     <SelectItem key={code} value={code}>{name}</SelectItem>
                   ))}

@@ -187,6 +187,44 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to save user data" }, { status: 500 });
     }
 
+    // ✅ NEW: If the user has the 'hod' role, auto-assign as HOD of their department
+    if (roles.includes("hod")) {
+      try {
+        const deptRef = rtdb.ref(`departments/${departmentId}`);
+        const deptSnapshot = await deptRef.once("value");
+        const deptData = deptSnapshot.val();
+
+        if (deptData) {
+          // Check if department already has a HOD (optional, but good practice)
+          if (deptData.hodId) {
+            console.warn(`Department ${departmentId} already has a HOD (${deptData.hodId}). Overwriting with new user.`);
+            
+            // Clear the old HOD's department reference
+            const oldHodRef = rtdb.ref(`users/${deptData.hodId}`);
+            await oldHodRef.update({
+              departmentId: null,
+              departmentName: null,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          
+          await deptRef.update({
+            hodId: userRecord.uid,
+            hodName: name,
+            updatedAt: new Date().toISOString(),
+          });
+          
+          console.log(`Auto-assigned user ${userRecord.uid} as HOD of department ${departmentId}`);
+        } else {
+          console.warn(`Department ${departmentId} not found for HOD assignment.`);
+        }
+      } catch (hodError) {
+        console.error("Failed to auto-assign HOD:", hodError);
+        // We don't want to fail the entire user creation if HOD assignment fails,
+        // so we just log the error.
+      }
+    }
+
     return NextResponse.json({ success: true, user: userData });
   } catch (error) {
     console.error("Error creating user:", error);

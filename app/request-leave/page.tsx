@@ -243,6 +243,12 @@ export default function RequestLeavePage() {
       const data = await response.json();
 
       if (!response.ok) {
+        // ✅ Check for the specific HOD not found error and show user-friendly message
+        if (data.error?.includes("No hod found")) {
+          toast.error("Your department does not have a HOD assigned. Please contact the administrator.");
+        } else {
+          toast.error(data.error || "Failed to submit leave request");
+        }
         throw new Error(data.error || "Failed to submit leave request");
       }
 
@@ -270,7 +276,10 @@ export default function RequestLeavePage() {
       }, 1500);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to submit";
-      toast.error(errorMessage);
+      // Don't show duplicate toast if we already showed a specific one
+      if (!errorMessage.includes("No hod found")) {
+        toast.error(errorMessage);
+      }
     } finally {
       setSubmitting(false);
       setUploading(false);

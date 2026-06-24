@@ -194,6 +194,8 @@ export default function DashboardPage() {
       ).length;
 
       const balances = balanceData.balances || {};
+      
+      // ✅ FIX: Safely calculate totals with null/undefined checks
       const totalAvailable = Object.values(balances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
@@ -201,6 +203,7 @@ export default function DashboardPage() {
         },
         0
       );
+      
       const totalAllocated = Object.values(balances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
@@ -208,6 +211,7 @@ export default function DashboardPage() {
         },
         0
       );
+      
       const totalUsed = Object.values(balances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
@@ -215,6 +219,7 @@ export default function DashboardPage() {
         },
         0
       );
+      
       const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
 
       setData({
@@ -446,29 +451,38 @@ export default function DashboardPage() {
           <CardContent>
             {data.balances && Object.keys(data.balances).length > 0 ? (
               <div className="space-y-3">
-                {Object.entries(data.balances).map(([type, balance]) => (
-                  <div key={type}>
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium">{type}</span>
-                      <span>
-                        {balance.available.toFixed(1)} / {balance.allocated.toFixed(1)} days
-                      </span>
+                {Object.entries(data.balances).map(([type, balance]) => {
+                  // ✅ FIX: Safe access with fallback values
+                  const available = balance?.available ?? 0;
+                  const allocated = balance?.allocated ?? 0;
+                  const used = balance?.used ?? 0;
+                  const pending = balance?.pending ?? 0;
+                  const usedPercent = allocated > 0 ? (used / allocated) * 100 : 0;
+                  
+                  return (
+                    <div key={type}>
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{type}</span>
+                        <span>
+                          {available.toFixed(1)} / {allocated.toFixed(1)} days
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1">
+                        <div
+                          className="h-full bg-primary rounded-full transition-all"
+                          style={{
+                            width: `${Math.min(usedPercent, 100)}%`,
+                          }}
+                        />
+                      </div>
+                      {pending > 0 && (
+                        <p className="text-xs text-amber-600 mt-0.5">
+                          {pending} day(s) pending approval
+                        </p>
+                      )}
                     </div>
-                    <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1">
-                      <div
-                        className="h-full bg-primary rounded-full transition-all"
-                        style={{
-                          width: `${(balance.used / balance.allocated) * 100}%`,
-                        }}
-                      />
-                    </div>
-                    {balance.pending > 0 && (
-                      <p className="text-xs text-amber-600 mt-0.5">
-                        {balance.pending} day(s) pending approval
-                      </p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">No leave balances available</p>

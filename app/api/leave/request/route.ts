@@ -281,13 +281,20 @@ export async function POST(request: Request) {
       const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
       if (balanceDoc) {
-        await balanceRef.update({
-          [`balances.${leaveType}.pending`]:
-            (balanceDoc.balances[leaveType]?.pending || 0) + totalDays,
-          [`balances.${leaveType}.available`]:
-            (balanceDoc.balances[leaveType]?.available || 0) - totalDays,
+        // ✅ FIX: Use proper nested object structure instead of dot notation
+        const currentBalance = balanceDoc.balances[leaveType] || { pending: 0, available: 0 };
+        const updateData = {
+          balances: {
+            ...balanceDoc.balances,
+            [leaveType]: {
+              pending: (currentBalance.pending || 0) + totalDays,
+              available: (currentBalance.available || 0) - totalDays,
+            }
+          },
           updatedAt: new Date().toISOString(),
-        });
+        };
+        
+        await balanceRef.update(updateData);
       }
     }
 
