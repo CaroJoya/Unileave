@@ -1,3 +1,4 @@
+// middleware.ts - ADD CACHING
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -21,7 +22,7 @@ const protectedRoutes = [
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // ✅ CRITICAL FIX: Skip middleware for API routes
+  // Skip for API routes
   if (pathname.startsWith("/api")) {
     return NextResponse.next();
   }
@@ -37,10 +38,17 @@ export function middleware(request: NextRequest) {
   
   // Allow public routes
   if (publicRoutes.some(route => pathname.startsWith(route))) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    
+    // ✅ Add caching for public routes
+    if (pathname === "/login") {
+      response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+    }
+    
+    return response;
   }
   
-  // Protect routes that start with protected paths
+  // Protect routes
   if (protectedRoutes.some(route => pathname.startsWith(route))) {
     if (!isAuthenticated) {
       const url = new URL("/login", request.url);
@@ -49,7 +57,14 @@ export function middleware(request: NextRequest) {
     }
   }
   
-  return NextResponse.next();
+  const response = NextResponse.next();
+  
+  // ✅ Cache static assets
+  if (pathname.startsWith("/_next/static")) {
+    response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+  
+  return response;
 }
 
 export const config = {

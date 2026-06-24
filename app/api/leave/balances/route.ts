@@ -1,6 +1,6 @@
 // app/api/leave/balances/route.ts
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import type { LeaveBalancesDoc, LeaveBalance } from "@/types/leave";
@@ -17,22 +17,29 @@ const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
 };
 
 async function getRoleQuotas(role: string, academicYear: string): Promise<Record<string, number>> {
-  // First check if there's a policy for this academic year
-  const policySnapshot = await rtdb?.ref(`leavePolicies/${academicYear}`).once("value");
-  const policy = policySnapshot?.val();
-  
-  if (policy && policy.leaveAllocations) {
-    const roleKey = role === "lab_assistant" ? "lab_assistant" : 
-                    role === "office_staff" ? "office_staff" : role;
-    const allocation = policy.leaveAllocations[roleKey];
-    if (allocation) {
-      return {
-        CL: allocation.CL || 0,
-        EL: allocation.EL || 0,
-        ML: allocation.ML || 0,
-        CO: allocation.CO || 0,
-      };
+  const rtdb = getRTDB();
+  if (!rtdb) return DEFAULT_QUOTAS.faculty;
+
+  try {
+    // First check if there's a policy for this academic year
+    const policySnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
+    const policy = policySnapshot.val();
+    
+    if (policy && policy.leaveAllocations) {
+      const roleKey = role === "lab_assistant" ? "lab_assistant" : 
+                      role === "office_staff" ? "office_staff" : role;
+      const allocation = policy.leaveAllocations[roleKey];
+      if (allocation) {
+        return {
+          CL: allocation.CL || 0,
+          EL: allocation.EL || 0,
+          ML: allocation.ML || 0,
+          CO: allocation.CO || 0,
+        };
+      }
     }
+  } catch (error) {
+    console.error("Error fetching policy:", error);
   }
   
   // Fallback to default quotas
@@ -41,7 +48,14 @@ async function getRoleQuotas(role: string, academicYear: string): Promise<Record
   return DEFAULT_QUOTAS[roleKey] || DEFAULT_QUOTAS.faculty;
 }
 
-async function initializeBalance(userId: string, userRole: string, academicYear: string): Promise<LeaveBalancesDoc> {
+async function initializeBalance(
+  userId: string, 
+  userRole: string, 
+  academicYear: string
+): Promise<LeaveBalancesDoc> {
+  const rtdb = getRTDB();
+  if (!rtdb) throw new Error("Database not initialized");
+
   const quotas = await getRoleQuotas(userRole, academicYear);
   
   const balances: Record<string, LeaveBalance> = {
@@ -58,7 +72,7 @@ async function initializeBalance(userId: string, userRole: string, academicYear:
     updatedAt: new Date().toISOString(),
   };
   
-  await rtdb?.ref(`leaveBalances/${userId}_${academicYear}`).set(balanceDoc);
+  await rtdb.ref(`leaveBalances/${userId}_${academicYear}`).set(balanceDoc);
   return balanceDoc;
 }
 
@@ -68,41 +82,274 @@ export async function GET() {
     const sessionCookie = cookieStore.get("session")?.value;
 
     if (!sessionCookie) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error("Firebase Admin not initialized");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
+    // Verify session
+    const decodedToken = await auth.verifySessionCookie(sessionCookie);
+    const userId = decodedToken.uid;
+
+    // ✅ OPTIMIZED: Parallel queries for better performance
+    const [userSnapshot, balanceSnapshot] = await Promise.all([
+      rtdb.ref(`users/${userId}`).once("value"),
+      rtdb.ref(`leaveBalances/${userId}_${getCurrentAcademicYear()}`).once("value"),
+    ]);
+
+    const userData = userSnapshot.val();
+    let balanceDoc = balanceSnapshot.val();
+
+    if (!userData) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+
+    // Initialize balance if it doesn't exist
+    if (!balanceDoc) {
+      const academicYear = getCurrentAcademicYear();
+      const userRole = userData.roles?.[0] || "faculty";
+      balanceDoc = await initializeBalance(userId, userRole, academicYear);
+    }
+
+    // ✅ Add cache headers for better performance
+    const response = NextResponse.json({
+      success: true,
+      balances: balanceDoc.balances,
+      academicYear: balanceDoc.academicYear,
+    });
+
+    // Cache for 60 seconds, stale while revalidate for 5 minutes
+    response.headers.set(
+      'Cache-Control',
+      'private, max-age=60, stale-while-revalidate=300'
+    );
+
+    return response;
+  } catch (error) {
+    console.error("Error fetching leave balances:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch leave balances" },
+      { status: 500 }
+    );
+  }
+}
+
+// ✅ OPTIMIZED: Batch update for balance changes
+export async function PUT(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get("session")?.value;
+
+    if (!sessionCookie) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
+    if (!auth || !rtdb) {
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get user data
-    const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
-    const userData = userSnapshot.val();
+    const body = await request.json();
+    const { leaveType, daysUsed, operation } = body;
 
-    if (!userData) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!leaveType || !daysUsed || !operation) {
+      return NextResponse.json(
+        { error: "Missing required fields: leaveType, daysUsed, operation" },
+        { status: 400 }
+      );
+    }
+
+    if (!["deduct", "restore"].includes(operation)) {
+      return NextResponse.json(
+        { error: "Operation must be 'deduct' or 'restore'" },
+        { status: 400 }
+      );
     }
 
     const academicYear = getCurrentAcademicYear();
     const balanceKey = `${userId}_${academicYear}`;
-    const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
-    let balanceDoc = balanceSnapshot.val();
+    const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
+    const balanceSnapshot = await balanceRef.once("value");
+    const balanceDoc = balanceSnapshot.val() as LeaveBalancesDoc | null;
 
     if (!balanceDoc) {
-      const userRole = userData.roles?.[0] || "faculty";
-      balanceDoc = await initializeBalance(userId, userRole, academicYear);
+      return NextResponse.json(
+        { error: "Leave balance not found" },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json({
+    const currentBalance = balanceDoc.balances[leaveType];
+    if (!currentBalance) {
+      return NextResponse.json(
+        { error: `Leave type ${leaveType} not found in balance` },
+        { status: 404 }
+      );
+    }
+
+    let updatedBalance: LeaveBalance;
+
+    if (operation === "deduct") {
+      if (currentBalance.available < daysUsed) {
+        return NextResponse.json(
+          { error: `Insufficient balance. Available: ${currentBalance.available}, Requested: ${daysUsed}` },
+          { status: 400 }
+        );
+      }
+      
+      updatedBalance = {
+        ...currentBalance,
+        pending: (currentBalance.pending || 0) + daysUsed,
+        available: currentBalance.available - daysUsed,
+      };
+    } else {
+      // Restore
+      updatedBalance = {
+        ...currentBalance,
+        pending: Math.max(0, (currentBalance.pending || 0) - daysUsed),
+        available: currentBalance.available + daysUsed,
+      };
+    }
+
+    // ✅ OPTIMIZED: Use update with nested object instead of multiple writes
+    const updateData = {
+      [`balances.${leaveType}`]: updatedBalance,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await balanceRef.update(updateData);
+
+    const response = NextResponse.json({
       success: true,
-      balances: balanceDoc.balances,
-      academicYear: balanceDoc.academicYear,
+      balances: {
+        ...balanceDoc.balances,
+        [leaveType]: updatedBalance,
+      },
     });
+
+    response.headers.set(
+      'Cache-Control',
+      'private, max-age=60, stale-while-revalidate=300'
+    );
+
+    return response;
   } catch (error) {
-    console.error("Error fetching leave balances:", error);
-    return NextResponse.json({ error: "Failed to fetch leave balances" }, { status: 500 });
+    console.error("Error updating leave balances:", error);
+    return NextResponse.json(
+      { error: "Failed to update leave balances" },
+      { status: 500 }
+    );
+  }
+}
+
+// ✅ OPTIMIZED: Bulk balance fetch for admin/department views
+export async function POST(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get("session")?.value;
+
+    if (!sessionCookie) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
+    if (!auth || !rtdb) {
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
+    const decodedToken = await auth.verifySessionCookie(sessionCookie);
+    
+    // Check if user has admin role (hod, registrar, principal, head_clerk, super_admin)
+    const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
+    const userData = userSnapshot.val();
+    
+    const adminRoles = ["hod", "registrar", "principal", "head_clerk", "super_admin"];
+    const isAdmin = userData?.roles?.some((role: string) => adminRoles.includes(role));
+
+    if (!isAdmin) {
+      return NextResponse.json(
+        { error: "Not authorized. Admin access required." },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const { userIds, academicYear } = body;
+
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return NextResponse.json(
+        { error: "User IDs array is required" },
+        { status: 400 }
+      );
+    }
+
+    const year = academicYear || getCurrentAcademicYear();
+    
+    // ✅ OPTIMIZED: Batch fetch balances for multiple users
+    const balancePromises = userIds.map((uid: string) =>
+      rtdb.ref(`leaveBalances/${uid}_${year}`).once("value")
+    );
+
+    const balanceSnapshots = await Promise.all(balancePromises);
+    
+    const balances: Record<string, LeaveBalancesDoc | null> = {};
+    userIds.forEach((uid: string, index: number) => {
+      const snapshot = balanceSnapshots[index];
+      balances[uid] = snapshot.val() || null;
+    });
+
+    const response = NextResponse.json({
+      success: true,
+      balances,
+      academicYear: year,
+    });
+
+    // Cache for 60 seconds
+    response.headers.set(
+      'Cache-Control',
+      'private, max-age=60, stale-while-revalidate=300'
+    );
+
+    return response;
+  } catch (error) {
+    console.error("Error fetching bulk balances:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch balances" },
+      { status: 500 }
+    );
   }
 }

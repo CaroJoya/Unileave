@@ -2,16 +2,35 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Providers } from "@/components/providers/Providers";
+import dynamic from 'next/dynamic';
 import { Toaster } from "@/components/ui/sonner";
-import Navbar from "@/components/layout/Navbar"; // Changed to default import
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ 
+  subsets: ["latin"],
+  display: 'swap', // ✅ Improves font loading
+});
 
 export const metadata: Metadata = {
   title: "UniLeave - University Leave Management System",
   description: "Manage university leave requests efficiently",
 };
+
+// ✅ FIXED: Proper dynamic import with correct return type
+const Navbar = dynamic(
+  () => import("@/components/layout/Navbar").then(mod => mod.default),
+  {
+    ssr: true,
+    loading: () => <div className="h-16 bg-white border-b" />,
+  }
+);
+
+// ✅ FIXED: Proper dynamic import for Providers
+const Providers = dynamic(
+  () => import("@/components/providers/Providers").then(mod => mod.Providers),
+  {
+    ssr: true,
+  }
+);
 
 export default function RootLayout({
   children,
@@ -19,8 +38,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className={inter.className}>
+      <head>
+        {/* ✅ Preconnect to Firebase domain */}
+        <link rel="preconnect" href={process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL} />
+        <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL} />
+      </head>
+      <body>
         <Providers>
           <Navbar />
           <main className="min-h-screen bg-gray-50">{children}</main>

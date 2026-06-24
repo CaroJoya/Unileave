@@ -1,48 +1,58 @@
+// hooks/useAuth.ts - Remove the parameter entirely
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth, db } from "@/lib/firebase/client";
-import { doc, getDoc } from "firebase/firestore";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
-import { User } from "@/types/user";
+
+// ✅ Remove the parameter if not needed
+async function fetchUserData() {
+  const response = await fetch(`/api/auth/me`);
+  if (!response.ok) throw new Error('Failed to fetch user');
+  return response.json();
+}
 
 export function useAuth() {
   const router = useRouter();
-  const { user, isLoading, setUser, setIsLoading, logout } = useAuthStore();
+  const queryClient = useQueryClient();
+  const { 
+    user, 
+    isLoading, 
+    setUser, 
+    logout 
+  } = useAuthStore();
+
+  // ✅ Use React Query for user data with caching
+  const { data, refetch } = useQuery({
+    queryKey: ['user', user?.uid],
+    queryFn: fetchUserData,
+    enabled: !!user?.uid,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 1,
+  });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setIsLoading(true);
-      
-      if (firebaseUser) {
-        // Fetch user document from Firestore
-        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as User;
-          setUser({ ...userData, uid: firebaseUser.uid });
-          
-          // Check if user is deleted
-          if (userData.status === "deleted") {
-            router.push("/restore");
-          }
-        } else {
-          setUser(null);
-        }
-      } else {
-        setUser(null);
-      }
-      
-      setIsLoading(false);
-    });
+    if (data?.user) {
+      setUser(data.user);
+    }
+  }, [data, setUser]);
 
-    return () => unsubscribe();
-  }, [router, setUser, setIsLoading]);
+  useEffect(() => {
+    return () => {
+      // Any cleanup code here
+    };
+  }, []);
 
   const handleLogout = async () => {
-    await signOut(auth);
-    logout();
+    await logout();
+    queryClient.clear();
     router.push("/login");
   };
 
-  return { user, isLoading, logout: handleLogout };
+  return { 
+    user, 
+    isLoading, 
+    logout: handleLogout,
+    refreshUser: refetch 
+  };
 }

@@ -296,11 +296,6 @@ export default function DashboardPage() {
             <p className="text-muted-foreground mt-2">
               {user.departmentName} • {getRoleLabel()}
             </p>
-            {currentRole && (
-              <p className="text-sm text-primary mt-1">
-                👤 Currently using: <strong>{currentRole.replace("_", " ")}</strong> role
-              </p>
-            )}
           </div>
           <Button onClick={() => router.push("/request-leave")}>
             <FilePlus2 className="h-4 w-4 mr-2" />

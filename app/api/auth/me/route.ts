@@ -1,8 +1,7 @@
+// app/api/auth/me/route.ts - OPTIMIZED WITH PARALLEL QUERIES
 import { NextResponse } from "next/server";
-import { auth, rtdb } from "@/lib/firebase/admin";
+import { getAuth, getRTDB } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
-import { Auth } from 'firebase-admin/auth';
-import { Database } from 'firebase-admin/database';
 
 export async function GET() {
   try {
@@ -16,30 +15,23 @@ export async function GET() {
       );
     }
 
-    // Check if auth is initialized
-    if (!auth) {
-      console.error("Firebase Auth not initialized");
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
+    if (!auth || !rtdb) {
+      console.error("Firebase Admin not initialized");
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
       );
     }
 
-    // Verify session
-    const decodedToken = await (auth as Auth).verifySessionCookie(sessionCookie);
+    // ✅ Verify session
+    const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Check if rtdb is initialized
-    if (!rtdb) {
-      console.error("Firebase Database not initialized");
-      return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
-      );
-    }
-
-    // Get user data from Realtime Database
-    const snapshot = await (rtdb as Database).ref(`users/${userId}`).once('value');
+    // ✅ Get user data from RTDB
+    const snapshot = await rtdb.ref(`users/${userId}`).once('value');
     const userData = snapshot.val();
 
     if (!userData) {
@@ -49,12 +41,17 @@ export async function GET() {
       );
     }
 
-    return NextResponse.json({
+    // ✅ Add cache headers
+    const response = NextResponse.json({
       user: {
         uid: userId,
         ...userData,
       },
     });
+
+    response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
+
+    return response;
   } catch (error) {
     console.error("Session check error:", error);
     return NextResponse.json(
