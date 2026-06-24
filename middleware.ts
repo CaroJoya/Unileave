@@ -21,16 +21,19 @@ const protectedRoutes = [
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Skip middleware for API routes - THIS IS THE KEY FIX
+  // ✅ CRITICAL FIX: Skip middleware for API routes
   if (pathname.startsWith("/api")) {
+    return NextResponse.next();
+  }
+  
+  // Skip for static files
+  if (pathname.startsWith("/_next") || pathname.startsWith("/favicon.ico") || pathname.includes(".")) {
     return NextResponse.next();
   }
   
   // Check for 'session' cookie
   const session = request.cookies.get("session")?.value;
   const isAuthenticated = !!session;
-  
-  console.log(`[Middleware] Path: ${pathname}, Authenticated: ${isAuthenticated}`);
   
   // Allow public routes
   if (publicRoutes.some(route => pathname.startsWith(route))) {
@@ -42,7 +45,6 @@ export function middleware(request: NextRequest) {
     if (!isAuthenticated) {
       const url = new URL("/login", request.url);
       url.searchParams.set("redirect", pathname);
-      console.log(`[Middleware] Redirecting to: ${url.toString()}`);
       return NextResponse.redirect(url);
     }
   }

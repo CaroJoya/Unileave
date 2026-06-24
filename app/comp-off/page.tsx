@@ -169,7 +169,11 @@ export default function CompOffPage() {
       toast.success(`Comp-off request submitted for ${formData.daysToUse} day(s)`);
       setShowApplyDialog(false);
       setSelectedCredit(null);
+      
+      // ✅ SMART REDIRECT: Refresh the page to show updated credits
       await fetchData();
+      
+      toast.success("📊 Comp-off credits updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to apply";
       toast.error(errorMessage);

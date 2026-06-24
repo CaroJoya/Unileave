@@ -154,7 +154,11 @@ export default function PrincipalDirectApprovalsPage() {
       toast.success("Leave request approved");
       setShowDetails(false);
       setSelectedRequest(null);
-      fetchRequests();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchRequests();
+      
+      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to approve";
       toast.error(errorMessage);
@@ -188,7 +192,11 @@ export default function PrincipalDirectApprovalsPage() {
       setRejectModal({ open: false, requestId: null, reason: "" });
       setShowDetails(false);
       setSelectedRequest(null);
-      fetchRequests();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchRequests();
+      
+      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to reject";
       toast.error(errorMessage);

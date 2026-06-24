@@ -283,7 +283,11 @@ useEffect(() => {
       toast.success("Leave request approved");
       setShowDetails(false);
       setSelectedRequest(null);
-      fetchRequests();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchRequests();
+      
+      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to approve";
       toast.error(errorMessage);
@@ -317,7 +321,11 @@ useEffect(() => {
       setRejectModal({ open: false, requestId: null, reason: "" });
       setShowDetails(false);
       setSelectedRequest(null);
-      fetchRequests();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchRequests();
+      
+      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to reject";
       toast.error(errorMessage);
@@ -351,7 +359,11 @@ useEffect(() => {
       setRemarksModal({ open: false, requestId: null, remarks: "" });
       setShowDetails(false);
       setSelectedRequest(null);
-      fetchRequests();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchRequests();
+      
+      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to send remarks";
       toast.error(errorMessage);

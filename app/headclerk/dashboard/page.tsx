@@ -210,7 +210,11 @@ export default function HeadClerkDashboardPage() {
       toast.success("Leave type created successfully");
       setShowCreateDialog(false);
       resetForm();
-      fetchLeaveTypes();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show the new leave type
+      await fetchLeaveTypes();
+      
+      toast.success("📋 Leave types list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create leave type";
       toast.error(errorMessage);
@@ -232,7 +236,11 @@ export default function HeadClerkDashboardPage() {
       }
 
       toast.success(`Leave type ${!leaveType.isActive ? "activated" : "deactivated"}`);
-      fetchLeaveTypes();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchLeaveTypes();
+      
+      toast.success("📋 Leave types list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update leave type";
       toast.error(errorMessage);
@@ -314,7 +322,11 @@ export default function HeadClerkDashboardPage() {
       toast.success("Leave policy saved successfully");
       setShowPolicyDialog(false);
       resetPolicyForm();
-      fetchPolicies();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show the new policy
+      await fetchPolicies();
+      
+      toast.success("📋 Policies list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save policy";
       toast.error(errorMessage);
@@ -367,6 +379,11 @@ export default function HeadClerkDashboardPage() {
       }
 
       toast.success("Overwork configuration saved successfully");
+      
+      // ✅ SMART REDIRECT: Refresh the config to show updated values
+      await fetchOverworkConfig();
+      
+      toast.success("⚙️ Configuration updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save configuration";
       toast.error(errorMessage);
@@ -437,7 +454,11 @@ export default function HeadClerkDashboardPage() {
       }
 
       toast.success("Vacation period deactivated");
-      fetchVacations();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchVacations();
+      
+      toast.success("📋 Vacation periods list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to deactivate";
       toast.error(errorMessage);
@@ -487,7 +508,11 @@ export default function HeadClerkDashboardPage() {
       toast.success("Vacation period created successfully");
       setShowVacationDialog(false);
       resetVacationForm();
-      fetchVacations();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show the new vacation period
+      await fetchVacations();
+      
+      toast.success("📋 Vacation periods list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create";
       toast.error(errorMessage);

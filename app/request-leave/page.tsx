@@ -243,12 +243,6 @@ export default function RequestLeavePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        // ✅ Check for the specific HOD not found error and show user-friendly message
-        if (data.error?.includes("No hod found")) {
-          toast.error("Your department does not have a HOD assigned. Please contact the administrator.");
-        } else {
-          toast.error(data.error || "Failed to submit leave request");
-        }
         throw new Error(data.error || "Failed to submit leave request");
       }
 
@@ -270,16 +264,14 @@ export default function RequestLeavePage() {
       // Refresh balances
       await fetchData();
 
-      // Redirect to status page after a moment
+      // ✅ SMART REDIRECT: Go to status page to see the new request
+      toast.success("🎯 Redirecting to your leave status page...");
       setTimeout(() => {
         router.push("/status");
-      }, 1500);
+      }, 1000);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to submit";
-      // Don't show duplicate toast if we already showed a specific one
-      if (!errorMessage.includes("No hod found")) {
-        toast.error(errorMessage);
-      }
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
       setUploading(false);
@@ -421,7 +413,7 @@ export default function RequestLeavePage() {
                       selected={startDate}
                       onSelect={(date) => {
                         setStartDate(date);
-                        // ✅ If half-day is checked, set end date = start date
+                        // If half-day is checked, set end date = start date
                         if (isHalfDay && date) {
                           setEndDate(date);
                         }
@@ -484,12 +476,12 @@ export default function RequestLeavePage() {
                     const checked = e.target.checked;
                     setIsHalfDay(checked);
                     
-                    // ✅ If half-day is checked, set end date = start date
+                    // If half-day is checked, set end date = start date
                     if (checked && startDate) {
                       setEndDate(startDate);
                     }
                     
-                    // ✅ If half-day is unchecked, clear end date
+                    // If half-day is unchecked, clear end date
                     if (!checked) {
                       setEndDate(undefined);
                     }

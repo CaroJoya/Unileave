@@ -111,7 +111,11 @@ export default function RegistrarVacationPage() {
       toast.success("Vacation request approved");
       setShowDetails(false);
       setSelectedRequest(null);
-      fetchRequests();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchRequests();
+      
+      toast.success("📋 Vacation list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to approve";
       toast.error(errorMessage);
@@ -145,7 +149,11 @@ export default function RegistrarVacationPage() {
       setRejectModal({ open: false, requestId: null, reason: "" });
       setShowDetails(false);
       setSelectedRequest(null);
-      fetchRequests();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchRequests();
+      
+      toast.success("📋 Vacation list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to reject";
       toast.error(errorMessage);

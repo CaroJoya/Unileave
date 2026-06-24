@@ -67,6 +67,9 @@ export default function ProfilePage() {
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
+        
+        // ✅ SMART REDIRECT: Stay on profile page with success state
+        toast.success("🔐 Password updated. You can continue using the app.");
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to change password";
@@ -89,7 +92,11 @@ export default function ProfilePage() {
         toast.success("Account deactivation requested. You have 30 days to restore.");
         setShowDeleteConfirm(false);
         setDeleteConfirmText("");
-        router.push("/login");
+        
+        // ✅ SMART REDIRECT: Logout and go to login page
+        setTimeout(() => {
+          router.push("/login");
+        }, 1000);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to deactivate account";

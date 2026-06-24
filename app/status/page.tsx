@@ -126,16 +126,6 @@ export default function StatusPage() {
     setLoading(true);
     try {
       const response = await fetch("/api/leave/my-requests");
-      
-      // ✅ Check if response is OK before parsing JSON
-      if (!response.ok) {
-        const text = await response.text();
-        console.error("API returned error:", text);
-        toast.error("Failed to fetch leave requests");
-        setRequests([]);
-        return;
-      }
-      
       const data = await response.json();
       if (response.ok) {
         setRequests(data.requests || []);
@@ -145,7 +135,6 @@ export default function StatusPage() {
     } catch (error) {
       console.error("Error fetching requests:", error);
       toast.error("Failed to fetch leave requests");
-      setRequests([]);
     } finally {
       setLoading(false);
     }
@@ -229,7 +218,12 @@ export default function StatusPage() {
       toast.success("Leave request cancelled successfully");
       setCancelDialogOpen(false);
       setCancellingRequest(null);
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
+      
+      // Extra toast to confirm refresh
+      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to cancel";
       toast.error(errorMessage);
@@ -281,7 +275,11 @@ export default function StatusPage() {
       toast.success(successMessage);
       setEditDialogOpen(false);
       setEditingRequest(null);
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
+      
+      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update";
       toast.error(errorMessage);
@@ -433,7 +431,7 @@ export default function StatusPage() {
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="">All types</SelectItem>
                   {Object.entries(LEAVE_TYPE_LABELS).map(([code, name]) => (
                     <SelectItem key={code} value={code}>{name}</SelectItem>
                   ))}

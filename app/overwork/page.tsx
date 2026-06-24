@@ -157,7 +157,13 @@ export default function OverworkPage() {
 
       toast.success("Overwork hours submitted successfully");
       setFormData({ workDate: "", hours: "", reason: "" });
+      
+      // ✅ SMART REDIRECT: Refresh the page to see updated data
+      // The page already stays on the same page and refreshes data
       await fetchData();
+      
+      // Extra toast to confirm refresh
+      toast.success("📊 Overwork data updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to submit";
       toast.error(errorMessage);

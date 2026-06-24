@@ -114,7 +114,11 @@ export default function HODOverworkPage() {
       toast.success(`Overwork approved${earnedDays ? ` - ${earnedDays} comp-off day(s) earned` : ''}`);
       setShowDetails(false);
       setSelectedEntry(null);
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchEntries();
+      
+      toast.success("📋 Overwork list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to approve";
       toast.error(errorMessage);
@@ -139,7 +143,11 @@ export default function HODOverworkPage() {
       toast.success("Overwork rejected");
       setShowDetails(false);
       setSelectedEntry(null);
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchEntries();
+      
+      toast.success("📋 Overwork list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to reject";
       toast.error(errorMessage);

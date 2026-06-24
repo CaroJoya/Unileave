@@ -232,9 +232,11 @@ export default function VacationPage() {
       });
       await fetchData();
 
+      // ✅ SMART REDIRECT: Go to status page to see the vacation request
+      toast.success("🎯 Redirecting to your vacation status...");
       setTimeout(() => {
         router.push("/status");
-      }, 1500);
+      }, 1200);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to submit";
       toast.error(errorMessage);

@@ -101,7 +101,11 @@ export default function PrincipalCompOffPage() {
       toast.success("Comp-off approved");
       setShowDetails(false);
       setSelectedCredit(null);
-      fetchCredits();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchCredits();
+      
+      toast.success("📋 Comp-off list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to approve";
       toast.error(errorMessage);
@@ -126,7 +130,11 @@ export default function PrincipalCompOffPage() {
       toast.success("Comp-off rejected");
       setShowDetails(false);
       setSelectedCredit(null);
-      fetchCredits();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchCredits();
+      
+      toast.success("📋 Comp-off list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to reject";
       toast.error(errorMessage);

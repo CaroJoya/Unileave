@@ -44,25 +44,34 @@ export function LoginForm() {
 
     try {
       const success = await login(email, password);
-if (success) {
-  // Get user roles from the store after login
-  const { userRoles } = useAuthStore.getState();
-  
-  // ✅ ROLE-BASED REDIRECTION
-  if (userRoles.includes("super_admin")) {
-    router.push("/super-admin/dashboard");
-  } else if (userRoles.includes("head_clerk")) {
-    router.push("/headclerk/dashboard");
-  } else if (userRoles.includes("hod")) {
-    router.push("/hod/dashboard");
-  } else if (userRoles.includes("registrar")) {
-    router.push("/registrar/dashboard");
-  } else if (userRoles.includes("principal")) {
-    router.push("/principal/dashboard");
-  } else {
-    router.push("/dashboard");
-  }
-}
+      if (success) {
+        // Get user roles from the store after login
+        const { userRoles, user } = useAuthStore.getState();
+        
+        // ✅ Check if account is deleted
+        if (user?.status === "deleted") {
+          toast.error("Account is deactivated. Please restore your account.");
+          setLoading(false);
+          return;
+        }
+        
+        // ✅ ROLE-BASED REDIRECTION with priority
+        // Check highest priority role first
+        if (userRoles.includes("super_admin")) {
+          router.push("/super-admin/dashboard");
+        } else if (userRoles.includes("head_clerk")) {
+          router.push("/headclerk/dashboard");
+        } else if (userRoles.includes("principal")) {
+          router.push("/principal/dashboard");
+        } else if (userRoles.includes("registrar")) {
+          router.push("/registrar/dashboard");
+        } else if (userRoles.includes("hod")) {
+          router.push("/hod/dashboard");
+        } else {
+          // Default for faculty, lab_assistant, office_staff
+          router.push("/dashboard");
+        }
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Login failed";
       toast.error(errorMessage);

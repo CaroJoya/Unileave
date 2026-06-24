@@ -26,7 +26,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Eye, AlertTriangle, X } from "lucide-react"; // Removed UserCheck
+import { Eye, AlertTriangle, X } from "lucide-react";
 
 interface LeaveRequest {
   id: string;
@@ -140,7 +140,11 @@ export default function PrincipalOverrideEligiblePage() {
       setShowDetails(false);
       setSelectedRequest(null);
       setOverrideReason("");
-      fetchRequests();
+      
+      // ✅ SMART REDIRECT: Refresh the list to show updated status
+      await fetchRequests();
+      
+      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to override";
       toast.error(errorMessage);

@@ -9,6 +9,7 @@ import { UserManager } from "@/components/super-admin/UserManager";
 import { SystemTools } from "@/components/super-admin/SystemTools";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface Department {
   id: string;
@@ -74,11 +75,12 @@ export default function SuperAdminDashboardPage() {
     loadDepartments();
   }, [user, user?.collegeId]); // ✅ Depend on user and collegeId
 
-  // ✅ Refresh function
+  // ✅ Refresh function with toast feedback
   const refreshDepartments = useCallback(async () => {
     const { user: currentUser } = useAuthStore.getState();
     
     try {
+      toast.info("Refreshing departments...");
       let url = "/api/super-admin/departments";
       if (currentUser?.collegeId) {
         url += `?collegeId=${currentUser.collegeId}`;
@@ -91,12 +93,15 @@ export default function SuperAdminDashboardPage() {
       if (response.ok) {
         setDepartments(data.departments || []);
         console.log("Departments refreshed:", data.departments?.length || 0);
+        toast.success(`✅ ${data.departments?.length || 0} departments loaded`);
       } else {
         console.error("Failed to refresh departments:", data.error);
+        toast.error("Failed to refresh departments");
         setDepartments([]);
       }
     } catch (error) {
       console.error("Failed to refresh departments:", error);
+      toast.error("Failed to refresh departments");
       setDepartments([]);
     }
   }, []);
