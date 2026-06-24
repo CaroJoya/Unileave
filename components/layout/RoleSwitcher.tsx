@@ -1,7 +1,7 @@
 // components/layout/RoleSwitcher.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, Check, Users, User, Shield, Building2, Settings } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useRoleStore } from "@/store/roleStore";
+import { ROLE_PRIORITY } from "@/types/roles";
 
 interface RoleOption {
   id: string;
@@ -22,6 +23,7 @@ interface RoleOption {
   icon: React.ReactNode;
   href: string;
   description: string;
+  priority: number;
 }
 
 export function RoleSwitcher() {
@@ -30,49 +32,15 @@ export function RoleSwitcher() {
   const { currentRole, setCurrentRole } = useRoleStore();
   const [open, setOpen] = useState(false);
 
-  // Role configurations
-  const roleConfigs: Record<string, RoleOption> = {
-    faculty: {
-      id: "faculty",
-      label: "Faculty",
-      icon: <User className="h-4 w-4" />,
-      href: "/dashboard",
-      description: "Request leave, view status, track overwork",
-    },
-    lab_assistant: {
-      id: "lab_assistant",
-      label: "Lab Assistant",
-      icon: <User className="h-4 w-4" />,
-      href: "/dashboard",
-      description: "Request leave, view status, track overwork",
-    },
-    office_staff: {
-      id: "office_staff",
-      label: "Office Staff",
-      icon: <User className="h-4 w-4" />,
-      href: "/dashboard",
-      description: "Request leave, view status, track overwork",
-    },
-    hod: {
-      id: "hod",
-      label: "HOD",
-      icon: <Users className="h-4 w-4" />,
-      href: "/hod/dashboard",
-      description: "Approve faculty leaves, manage department",
-    },
-    registrar: {
-      id: "registrar",
-      label: "Registrar",
-      icon: <Building2 className="h-4 w-4" />,
-      href: "/registrar/dashboard",
-      description: "Approve office staff leaves, generate reports",
-    },
-    principal: {
-      id: "principal",
-      label: "Principal",
+  // ✅ FIX: Wrap roleConfigs in useMemo to prevent recreation on every render
+  const roleConfigs = useMemo((): Record<string, RoleOption> => ({
+    super_admin: {
+      id: "super_admin",
+      label: "Super Admin",
       icon: <Shield className="h-4 w-4" />,
-      href: "/principal/dashboard",
-      description: "Final approvals, override eligible leaves",
+      href: "/super-admin/dashboard",
+      description: "Manage college, departments, and users",
+      priority: ROLE_PRIORITY.super_admin,
     },
     head_clerk: {
       id: "head_clerk",
@@ -80,24 +48,72 @@ export function RoleSwitcher() {
       icon: <Settings className="h-4 w-4" />,
       href: "/headclerk/dashboard",
       description: "Configure leave policies, manage attendance",
+      priority: ROLE_PRIORITY.head_clerk,
     },
-    super_admin: {
-      id: "super_admin",
-      label: "Super Admin",
+    principal: {
+      id: "principal",
+      label: "Principal",
       icon: <Shield className="h-4 w-4" />,
-      href: "/super-admin/dashboard",
-      description: "Manage college, departments, and users",
+      href: "/principal/dashboard",
+      description: "Final approvals, override eligible leaves",
+      priority: ROLE_PRIORITY.principal,
     },
-  };
+    registrar: {
+      id: "registrar",
+      label: "Registrar",
+      icon: <Building2 className="h-4 w-4" />,
+      href: "/registrar/dashboard",
+      description: "Approve office staff leaves, generate reports",
+      priority: ROLE_PRIORITY.registrar,
+    },
+    hod: {
+      id: "hod",
+      label: "HOD",
+      icon: <Users className="h-4 w-4" />,
+      href: "/hod/dashboard",
+      description: "Approve faculty leaves, manage department",
+      priority: ROLE_PRIORITY.hod,
+    },
+    faculty: {
+      id: "faculty",
+      label: "Faculty",
+      icon: <User className="h-4 w-4" />,
+      href: "/dashboard",
+      description: "Request leave, view status, track overwork",
+      priority: ROLE_PRIORITY.faculty,
+    },
+    lab_assistant: {
+      id: "lab_assistant",
+      label: "Lab Assistant",
+      icon: <User className="h-4 w-4" />,
+      href: "/dashboard",
+      description: "Request leave, view status, track overwork",
+      priority: ROLE_PRIORITY.lab_assistant,
+    },
+    office_staff: {
+      id: "office_staff",
+      label: "Office Staff",
+      icon: <User className="h-4 w-4" />,
+      href: "/dashboard",
+      description: "Request leave, view status, track overwork",
+      priority: ROLE_PRIORITY.office_staff,
+    },
+  }), []); // ✅ Empty dependency array - never changes
 
-  // Get available roles for the user
-  const availableRoles = userRoles
-    .map(role => roleConfigs[role])
-    .filter(Boolean);
+  // Get available roles for the user and sort by priority
+  const availableRoles = useMemo(() => {
+    const roles = userRoles
+      .map(role => roleConfigs[role])
+      .filter(Boolean) as RoleOption[];
+    
+    // Sort by priority (lower number = higher priority)
+    return roles.sort((a, b) => a.priority - b.priority);
+  }, [userRoles, roleConfigs]);
 
-  // Auto-select first role if none selected
+  // Auto-select highest priority role if none selected
   useEffect(() => {
     if (availableRoles.length > 0 && !currentRole) {
+      // First role in sorted list = highest priority
       setCurrentRole(availableRoles[0].id);
     }
   }, [availableRoles, currentRole, setCurrentRole]);
@@ -115,7 +131,7 @@ export function RoleSwitcher() {
     router.push(config.href);
   };
 
-  // If only one role, show simple button or nothing
+  // If only one role, show nothing (or you can show a simple badge)
   if (availableRoles.length <= 1) {
     return null;
   }
