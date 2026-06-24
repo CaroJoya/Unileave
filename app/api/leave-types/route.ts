@@ -44,7 +44,10 @@ export async function GET() {
 
     // Convert to array with proper typing
     const leaveTypes: LeaveType[] = Object.entries(leaveTypesData)
-      .filter(([, data]) => data.isActive !== false)  // Only active ones
+      .filter(([, data]) => {
+        // Type guard to ensure data has isActive property
+        return data && typeof data === 'object' && 'isActive' in data && data.isActive !== false;
+      })
       .map(([id, data]) => ({
         id,
         ...data,

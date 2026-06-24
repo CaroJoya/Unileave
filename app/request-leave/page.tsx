@@ -70,7 +70,7 @@ export default function RequestLeavePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch leave types
+      // Fetch leave types - NOW USING PUBLIC ENDPOINT
       const typesResponse = await fetch("/api/leave-types");
       const typesData = await typesResponse.json();
       if (typesResponse.ok) {
@@ -78,6 +78,8 @@ export default function RequestLeavePage() {
           (type: LeaveType) => type.isActive
         );
         setLeaveTypes(activeTypes);
+      } else {
+        console.error("Failed to fetch leave types:", typesData.error);
       }
 
       // Fetch balances
@@ -113,6 +115,11 @@ export default function RequestLeavePage() {
 
   // Calculate total days when dates change - using useMemo
   const calculatedTotalDays = useMemo(() => {
+    // If half-day is selected, always return 0.5
+    if (isHalfDay) {
+      return 0.5;
+    }
+    
     if (startDate && endDate) {
       const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
@@ -120,17 +127,14 @@ export default function RequestLeavePage() {
       return 1;
     }
     return 0;
-  }, [startDate, endDate]);
+  }, [startDate, endDate, isHalfDay]);
 
   // Update totalDays when calculated value changes
-  // Using a direct assignment pattern instead of useEffect to avoid the ESLint warning
-  // We'll update totalDays in a way that doesn't trigger the setState-in-effect warning
   const [prevCalculatedDays, setPrevCalculatedDays] = useState(0);
   
   // Only update totalDays if the calculated value actually changed
   if (calculatedTotalDays !== prevCalculatedDays) {
     setPrevCalculatedDays(calculatedTotalDays);
-    // Use a state updater function to ensure we're using the latest state
     setTotalDays(calculatedTotalDays);
   }
 
@@ -140,6 +144,8 @@ export default function RequestLeavePage() {
     const config = leaveTypes.find((t) => t.id === value);
     setSelectedLeaveTypeConfig(config || null);
     setIsHalfDay(false); // Reset half-day when changing type
+    // Clear end date when changing leave type
+    setEndDate(undefined);
   };
 
   // Handle file upload
@@ -271,8 +277,7 @@ export default function RequestLeavePage() {
     }
   };
 
-  // Get selected balance - using a regular function instead of useMemo
-  // to avoid the preserve-manual-memoization warning
+  // Get selected balance
   const getSelectedBalance = () => {
     if (selectedLeaveTypeConfig) {
       return balances[selectedLeaveTypeConfig.leaveCode] || null;
@@ -280,11 +285,10 @@ export default function RequestLeavePage() {
     return null;
   };
 
-  // Check if submit should be disabled - computed directly in render
+  // Check if submit should be disabled
   const isSubmitDisabled = (() => {
     const selectedBalance = getSelectedBalance();
     
-    // Check if any required fields are missing
     if (
       !selectedLeaveType ||
       !startDate ||
@@ -293,12 +297,10 @@ export default function RequestLeavePage() {
       return true;
     }
 
-    // Check attachment requirement
     if (selectedLeaveTypeConfig?.requiresAttachment && !attachmentFile) {
       return true;
     }
 
-    // Check balance
     if (selectedLeaveTypeConfig?.deductsBalance && selectedBalance) {
       if (selectedBalance.available < totalDays) {
         return true;
@@ -308,7 +310,6 @@ export default function RequestLeavePage() {
     return submitting || false;
   })();
 
-  // Get the current selected balance for display
   const selectedBalance = getSelectedBalance();
 
   if (authLoading || loading) {
@@ -409,7 +410,13 @@ export default function RequestLeavePage() {
                     <Calendar
                       mode="single"
                       selected={startDate}
-                      onSelect={setStartDate}
+                      onSelect={(date) => {
+                        setStartDate(date);
+                        // ✅ If half-day is checked, set end date = start date
+                        if (isHalfDay && date) {
+                          setEndDate(date);
+                        }
+                      }}
                       disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
                     />
                   </PopoverContent>
@@ -423,24 +430,28 @@ export default function RequestLeavePage() {
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !endDate && "text-muted-foreground"
+                        !endDate && "text-muted-foreground",
+                        isHalfDay && "opacity-50 cursor-not-allowed"
                       )}
+                      disabled={isHalfDay}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {endDate ? format(endDate, "PPP") : "Pick a date"}
+                      {endDate ? format(endDate, "PPP") : isHalfDay ? "Same as start date" : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={endDate}
-                      onSelect={setEndDate}
-                      disabled={(date) => {
-                        if (!startDate) return true;
-                        return date < startDate;
-                      }}
-                    />
-                  </PopoverContent>
+                  {!isHalfDay && (
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={endDate}
+                        onSelect={setEndDate}
+                        disabled={(date) => {
+                          if (!startDate) return true;
+                          return date < startDate;
+                        }}
+                      />
+                    </PopoverContent>
+                  )}
                 </Popover>
               </div>
             </div>
@@ -460,7 +471,20 @@ export default function RequestLeavePage() {
                   type="checkbox"
                   id="halfDay"
                   checked={isHalfDay}
-                  onChange={(e) => setIsHalfDay(e.target.checked)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIsHalfDay(checked);
+                    
+                    // ✅ If half-day is checked, set end date = start date
+                    if (checked && startDate) {
+                      setEndDate(startDate);
+                    }
+                    
+                    // ✅ If half-day is unchecked, clear end date
+                    if (!checked) {
+                      setEndDate(undefined);
+                    }
+                  }}
                   className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
                 />
                 <Label htmlFor="halfDay" className="cursor-pointer">
