@@ -1,6 +1,7 @@
-// app/super-admin/dashboard/page.tsx (Modified)
+// app/super-admin/dashboard/page.tsx
 "use client";
 
+import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CollegeProfile } from "@/components/super-admin/CollegeProfile";
@@ -16,24 +17,21 @@ interface Department {
   name: string;
 }
 
-export default function SuperAdminDashboardPage() {
+function SuperAdminDashboardContent() {
   const { user, isLoading } = useAuthStore();
   const router = useRouter();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoadingDepartments, setIsLoadingDepartments] = useState(true);
   const initialLoadDone = useRef(false);
 
-  // ✅ FIX: Check auth in useEffect
   useEffect(() => {
     if (!isLoading && (!user || !user.roles?.includes("super_admin"))) {
       router.push("/dashboard");
     }
   }, [user, isLoading, router]);
 
-  // ✅ FIXED: Load departments when user becomes available
   useEffect(() => {
     if (!user?.collegeId || initialLoadDone.current) {
-      // If no collegeId but we have user, try without collegeId
       if (user && !user.collegeId && !initialLoadDone.current) {
         console.log("User has no collegeId, fetching all departments");
       } else {
@@ -44,7 +42,6 @@ export default function SuperAdminDashboardPage() {
     const loadDepartments = async () => {
       setIsLoadingDepartments(true);
       try {
-        // ✅ Try with collegeId first, fallback to no filter
         let url = "/api/super-admin/departments";
         if (user?.collegeId) {
           url += `?collegeId=${user.collegeId}`;
@@ -73,9 +70,8 @@ export default function SuperAdminDashboardPage() {
     };
 
     loadDepartments();
-  }, [user, user?.collegeId]); // ✅ Depend on user and collegeId
+  }, [user, user?.collegeId]);
 
-  // ✅ Refresh function with toast feedback
   const refreshDepartments = useCallback(async () => {
     const { user: currentUser } = useAuthStore.getState();
     
@@ -164,5 +160,13 @@ export default function SuperAdminDashboardPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function SuperAdminDashboardPage() {
+  return (
+    <ErrorBoundary>
+      <SuperAdminDashboardContent />
+    </ErrorBoundary>
   );
 }

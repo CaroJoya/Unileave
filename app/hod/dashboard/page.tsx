@@ -1,5 +1,7 @@
+// app/hod/dashboard/page.tsx
 "use client";
 
+import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
@@ -23,7 +25,7 @@ interface DashboardData {
   facultyCount: number;
 }
 
-export default function HODDashboardPage() {
+function HODDashboardContent() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -31,7 +33,6 @@ export default function HODDashboardPage() {
   const hasRedirected = useRef(false);
   const hasFetched = useRef(false);
 
-  // Auth check - runs only once
   useEffect(() => {
     if (!authLoading && !user && !hasRedirected.current) {
       hasRedirected.current = true;
@@ -61,7 +62,6 @@ export default function HODDashboardPage() {
     }
   }, []);
 
-  // Data fetch - runs only once
   useEffect(() => {
     if (user?.roles?.includes("hod") && !hasFetched.current) {
       hasFetched.current = true;
@@ -69,7 +69,6 @@ export default function HODDashboardPage() {
     }
   }, [user, fetchDashboardData]);
 
-  // Show loading while checking auth
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -153,7 +152,6 @@ export default function HODDashboardPage() {
         ))}
       </div>
 
-      {/* Quick Actions */}
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
         <div className="grid gap-4 md:grid-cols-3">
@@ -187,5 +185,13 @@ export default function HODDashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function HODDashboardPage() {
+  return (
+    <ErrorBoundary>
+      <HODDashboardContent />
+    </ErrorBoundary>
   );
 }

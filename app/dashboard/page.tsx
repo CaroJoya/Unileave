@@ -1,6 +1,7 @@
 // app/dashboard/page.tsx
 "use client";
 
+import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -53,7 +54,7 @@ interface DashboardData {
   };
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
   const { user, userRoles, isLoading: authLoading } = useAuthStore();
   const { currentRole } = useRoleStore();
   const router = useRouter();
@@ -116,18 +117,6 @@ export default function DashboardPage() {
           router.push("/principal/dashboard");
           return;
         }
-      }
-
-      // If user has currentRole set to a staff role OR has only staff roles
-      // Show the regular staff dashboard
-      const isStaffRole =
-        currentRole &&
-        ["faculty", "lab_assistant", "office_staff"].includes(currentRole);
-      const hasOnlyStaffRoles = userRoles.every((r) => staffRoles.includes(r));
-
-      if (isStaffRole || hasOnlyStaffRoles) {
-        // Show staff dashboard - this is the normal faculty/LA/OS experience
-        // The dashboard will display based on the actual roles
       }
     }
   }, [user, userRoles, authLoading, router, currentRole]);
@@ -195,7 +184,6 @@ export default function DashboardPage() {
 
       const balances = balanceData.balances || {};
       
-      // ✅ FIX: Safely calculate totals with null/undefined checks
       const totalAvailable = Object.values(balances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
@@ -271,11 +259,6 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
-  // ========================================
-  // STAFF DASHBOARD - Same for faculty, lab_assistant, office_staff
-  // This is what multi-role users see when they switch to staff role
-  // ========================================
-
   const getRoleLabel = () => {
     if (userRoles.includes("faculty")) return "Faculty";
     if (userRoles.includes("lab_assistant")) return "Lab Assistant";
@@ -283,10 +266,8 @@ export default function DashboardPage() {
     return "Staff";
   };
 
-  // Show the same staff dashboard that normal faculty/LA/OS users see
   return (
     <div className="container mx-auto py-8 px-4">
-      {/* Welcome Section */}
       <div className="mb-8">
         <div className="flex flex-wrap justify-between items-start gap-4">
           <div>
@@ -304,7 +285,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4 mb-8">
         <Card>
           <CardContent className="pt-6">
@@ -389,7 +369,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Quick Actions */}
       <div className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
         <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
@@ -435,9 +414,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Balance Details & Overwork */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Balance Details */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Leave Balance Details</CardTitle>
@@ -447,7 +424,6 @@ export default function DashboardPage() {
             {data.balances && Object.keys(data.balances).length > 0 ? (
               <div className="space-y-3">
                 {Object.entries(data.balances).map(([type, balance]) => {
-                  // ✅ FIX: Safe access with fallback values
                   const available = balance?.available ?? 0;
                   const allocated = balance?.allocated ?? 0;
                   const used = balance?.used ?? 0;
@@ -485,7 +461,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Overwork Summary */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -553,7 +528,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Additional Quick Links */}
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Other Resources</h2>
         <div className="grid gap-4 md:grid-cols-3">
@@ -598,5 +572,13 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <ErrorBoundary>
+      <DashboardContent />
+    </ErrorBoundary>
   );
 }

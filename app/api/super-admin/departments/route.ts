@@ -14,7 +14,7 @@ interface DepartmentData {
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
-  [key: string]: unknown; // For any additional fields
+  [key: string]: unknown;
 }
 
 interface UserData {
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
 
     // ✅ Get collegeId from query params or use user's collegeId
     const { searchParams } = new URL(request.url);
-    const collegeId = searchParams.get("collegeId") || userData.collegeId || "college_001";
+    const collegeId = searchParams.get("collegeId") || userData.collegeId;
 
     console.log("Fetching departments for college:", collegeId);
 
@@ -127,8 +127,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Department name is required" }, { status: 400 });
     }
 
-    // ✅ Use user's collegeId
-    const collegeId = userData.collegeId || "college_001";
+    // ✅ CRITICAL FIX: Use user's collegeId instead of hardcoded "college_001"
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
+    }
+
     const collegeSnapshot = await rtdb.ref(`colleges/${collegeId}`).once("value");
     const college = collegeSnapshot.val() as { name?: string } | null;
 

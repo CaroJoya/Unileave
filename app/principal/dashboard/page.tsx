@@ -1,5 +1,7 @@
+// app/principal/dashboard/page.tsx
 "use client";
 
+import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
@@ -23,7 +25,7 @@ interface DashboardData {
   overrideEligible: number;
 }
 
-export default function PrincipalDashboardPage() {
+function PrincipalDashboardContent() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -31,7 +33,6 @@ export default function PrincipalDashboardPage() {
   const hasRedirected = useRef(false);
   const hasFetched = useRef(false);
 
-  // Auth check - runs only once
   useEffect(() => {
     if (!authLoading && !user && !hasRedirected.current) {
       hasRedirected.current = true;
@@ -61,7 +62,6 @@ export default function PrincipalDashboardPage() {
     }
   }, []);
 
-  // Data fetch - runs only once
   useEffect(() => {
     if (user?.roles?.includes("principal") && !hasFetched.current) {
       hasFetched.current = true;
@@ -152,7 +152,6 @@ export default function PrincipalDashboardPage() {
         ))}
       </div>
 
-      {/* Quick Actions */}
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
         <div className="grid gap-4 md:grid-cols-3">
@@ -186,5 +185,13 @@ export default function PrincipalDashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PrincipalDashboardPage() {
+  return (
+    <ErrorBoundary>
+      <PrincipalDashboardContent />
+    </ErrorBoundary>
   );
 }

@@ -1,5 +1,7 @@
+// app/registrar/dashboard/page.tsx
 "use client";
 
+import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
@@ -27,7 +29,7 @@ interface DashboardData {
   rejectedThisMonth: number;
 }
 
-export default function RegistrarDashboardPage() {
+function RegistrarDashboardContent() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -35,7 +37,6 @@ export default function RegistrarDashboardPage() {
   const hasRedirected = useRef(false);
   const hasFetched = useRef(false);
 
-  // Auth check - runs only once
   useEffect(() => {
     if (!authLoading && !user && !hasRedirected.current) {
       hasRedirected.current = true;
@@ -65,7 +66,6 @@ export default function RegistrarDashboardPage() {
     }
   }, []);
 
-  // Data fetch - runs only once
   useEffect(() => {
     if (user?.roles?.includes("registrar") && !hasFetched.current) {
       hasFetched.current = true;
@@ -170,7 +170,6 @@ export default function RegistrarDashboardPage() {
         ))}
       </div>
 
-      {/* Quick Actions */}
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
         <div className="grid gap-4 md:grid-cols-3">
@@ -204,5 +203,13 @@ export default function RegistrarDashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RegistrarDashboardPage() {
+  return (
+    <ErrorBoundary>
+      <RegistrarDashboardContent />
+    </ErrorBoundary>
   );
 }

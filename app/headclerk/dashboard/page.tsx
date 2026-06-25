@@ -1,6 +1,7 @@
 // app/headclerk/dashboard/page.tsx
 "use client";
 
+import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -111,7 +112,7 @@ const defaultAllocations: Record<RoleKey, { CL: number; EL: number; ML: number; 
   head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
 };
 
-export default function HeadClerkDashboardPage() {
+function HeadClerkDashboardContent() {
   const { user, isLoading } = useAuthStore();
   const router = useRouter();
 
@@ -1486,5 +1487,13 @@ export default function HeadClerkDashboardPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function HeadClerkDashboardPage() {
+  return (
+    <ErrorBoundary>
+      <HeadClerkDashboardContent />
+    </ErrorBoundary>
   );
 }

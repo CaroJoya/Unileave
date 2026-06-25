@@ -75,6 +75,10 @@ export async function GET(request: Request) {
     const endDate = searchParams.get("endDate") || "";
     const search = searchParams.get("search") || "";
 
+    // Parse pagination parameters
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
+    const offset = parseInt(searchParams.get("offset") || "0");
+
     const collegeId = registrarData.collegeId;
 
     // Get all office staff and head clerks in the college
@@ -133,11 +137,21 @@ export async function GET(request: Request) {
       );
     }
 
+    // Sort by createdAt descending
+    filteredRequests.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    // Apply pagination
+    const totalResults = filteredRequests.length;
+    const paginatedRequests = filteredRequests.slice(offset, offset + limit);
+    const hasMore = offset + limit < totalResults;
+
     // Get revision history for each request
     const revisionSnapshot = await rtdb.ref("revisionHistory").once("value");
     const allRevisions = revisionSnapshot.val() as Record<string, RevisionHistory> | null || {};
 
-    const requestsWithRevisions = filteredRequests.map(req => {
+    const requestsWithRevisions = paginatedRequests.map(req => {
       const requestRevisions = Object.values(allRevisions).filter(
         (rev) => rev.leaveRequestId === req.id
       );
@@ -148,11 +162,6 @@ export async function GET(request: Request) {
       };
     });
 
-    // Sort by createdAt descending
-    requestsWithRevisions.sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-
     // Get departments for filters
     const departmentsSnapshot = await rtdb.ref("departments").once("value");
     const departments = departmentsSnapshot.val() as Record<string, { id: string; name: string }> | null || {};
@@ -161,10 +170,23 @@ export async function GET(request: Request) {
       name: dept.name,
     }));
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       requests: requestsWithRevisions,
       departments: departmentsList,
+      pagination: {
+        limit,
+        offset,
+        hasMore,
+        total: totalResults,
+      },
     });
+
+    // Add pagination headers
+    response.headers.set("X-Total-Count", String(totalResults));
+    response.headers.set("X-Limit", String(limit));
+    response.headers.set("X-Offset", String(offset));
+
+    return response;
   } catch (error) {
     console.error("Error fetching registrar leaves:", error);
     return NextResponse.json({ error: "Failed to fetch leaves" }, { status: 500 });
