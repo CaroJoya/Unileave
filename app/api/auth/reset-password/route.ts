@@ -1,5 +1,6 @@
+// app/api/auth/reset-password/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/firebase/admin";
+import { getAuth } from "@/lib/firebase/admin";
 
 export async function POST(request: Request) {
   try {
@@ -19,11 +20,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify the reset token and update password
-    // Note: Firebase Admin SDK doesn't have a direct method to verify reset tokens
-    // We need to use the Firebase Auth REST API or client SDK
-    // For now, we'll implement using the REST API
-    
+    const auth = getAuth();
+    if (!auth) {
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
     const response = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${apiKey}`,

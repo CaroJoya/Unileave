@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth, rtdb } from "@/lib/firebase/admin";
+//import { auth, rtdb } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
-
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
+const rtdb = getRTDB();
+const auth = getAuth();
 export async function POST() {
   try {
     const cookieStore = await cookies();

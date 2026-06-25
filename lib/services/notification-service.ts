@@ -1,5 +1,5 @@
-// lib/services/notification-service.ts
-import { rtdb } from "@/lib/firebase/admin";
+// lib/services/notification-service.ts - FIXED
+import { getRTDB } from "@/lib/firebase/admin";
 import { NotificationType, NotificationTitles } from "@/lib/constants/notification-types";
 
 export interface CreateNotificationParams {
@@ -29,6 +29,7 @@ export async function createNotification({
   message,
   metadata = {},
 }: CreateNotificationParams): Promise<string> {
+  const rtdb = getRTDB();
   if (!rtdb) {
     console.warn("RTDB not initialized, skipping notification");
     return "";
@@ -58,6 +59,7 @@ export async function createNotification({
 }
 
 export async function markNotificationAsRead(notificationId: string, userId: string): Promise<boolean> {
+  const rtdb = getRTDB();
   if (!rtdb) return false;
 
   try {
@@ -80,6 +82,7 @@ export async function markNotificationAsRead(notificationId: string, userId: str
 }
 
 export async function markAllNotificationsAsRead(userId: string): Promise<boolean> {
+  const rtdb = getRTDB();
   if (!rtdb) return false;
 
   try {
@@ -105,6 +108,7 @@ export async function markAllNotificationsAsRead(userId: string): Promise<boolea
 }
 
 export async function getUserNotifications(userId: string, limit = 50): Promise<Notification[]> {
+  const rtdb = getRTDB();
   if (!rtdb) return [];
 
   try {
@@ -124,6 +128,7 @@ export async function getUserNotifications(userId: string, limit = 50): Promise<
 }
 
 export async function getUnreadCount(userId: string): Promise<number> {
+  const rtdb = getRTDB();
   if (!rtdb) return 0;
 
   try {

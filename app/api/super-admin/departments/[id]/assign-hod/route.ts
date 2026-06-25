@@ -1,5 +1,6 @@
+// app/api/super-admin/departments/[id]/assign-hod/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export async function PUT(
@@ -15,9 +16,15 @@ export async function PUT(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -30,7 +37,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { hodId } = body; // Can be a string (UID) or "none"
+    const { hodId } = body;
 
     const deptRef = rtdb.ref(`departments/${id}`);
     const deptSnapshot = await deptRef.once("value");
@@ -40,9 +47,7 @@ export async function PUT(
       return NextResponse.json({ error: "Department not found" }, { status: 404 });
     }
 
-    // Handle un-assigning HOD
     if (hodId === "none" || !hodId) {
-      // If there was a previous HOD, clear their department reference
       if (existingDept.hodId) {
         const oldHodRef = rtdb.ref(`users/${existingDept.hodId}`);
         await oldHodRef.update({
@@ -52,7 +57,6 @@ export async function PUT(
         });
       }
 
-      // Clear HOD from department
       await deptRef.update({
         hodId: null,
         hodName: null,
@@ -62,7 +66,6 @@ export async function PUT(
       return NextResponse.json({ success: true, message: "HOD unassigned successfully" });
     }
 
-    // Fetch the new HOD user data
     const hodSnapshot = await rtdb.ref(`users/${hodId}`).once("value");
     const hodData = hodSnapshot.val();
 
@@ -70,12 +73,10 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Validate that the user has the 'hod' role
     if (!hodData.roles || !hodData.roles.includes("hod")) {
       return NextResponse.json({ error: "User does not have the 'hod' role" }, { status: 400 });
     }
 
-    // If there was a previous HOD, clear their department reference
     if (existingDept.hodId && existingDept.hodId !== hodId) {
       const oldHodRef = rtdb.ref(`users/${existingDept.hodId}`);
       await oldHodRef.update({
@@ -85,14 +86,12 @@ export async function PUT(
       });
     }
 
-    // Update the department with the new HOD
     await deptRef.update({
       hodId: hodId,
       hodName: hodData.name,
       updatedAt: new Date().toISOString(),
     });
 
-    // Update the HOD user's department reference
     await rtdb.ref(`users/${hodId}`).update({
       departmentId: id,
       departmentName: existingDept.name,

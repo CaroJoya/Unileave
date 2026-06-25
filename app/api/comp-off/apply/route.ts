@@ -1,12 +1,11 @@
-// app/api/comp-off/apply/route.ts - Complete fixed version
+// app/api/comp-off/apply/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { determineApprover, getStatusForApprover } from "@/lib/utils/routing";
 import type { LeaveRequest, LeaveStatus } from "@/types/leave";
 import type { Role } from "@/types/roles";
 
-// Extend LeaveRequest to include compOffCreditsUsed
 interface ExtendedLeaveRequest extends LeaveRequest {
   compOffCreditsUsed?: {
     creditId: string;
@@ -50,15 +49,18 @@ async function getApproverUserId(
   collegeId: string,
   departmentId?: string
 ): Promise<string | null> {
+  const rtdb = getRTDB();
+  if (!rtdb) return null;
+
   if (role === "hod" && departmentId) {
-    const deptSnapshot = await rtdb?.ref(`departments/${departmentId}`).once("value");
-    const dept = deptSnapshot?.val() as DepartmentData | null;
+    const deptSnapshot = await rtdb.ref(`departments/${departmentId}`).once("value");
+    const dept = deptSnapshot.val() as DepartmentData | null;
     return dept?.hodId || null;
   }
 
   if (role === "registrar") {
-    const usersSnapshot = await rtdb?.ref("users").once("value");
-    const users = usersSnapshot?.val() as Record<string, RegistrarUserData> | null || {};
+    const usersSnapshot = await rtdb.ref("users").once("value");
+    const users = usersSnapshot.val() as Record<string, RegistrarUserData> | null || {};
     for (const [uid, user] of Object.entries(users)) {
       if (user.roles?.includes("registrar") && user.collegeId === collegeId) {
         return uid;
@@ -68,8 +70,8 @@ async function getApproverUserId(
   }
 
   if (role === "principal") {
-    const collegeSnapshot = await rtdb?.ref(`colleges/${collegeId}`).once("value");
-    const college = collegeSnapshot?.val() as CollegeData | null;
+    const collegeSnapshot = await rtdb.ref(`colleges/${collegeId}`).once("value");
+    const college = collegeSnapshot.val() as CollegeData | null;
     return college?.principalId || null;
   }
 
@@ -85,14 +87,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get user data
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val() as UserData | null;
 
@@ -100,7 +108,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Principal cannot request leave
     if (userData.roles?.includes("principal")) {
       return NextResponse.json(
         { error: "Principal cannot request leave" },
@@ -118,7 +125,6 @@ export async function POST(request: Request) {
       reason,
     } = body;
 
-    // Validation
     if (!creditId) {
       return NextResponse.json({ error: "Credit ID is required" }, { status: 400 });
     }
@@ -145,7 +151,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get the comp-off credit
     const creditSnapshot = await rtdb.ref(`compOffCredits/${creditId}`).once("value");
     const credit = creditSnapshot.val() as CompOffCredit | null;
 
@@ -153,7 +158,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Comp-off credit not found" }, { status: 404 });
     }
 
-    // Verify ownership
     if (credit.userId !== userId) {
       return NextResponse.json(
         { error: "Not authorized to use this credit" },
@@ -161,7 +165,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if credit is active
     if (credit.status !== "active") {
       return NextResponse.json(
         { error: `Credit is ${credit.status}. Cannot use.` },
@@ -169,7 +172,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check available days
     const availableDays = credit.creditedDays - credit.usedDays;
     if (availableDays < daysToUse) {
       return NextResponse.json(
@@ -180,7 +182,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check expiry
     const expiryDate = new Date(credit.expiryDate);
     const today = new Date();
     if (expiryDate < today) {
@@ -190,7 +191,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Determine approval routing
     const userRoles = userData.roles as Role[];
     const route = determineApprover(userRoles, "CO");
     const approverRole = route.firstApproverRole;
@@ -210,7 +210,6 @@ export async function POST(request: Request) {
     const status = getStatusForApprover(approverRole) as LeaveStatus;
     const requestId = `leave_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
-    // Create leave request for comp-off using ExtendedLeaveRequest
     const leaveRequest: ExtendedLeaveRequest = {
       id: requestId,
       applicantId: userId,
@@ -243,22 +242,14 @@ export async function POST(request: Request) {
       updatedAt: new Date().toISOString(),
     };
 
-    // Store in RTDB - use a type-safe approach without 'any'
-    // Convert to a plain object that RTDB can handle
-    const requestData = {
-      ...leaveRequest,
-      compOffCreditsUsed: leaveRequest.compOffCreditsUsed,
-    };
-    await rtdb.ref(`leaveRequests/${requestId}`).set(requestData);
+    await rtdb.ref(`leaveRequests/${requestId}`).set(leaveRequest);
 
-    // Update the credit - mark as pending usage
     await rtdb.ref(`compOffCredits/${creditId}`).update({
       status: "pending_usage",
       pendingDays: daysToUse,
       updatedAt: new Date().toISOString(),
     });
 
-    // Create comp-off usage record
     const usageId = `co_usage_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`compOffUsage/${usageId}`).set({
       id: usageId,
@@ -272,7 +263,6 @@ export async function POST(request: Request) {
       status: "pending",
     });
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -288,7 +278,6 @@ export async function POST(request: Request) {
       compOffCreditId: creditId,
     });
 
-    // Create notification for approver
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,

@@ -1,6 +1,6 @@
-// app/api/registrar/leaves/route.ts
+// app/api/registrar/leaves/route.ts - COMPLETE FIXED FILE WITH PAGINATION
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface LeaveRequest {
@@ -50,8 +50,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -65,7 +72,7 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const view = searchParams.get("view") || "pending"; // pending, all
+    const view = searchParams.get("view") || "pending";
     const departmentId = searchParams.get("departmentId") || "";
     const role = searchParams.get("role") || "";
     const leaveType = searchParams.get("leaveType") || "";
@@ -75,13 +82,11 @@ export async function GET(request: Request) {
     const endDate = searchParams.get("endDate") || "";
     const search = searchParams.get("search") || "";
 
-    // Parse pagination parameters
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
     const offset = parseInt(searchParams.get("offset") || "0");
 
     const collegeId = registrarData.collegeId;
 
-    // Get all office staff and head clerks in the college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
@@ -92,21 +97,17 @@ export async function GET(request: Request) {
       )
       .map(([uid]) => uid);
 
-    // Get all leave requests
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Filter by staff users
     let filteredRequests = Object.values(allRequests).filter(req => 
       staffUserIds.includes(req.applicantId)
     );
 
-    // Apply view filter
     if (view === "pending") {
       filteredRequests = filteredRequests.filter(req => req.status === "Pending_Registrar");
     }
 
-    // Apply additional filters
     if (departmentId) {
       filteredRequests = filteredRequests.filter(req => req.departmentId === departmentId);
     }
@@ -137,17 +138,14 @@ export async function GET(request: Request) {
       );
     }
 
-    // Sort by createdAt descending
     filteredRequests.sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
-    // Apply pagination
     const totalResults = filteredRequests.length;
     const paginatedRequests = filteredRequests.slice(offset, offset + limit);
     const hasMore = offset + limit < totalResults;
 
-    // Get revision history for each request
     const revisionSnapshot = await rtdb.ref("revisionHistory").once("value");
     const allRevisions = revisionSnapshot.val() as Record<string, RevisionHistory> | null || {};
 
@@ -162,7 +160,6 @@ export async function GET(request: Request) {
       };
     });
 
-    // Get departments for filters
     const departmentsSnapshot = await rtdb.ref("departments").once("value");
     const departments = departmentsSnapshot.val() as Record<string, { id: string; name: string }> | null || {};
     const departmentsList = Object.values(departments).map((dept) => ({
@@ -181,7 +178,6 @@ export async function GET(request: Request) {
       },
     });
 
-    // Add pagination headers
     response.headers.set("X-Total-Count", String(totalResults));
     response.headers.set("X-Limit", String(limit));
     response.headers.set("X-Offset", String(offset));

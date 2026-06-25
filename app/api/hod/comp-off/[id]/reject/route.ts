@@ -1,10 +1,9 @@
-// app/api/hod/comp-off/[id]/reject/route.ts - COMPLETE FILE WITH FIXED TYPES
+// app/api/hod/comp-off/[id]/reject/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { sendEmail, getCompOffRejectedEmail } from "@/lib/utils/email";
 
-// 🆕 Define proper interfaces
 interface CompOffCredit {
   id: string;
   userId: string;
@@ -20,7 +19,7 @@ interface UserData {
   name: string;
   email: string;
   departmentId: string;
-  roles?: string[]; // ✅ Added roles as optional
+  roles?: string[];
 }
 
 interface HodData {
@@ -58,8 +57,15 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -86,13 +92,11 @@ export async function POST(
       return NextResponse.json({ error: "Not authorized for this user" }, { status: 403 });
     }
 
-    // Update comp-off credit status
     await rtdb.ref(`compOffCredits/${id}`).update({
       status: "rejected",
       updatedAt: new Date().toISOString(),
     });
 
-    // Find and restore the associated leave request - with proper types
     const leaveRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const leaveRequests = leaveRequestsSnapshot.val() as Record<string, LeaveRequest> | null || {};
     let associatedRequestId: string | null = null;
@@ -106,7 +110,6 @@ export async function POST(
       }
     }
 
-    // If found, update the leave request status to reflect rejection
     if (associatedRequestId && associatedRequest) {
       await rtdb.ref(`leaveRequests/${associatedRequestId}`).update({
         status: "Rejected_HOD",
@@ -114,7 +117,6 @@ export async function POST(
       });
     }
 
-    // Update any pending usage records - with proper types
     const usageSnapshot = await rtdb.ref("compOffUsage").once("value");
     const usageRecords = usageSnapshot.val() as Record<string, CompOffUsage> | null || {};
 
@@ -128,7 +130,6 @@ export async function POST(
       }
     }
 
-    // Create notification
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -144,7 +145,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // Send email
     if (userData?.email) {
       await sendEmail({
         to: userData.email,

@@ -1,11 +1,10 @@
-// app/api/leave/request/[id]/cancel/route.ts
+// app/api/leave/request/[id]/cancel/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import type { LeaveRequest, LeaveStatus } from "@/types/leave";
 
-// Type definitions
 interface LeaveTypeConfig {
   deductsBalance: boolean;
 }
@@ -33,8 +32,11 @@ const CANCELLABLE_STATUSES: LeaveStatus[] = [
 ];
 
 async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
-  const typesSnapshot = await rtdb?.ref("leaveTypes").once("value");
-  const types = typesSnapshot?.val() as Record<string, LeaveTypeData> | null || {};
+  const rtdb = getRTDB();
+  if (!rtdb) return null;
+  
+  const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
+  const types = typesSnapshot.val() as Record<string, LeaveTypeData> | null || {};
 
   for (const [, type] of Object.entries(types)) {
     if (type.leaveCode === leaveCode && type.isActive) {
@@ -59,14 +61,20 @@ export async function PUT(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get leave request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const leaveRequest = requestSnapshot.val() as LeaveRequest | null;
 
@@ -74,7 +82,6 @@ export async function PUT(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // Check if user is the applicant
     if (leaveRequest.applicantId !== userId) {
       return NextResponse.json(
         { error: "Not authorized to cancel this request" },
@@ -82,7 +89,6 @@ export async function PUT(
       );
     }
 
-    // Check if cancellable
     if (!CANCELLABLE_STATUSES.includes(leaveRequest.status)) {
       return NextResponse.json(
         { error: "This request cannot be cancelled at this stage" },
@@ -90,7 +96,6 @@ export async function PUT(
       );
     }
 
-    // Restore balance if leave type deducts balance
     const leaveTypeConfig = await getLeaveTypeConfig(leaveRequest.leaveType);
     if (leaveTypeConfig?.deductsBalance && !leaveRequest.balanceRestored) {
       const academicYear = getCurrentAcademicYear();
@@ -114,7 +119,6 @@ export async function PUT(
       }
     }
 
-    // Update request status
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Cancelled",
       balanceRestored: true,
@@ -123,7 +127,6 @@ export async function PUT(
       updatedAt: new Date().toISOString(),
     });
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -138,7 +141,6 @@ export async function PUT(
       actionAt: new Date().toISOString(),
     });
 
-    // Create notification for approver
     if (leaveRequest.currentApproverId) {
       const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       await rtdb.ref(`notifications/${notificationId}`).set({

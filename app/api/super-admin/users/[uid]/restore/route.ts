@@ -1,10 +1,21 @@
-// app/api/super-admin/college/assign-principal/route.ts - FIXED
+// app/api/super-admin/users/[uid]/restore/route.ts - FIXED
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
-export async function PUT(request: Request) {
+interface User {
+  status: string;
+  roles?: string[];
+  name?: string;
+  [key: string]: unknown;
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ uid: string }> }
+) {
   try {
+    const { uid } = await params;
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session")?.value;
 
@@ -26,42 +37,36 @@ export async function PUT(request: Request) {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
     const adminSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const adminData = adminSnapshot.val();
+    const adminData = adminSnapshot.val() as User | null;
     
     if (!adminData?.roles?.includes("super_admin")) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { principalId } = body;
+    const userRef = rtdb.ref(`users/${uid}`);
+    const userSnapshot = await userRef.once("value");
+    const userData = userSnapshot.val() as User | null;
 
-    if (!principalId) {
-      return NextResponse.json({ error: "Principal ID is required" }, { status: 400 });
-    }
-
-    const principalSnapshot = await rtdb.ref(`users/${principalId}`).once("value");
-    const principalData = principalSnapshot.val();
-
-    if (!principalData) {
+    if (!userData) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (!principalData.roles?.includes("principal")) {
-      return NextResponse.json({ error: "User does not have principal role" }, { status: 400 });
+    if (userData.status !== "deleted") {
+      return NextResponse.json({ error: "User is not deleted" }, { status: 400 });
     }
 
-    // Get college ID from user
-    const collegeId = adminData.collegeId || "college_001";
-
-    await rtdb.ref(`colleges/${collegeId}`).update({
-      principalId,
-      principalName: principalData.name,
+    await userRef.update({
+      status: "active",
+      deletedAt: null,
+      deletedBy: null,
+      restoredAt: new Date().toISOString(),
+      restoredBy: decodedToken.uid,
       updatedAt: new Date().toISOString(),
     });
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error assigning principal:", error);
-    return NextResponse.json({ error: "Failed to assign principal" }, { status: 500 });
+    console.error("Error restoring user:", error);
+    return NextResponse.json({ error: "Failed to restore user" }, { status: 500 });
   }
 }

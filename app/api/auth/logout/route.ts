@@ -1,3 +1,4 @@
+// app/api/auth/logout/route.ts - FIXED
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 

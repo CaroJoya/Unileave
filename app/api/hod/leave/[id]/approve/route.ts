@@ -1,6 +1,6 @@
-// app/api/hod/leave/[id]/approve/route.ts
+// app/api/hod/leave/[id]/approve/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { sendEmail, getLeaveApprovedEmail } from "@/lib/utils/email";
 import { createNotification } from "@/lib/services/notification-service";
@@ -45,14 +45,20 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const hodId = decodedToken.uid;
 
-    // Get HOD user data
     const hodSnapshot = await rtdb.ref(`users/${hodId}`).once("value");
     const hodData = hodSnapshot.val() as User | null;
 
@@ -60,7 +66,6 @@ export async function POST(
       return NextResponse.json({ error: "Not authorized - HOD only" }, { status: 403 });
     }
 
-    // Get leave request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const leaveRequest = requestSnapshot.val() as LeaveRequest | null;
 
@@ -68,17 +73,14 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // Verify HOD belongs to same department
     if (leaveRequest.departmentId !== hodData.departmentId) {
       return NextResponse.json({ error: "Not authorized for this department" }, { status: 403 });
     }
 
-    // Verify request status
     if (leaveRequest.status !== "Pending_HOD") {
       return NextResponse.json({ error: "Request is not pending HOD approval" }, { status: 400 });
     }
 
-    // Update leave request status
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Approved",
       approvedBy: "hod",
@@ -86,7 +88,6 @@ export async function POST(
       updatedAt: new Date().toISOString(),
     });
 
-    // Create approval log (legacy - keep for backward compatibility)
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -101,7 +102,6 @@ export async function POST(
       actionAt: new Date().toISOString(),
     });
 
-    // Create notification using shared service
     await createNotification({
       userId: leaveRequest.applicantId,
       type: NotificationType.LEAVE_APPROVED,
@@ -115,7 +115,6 @@ export async function POST(
       },
     });
 
-    // Create audit log using shared service
     await createAuditLog({
       userId: hodId,
       userName: hodData.name,
@@ -132,7 +131,6 @@ export async function POST(
       },
     });
 
-    // Send email to applicant
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as User | null;
 

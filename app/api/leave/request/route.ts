@@ -1,6 +1,6 @@
-// app/api/leave/request/route.ts
+// app/api/leave/request/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import { determineApprover, getStatusForApprover } from "@/lib/utils/routing";
@@ -8,7 +8,6 @@ import { sendEmail, getLeaveSubmittedEmail } from "@/lib/utils/email";
 import type { LeaveRequest, LeaveStatus, LeaveType } from "@/types/leave";
 import type { Role } from "@/types/roles";
 
-// Type definitions
 interface LeaveTypeData {
   leaveCode: string;
   isActive: boolean;
@@ -55,8 +54,11 @@ interface ExistingLeaveRequest {
 }
 
 async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeData | null> {
-  const typesSnapshot = await rtdb?.ref("leaveTypes").once("value");
-  const types = typesSnapshot?.val() as Record<string, LeaveTypeData> | null || {};
+  const rtdb = getRTDB();
+  if (!rtdb) return null;
+  
+  const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
+  const types = typesSnapshot.val() as Record<string, LeaveTypeData> | null || {};
 
   for (const [, type] of Object.entries(types)) {
     if (type.leaveCode === leaveCode && type.isActive) {
@@ -77,15 +79,18 @@ async function getApproverUserId(
   collegeId: string,
   departmentId?: string
 ): Promise<string | null> {
+  const rtdb = getRTDB();
+  if (!rtdb) return null;
+  
   if (role === "hod" && departmentId) {
-    const deptSnapshot = await rtdb?.ref(`departments/${departmentId}`).once("value");
-    const dept = deptSnapshot?.val() as DepartmentData | null;
+    const deptSnapshot = await rtdb.ref(`departments/${departmentId}`).once("value");
+    const dept = deptSnapshot.val() as DepartmentData | null;
     return dept?.hodId || null;
   }
 
   if (role === "registrar") {
-    const usersSnapshot = await rtdb?.ref("users").once("value");
-    const users = usersSnapshot?.val() as Record<string, RegistrarUserData> | null || {};
+    const usersSnapshot = await rtdb.ref("users").once("value");
+    const users = usersSnapshot.val() as Record<string, RegistrarUserData> | null || {};
     for (const [uid, user] of Object.entries(users)) {
       if (user.roles?.includes("registrar") && user.collegeId === collegeId) {
         return uid;
@@ -95,8 +100,8 @@ async function getApproverUserId(
   }
 
   if (role === "principal") {
-    const collegeSnapshot = await rtdb?.ref(`colleges/${collegeId}`).once("value");
-    const college = collegeSnapshot?.val() as CollegeData | null;
+    const collegeSnapshot = await rtdb.ref(`colleges/${collegeId}`).once("value");
+    const college = collegeSnapshot.val() as CollegeData | null;
     return college?.principalId || null;
   }
 
@@ -112,14 +117,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get user data
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val() as UserData | null;
 
@@ -127,7 +138,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Principal cannot request leave
     if (userData.roles?.includes("principal")) {
       return NextResponse.json(
         { error: "Principal cannot request leave" },
@@ -148,7 +158,6 @@ export async function POST(request: Request) {
       attachmentUrl,
     } = body;
 
-    // Validation
     if (!leaveType || !startDate || !totalDays) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -171,13 +180,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get leave type config
     const leaveTypeConfig = await getLeaveTypeConfig(leaveType);
     if (!leaveTypeConfig) {
       return NextResponse.json({ error: "Invalid leave type" }, { status: 400 });
     }
 
-    // Check half-day validation
     if (isHalfDay && !leaveTypeConfig.allowHalfDay) {
       return NextResponse.json(
         { error: "Half-day leave is not allowed for this leave type" },
@@ -199,9 +206,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check for overlapping leave requests
     const existingRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
-    const existingRequests = existingRequestsSnapshot?.val() as Record<string, ExistingLeaveRequest> | null || {};
+    const existingRequests = existingRequestsSnapshot.val() as Record<string, ExistingLeaveRequest> | null || {};
 
     const hasOverlap = Object.values(existingRequests).some((req) => {
       if (req.applicantId !== userId) return false;
@@ -227,7 +233,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check balance if leave type deducts balance
     if (leaveTypeConfig.deductsBalance) {
       const academicYear = getCurrentAcademicYear();
       const balanceKey = `${userId}_${academicYear}`;
@@ -252,7 +257,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Determine approval routing
     const userRoles = userData.roles as Role[];
     const route = determineApprover(userRoles, leaveType);
     const approverRole = route.firstApproverRole;
@@ -272,7 +276,6 @@ export async function POST(request: Request) {
     const status = getStatusForApprover(approverRole) as LeaveStatus;
     const requestId = `leave_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
-    // If leave type deducts balance, update balances
     if (leaveTypeConfig.deductsBalance) {
       const academicYear = getCurrentAcademicYear();
       const balanceKey = `${userId}_${academicYear}`;
@@ -281,7 +284,6 @@ export async function POST(request: Request) {
       const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
       if (balanceDoc) {
-        // ✅ FIX: Use proper nested object structure instead of dot notation
         const currentBalance = balanceDoc.balances[leaveType] || { pending: 0, available: 0 };
         const updateData = {
           balances: {
@@ -298,7 +300,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Create leave request
     const leaveRequest: LeaveRequest = {
       id: requestId,
       applicantId: userId,
@@ -329,7 +330,6 @@ export async function POST(request: Request) {
 
     await rtdb.ref(`leaveRequests/${requestId}`).set(leaveRequest);
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -344,7 +344,6 @@ export async function POST(request: Request) {
       actionAt: new Date().toISOString(),
     });
 
-    // Create notification for approver
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -362,7 +361,6 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // Send email notification to approver
     const approverSnapshot = await rtdb.ref(`users/${approverUserId}`).once("value");
     const approverData = approverSnapshot.val() as { email: string; name: string } | null;
 

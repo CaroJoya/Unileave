@@ -1,9 +1,8 @@
 // app/api/headclerk/attendance/route.ts - COMPLETE FILE WITH PAGINATION
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
-// Define interfaces for type safety
 interface AttendanceRecord {
   id?: string;
   userId: string;
@@ -50,9 +49,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -70,29 +75,22 @@ export async function GET(request: Request) {
     const departmentId = searchParams.get("departmentId") || "";
     const userId = searchParams.get("userId") || "";
 
-    // Parse pagination parameters
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Use UTC dates to avoid timezone issues
     const startDate = new Date(Date.UTC(year, month - 1, 1));
     const endDate = new Date(Date.UTC(year, month, 0));
-    
-    // Format: YYYY-MM for display
     const monthStr = `${year}-${month.toString().padStart(2, "0")}`;
     
-    // Get all attendance records for the month
     const attendanceSnapshot = await rtdb.ref("attendance").once("value");
     const allAttendance = attendanceSnapshot.val() as Record<string, AttendanceRecord> | null || {};
     
-    // Filter by month using UTC dates
     let results = Object.values(allAttendance).filter((record: AttendanceRecord) => {
       if (!record.date) return false;
       const recordDate = new Date(record.date);
       return recordDate >= startDate && recordDate <= endDate;
     });
     
-    // Apply filters
     if (departmentId) {
       results = results.filter((record: AttendanceRecord) => record.departmentId === departmentId);
     }
@@ -100,16 +98,13 @@ export async function GET(request: Request) {
       results = results.filter((record: AttendanceRecord) => record.userId === userId);
     }
 
-    // Apply pagination
     const totalResults = results.length;
     const paginatedResults = results.slice(offset, offset + limit);
     const hasMore = offset + limit < totalResults;
 
-    // Get all users for faculty list
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, UserRecord> | null || {};
     
-    // Get faculty/LA/office staff users
     const staffUsers = Object.entries(users)
       .filter(([, user]: [string, UserRecord]) => {
         const roles = user.roles || [];
@@ -126,7 +121,6 @@ export async function GET(request: Request) {
         roles: user.roles,
       }));
 
-    // Get departments
     const deptsSnapshot = await rtdb.ref("departments").once("value");
     const departments = deptsSnapshot.val() as Record<string, DepartmentRecord> | null || {};
 
@@ -135,7 +129,6 @@ export async function GET(request: Request) {
       name: data.name,
     }));
 
-    // Add month summary
     const summary = {
       totalRecords: totalResults,
       present: results.filter(r => r.status === "Present").length,
@@ -157,7 +150,6 @@ export async function GET(request: Request) {
       },
     });
 
-    // Add pagination headers
     response.headers.set("X-Total-Count", String(totalResults));
     response.headers.set("X-Limit", String(limit));
     response.headers.set("X-Offset", String(offset));

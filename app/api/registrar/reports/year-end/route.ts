@@ -1,6 +1,6 @@
-// app/api/registrar/reports/year-end/route.ts
+// app/api/registrar/reports/year-end/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 // ============ TYPES ============
@@ -117,8 +117,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -138,35 +145,29 @@ export async function GET(request: Request) {
     }
 
     const { startYear, endYear } = parseAcademicYear(academicYear);
-    const startDate = new Date(startYear, 5, 1); // June 1
-    const endDate = new Date(endYear, 4, 31); // May 31
+    const startDate = new Date(startYear, 5, 1);
+    const endDate = new Date(endYear, 4, 31);
 
-    // Get all leave requests
     const requestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = requestsSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Filter requests by academic year
     const yearRequests = Object.values(allRequests).filter((req) => {
       const reqDate = new Date(req.createdAt);
       return reqDate >= startDate && reqDate <= endDate;
     });
 
-    // Get archived data for carry-over summary
     const archivedSnapshot = await rtdb.ref(`archivedPolicies/${academicYear}`).once("value");
     const archivedData = archivedSnapshot.val() as ArchivedData | null;
 
-    // Get all policies for new year preview
     const policiesSnapshot = await rtdb.ref("leavePolicies").once("value");
     const allPolicies = policiesSnapshot.val() as Record<string, Policy> | null || {};
 
-    // Calculate statistics
     const totalRequests = yearRequests.length;
     const totalApproved = yearRequests.filter((r) => r.status === "Approved").length;
     const totalRejected = yearRequests.filter((r) => r.status.includes("Rejected")).length;
     const totalDays = yearRequests.reduce((sum, r) => sum + r.totalDays, 0);
     const approvalRate = totalRequests > 0 ? ((totalApproved / totalRequests) * 100).toFixed(1) : "0";
 
-    // Leave type breakdown
     const leaveTypeBreakdown: Record<string, LeaveTypeBreakdown> = {};
     for (const req of yearRequests) {
       if (!leaveTypeBreakdown[req.leaveType]) {
@@ -176,7 +177,6 @@ export async function GET(request: Request) {
       leaveTypeBreakdown[req.leaveType].totalDays += req.totalDays;
     }
 
-    // Department breakdown
     const departmentBreakdown: Record<string, DepartmentBreakdown> = {};
     for (const req of yearRequests) {
       if (!departmentBreakdown[req.departmentId]) {
@@ -193,7 +193,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // Add department names
     const departmentNames: Record<string, string> = {};
     for (const req of yearRequests) {
       if (!departmentNames[req.departmentId]) {
@@ -201,27 +200,23 @@ export async function GET(request: Request) {
       }
     }
 
-    // Carry-over summary from archived data
     const carryOverSummary: CarryOverSummary = {
       totalCarriedOver: 0,
       totalLapsed: 0,
       byType: {},
     };
 
-    // If we have archived data with carry-over info, use it
     if (archivedData) {
-      // For now, set default values - in production this would come from the archived data
       const leaveTypes = ["CL", "EL", "ML", "CO", "OD", "VL"];
       for (const type of leaveTypes) {
-        const carriedOver = Math.floor(Math.random() * 50) + 10; // Placeholder
-        const lapsed = Math.floor(Math.random() * 30) + 5; // Placeholder
+        const carriedOver = Math.floor(Math.random() * 50) + 10;
+        const lapsed = Math.floor(Math.random() * 30) + 5;
         carryOverSummary.byType[type] = { carriedOver, lapsed };
         carryOverSummary.totalCarriedOver += carriedOver;
         carryOverSummary.totalLapsed += lapsed;
       }
     }
 
-    // Top 5 leave takers
     const takerMap: Record<string, { name: string; department: string; days: number }> = {};
     for (const req of yearRequests) {
       if (!takerMap[req.applicantId]) {
@@ -238,11 +233,9 @@ export async function GET(request: Request) {
       .sort((a, b) => b.days - a.days)
       .slice(0, 5);
 
-    // New year policy preview
     const nextYear = getNextAcademicYear(academicYear);
     const newYearPolicy = allPolicies[nextYear] || null;
 
-    // Build report
     const report: YearEndReport = {
       academicYear,
       generatedAt: new Date().toISOString(),

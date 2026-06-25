@@ -1,6 +1,6 @@
-// app/api/headclerk/leave-policies/route.ts - COMPLETE FILE
+// app/api/headclerk/leave-policies/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export async function GET() {
@@ -12,8 +12,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -25,7 +32,6 @@ export async function GET() {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
     }
 
-    // Get all policies
     const policiesSnapshot = await rtdb.ref("leavePolicies").once("value");
     const policies = policiesSnapshot.val() || {};
 
@@ -50,8 +56,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -70,7 +83,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Academic year and leave allocations are required" }, { status: 400 });
     }
 
-    // 🆕 Check if policy already exists for this academic year
     const existingPolicySnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
     if (existingPolicySnapshot.exists()) {
       return NextResponse.json({ 
@@ -79,7 +91,6 @@ export async function POST(request: Request) {
       }, { status: 409 });
     }
 
-    // Validate required roles in allocations
     const requiredRoles = ["faculty", "lab_assistant", "office_staff", "hod", "registrar", "principal", "head_clerk"];
     for (const role of requiredRoles) {
       if (!leaveAllocations[role]) {
@@ -107,10 +118,7 @@ export async function POST(request: Request) {
 
     await rtdb.ref(`leavePolicies/${academicYear}`).set(policyData);
 
-    // If applying immediately, update all active users' balances
     if (applyRule === "immediate") {
-      // This will be implemented in a background job
-      // For now, just log it
       console.log(`Policy ${academicYear} applied immediately`);
     }
 
@@ -121,7 +129,6 @@ export async function POST(request: Request) {
   }
 }
 
-// 🆕 PUT Handler for updating existing policies
 export async function PUT(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -131,8 +138,15 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -151,13 +165,11 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Academic year and leave allocations are required" }, { status: 400 });
     }
 
-    // Check if policy exists
     const existingSnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
     if (!existingSnapshot.exists()) {
       return NextResponse.json({ error: "Policy not found" }, { status: 404 });
     }
 
-    // Validate required roles in allocations
     const requiredRoles = ["faculty", "lab_assistant", "office_staff", "hod", "registrar", "principal", "head_clerk"];
     for (const role of requiredRoles) {
       if (!leaveAllocations[role]) {

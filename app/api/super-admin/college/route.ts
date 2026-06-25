@@ -1,5 +1,6 @@
+// app/api/super-admin/college/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export async function GET() {
@@ -11,9 +12,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -25,7 +32,8 @@ export async function GET() {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const collegeSnapshot = await rtdb.ref("colleges/college_001").once("value");
+    const collegeId = userData.collegeId || "college_001";
+    const collegeSnapshot = await rtdb.ref(`colleges/${collegeId}`).once("value");
     const college = collegeSnapshot.val();
 
     if (!college) {
@@ -48,9 +56,15 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -69,7 +83,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "College name is required" }, { status: 400 });
     }
 
-    const collegeRef = rtdb.ref("colleges/college_001");
+    const collegeId = userData.collegeId || "college_001";
+    const collegeRef = rtdb.ref(`colleges/${collegeId}`);
     const collegeSnapshot = await collegeRef.once("value");
     const existingCollege = collegeSnapshot.val() || {};
 

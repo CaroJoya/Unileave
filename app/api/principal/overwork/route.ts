@@ -1,6 +1,6 @@
-// app/api/principal/overwork/route.ts
+// app/api/principal/overwork/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface OverworkEntry {
@@ -30,8 +30,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -46,7 +53,6 @@ export async function GET() {
 
     const collegeId = principalData.collegeId;
 
-    // Get all users in college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
@@ -54,7 +60,6 @@ export async function GET() {
       .filter(([, user]) => user.collegeId === collegeId)
       .map(([uid]) => uid);
 
-    // Get overwork entries pending approval
     const overworkSnapshot = await rtdb.ref("overworkEntries").once("value");
     const allEntries = overworkSnapshot.val() as Record<string, OverworkEntry> | null || {};
 

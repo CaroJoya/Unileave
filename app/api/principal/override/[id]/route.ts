@@ -1,6 +1,6 @@
-// app/api/principal/override/[id]/route.ts - COMPLETE FILE
+// app/api/principal/override/[id]/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import { sendEmail, getLeaveRejectedEmail } from "@/lib/utils/email";
@@ -40,16 +40,16 @@ interface LeaveBalanceDoc {
   };
 }
 
-// 🆕 Helper to get HOD ID
 async function getHODId(departmentId: string): Promise<string | null> {
+  const rtdb = getRTDB();
   if (!rtdb) return null;
   const deptSnapshot = await rtdb.ref(`departments/${departmentId}`).once("value");
   const dept = deptSnapshot.val() as { hodId: string | null } | null;
   return dept?.hodId || null;
 }
 
-// 🆕 Helper to get Registrar ID
 async function getRegistrarId(collegeId: string): Promise<string | null> {
+  const rtdb = getRTDB();
   if (!rtdb) return null;
   const usersSnapshot = await rtdb.ref("users").once("value");
   const users = usersSnapshot.val() as Record<string, { roles: string[]; collegeId: string }> | null || {};
@@ -63,6 +63,7 @@ async function getRegistrarId(collegeId: string): Promise<string | null> {
 }
 
 async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
+  const rtdb = getRTDB();
   if (!rtdb) return null;
   const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
   const types = typesSnapshot.val() as Record<string, { leaveCode: string; deductsBalance: boolean; isActive: boolean }> | null || {};
@@ -88,8 +89,15 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const body = await request.json();
@@ -109,7 +117,6 @@ export async function POST(
       return NextResponse.json({ error: "Not authorized - Principal only" }, { status: 403 });
     }
 
-    // Get leave request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const leaveRequest = requestSnapshot.val() as LeaveRequest | null;
 
@@ -117,7 +124,6 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // Validate override eligibility
     const validLeaveTypes = ["CL", "EL", "ML"];
     if (!validLeaveTypes.includes(leaveRequest.leaveType)) {
       return NextResponse.json({ error: "This leave type cannot be overridden" }, { status: 400 });
@@ -137,12 +143,10 @@ export async function POST(
       return NextResponse.json({ error: "Cannot override leave that has already started" }, { status: 400 });
     }
 
-    // Get applicant's college ID
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as { collegeId: string } | null;
     const collegeId = applicantData?.collegeId || principalData.collegeId || "";
 
-    // Restore balance if leave type deducts balance
     const leaveTypeConfig = await getLeaveTypeConfig(leaveRequest.leaveType);
     if (leaveTypeConfig?.deductsBalance) {
       const academicYear = getCurrentAcademicYear();
@@ -163,7 +167,6 @@ export async function POST(
       }
     }
 
-    // Update leave request status
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Rejected_Principal",
       overriddenBy: principalId,
@@ -173,7 +176,6 @@ export async function POST(
       updatedAt: new Date().toISOString(),
     });
 
-    // Create approval log for override
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -188,7 +190,6 @@ export async function POST(
       actionAt: new Date().toISOString(),
     });
 
-    // Create audit log
     const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`auditLogs/${auditLogId}`).set({
       id: auditLogId,
@@ -208,7 +209,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // 🆕 1. Create notification for applicant
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -225,7 +225,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // 🆕 2. Create notification for original approver (HOD or Registrar)
     let originalApproverId: string | null = null;
     if (leaveRequest.approvedBy === "hod") {
       originalApproverId = await getHODId(leaveRequest.departmentId);
@@ -252,7 +251,6 @@ export async function POST(
       });
     }
 
-    // Send email to applicant
     const applicantEmailSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantEmailData = applicantEmailSnapshot.val() as User | null;
 

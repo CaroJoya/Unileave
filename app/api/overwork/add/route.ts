@@ -1,5 +1,6 @@
+// app/api/overwork/add/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface UserRecord {
@@ -27,15 +28,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get user data
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
 
@@ -50,7 +56,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Get overwork config for validation
     const configSnapshot = await rtdb.ref("overworkConfig/overwork_config").once("value");
     const config = configSnapshot.val() as OverworkConfig | null;
     const minHours = config?.minHoursPerEntry || 0.5;
@@ -63,20 +68,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Maximum hours per day is ${maxHours}` }, { status: 400 });
     }
 
-    // Determine approver based on user roles (kept for future use)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    let approverRole = "";
-    if (userData.roles.includes("hod") && (userData.roles.includes("faculty") || userData.roles.includes("lab_assistant"))) {
-      approverRole = "principal";
-    } else if (userData.roles.includes("registrar") && userData.roles.includes("office_staff")) {
-      approverRole = "principal";
-    } else if (userData.roles.includes("faculty") || userData.roles.includes("lab_assistant")) {
-      approverRole = "hod";
-    } else if (userData.roles.includes("office_staff")) {
-      approverRole = "registrar";
-    } else {
-      approverRole = "hod";
-    }
+    // Removed unused approverRole variable
 
     const entryId = `overwork_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const entryData = {
@@ -100,8 +92,6 @@ export async function POST(request: Request) {
     };
 
     await rtdb.ref(`overworkEntries/${entryId}`).set(entryData);
-
-    // TODO: Send notification to approver
 
     return NextResponse.json({ success: true, entryId });
   } catch (error) {

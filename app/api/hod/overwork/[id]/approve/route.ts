@@ -1,6 +1,6 @@
-// app/api/hod/overwork/[id]/approve/route.ts
+// app/api/hod/overwork/[id]/approve/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { sendEmail, getOverworkApprovedEmail } from "@/lib/utils/email";
 
@@ -32,8 +32,15 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -46,7 +53,6 @@ export async function POST(
       return NextResponse.json({ error: "Not authorized - HOD only" }, { status: 403 });
     }
 
-    // Get overwork entry
     const entrySnapshot = await rtdb.ref(`overworkEntries/${id}`).once("value");
     const entry = entrySnapshot.val() as OverworkEntry | null;
 
@@ -54,7 +60,6 @@ export async function POST(
       return NextResponse.json({ error: "Overwork entry not found" }, { status: 404 });
     }
 
-    // Verify department
     if (entry.departmentId !== hodData.departmentId) {
       return NextResponse.json({ error: "Not authorized for this department" }, { status: 403 });
     }
@@ -63,15 +68,12 @@ export async function POST(
       return NextResponse.json({ error: "Overwork entry is not pending approval" }, { status: 400 });
     }
 
-    // Get overwork config
     const configSnapshot = await rtdb.ref("overworkConfig/overwork_config").once("value");
     const config = configSnapshot.val() as OverworkConfig | null;
     const conversionHours = config?.conversionHours || 5;
 
-    // Calculate earned leave days
     const earnedLeaveDays = Math.floor(entry.hours / conversionHours);
 
-    // Update overwork entry
     await rtdb.ref(`overworkEntries/${id}`).update({
       status: "approved",
       approvedBy: hodId,
@@ -80,7 +82,6 @@ export async function POST(
       earnedLeaveDays: earnedLeaveDays > 0 ? earnedLeaveDays : null,
     });
 
-    // Create comp-off credits if earned
     if (earnedLeaveDays > 0 && config?.autoConversionEnabled !== false) {
       const expiryDate = new Date();
       expiryDate.setFullYear(expiryDate.getFullYear() + 1);
@@ -99,7 +100,6 @@ export async function POST(
       });
     }
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -114,7 +114,6 @@ export async function POST(
       actionAt: new Date().toISOString(),
     });
 
-    // Create notification
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -126,7 +125,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // Send email
     const userSnapshot = await rtdb.ref(`users/${entry.userId}`).once("value");
     const userData = userSnapshot.val();
 

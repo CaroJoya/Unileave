@@ -1,8 +1,8 @@
+// app/api/super-admin/departments/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
-// ✅ Define proper types
 interface DepartmentData {
   id?: string;
   name: string;
@@ -42,9 +42,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -56,7 +62,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    // ✅ Get collegeId from query params or use user's collegeId
     const { searchParams } = new URL(request.url);
     const collegeId = searchParams.get("collegeId") || userData.collegeId;
 
@@ -65,14 +70,11 @@ export async function GET(request: Request) {
     const departmentsSnapshot = await rtdb.ref("departments").once("value");
     const departments = departmentsSnapshot.val() as Record<string, DepartmentData> | null || {};
 
-    // ✅ Filter by collegeId with proper typing
     const departmentsList = Object.entries(departments)
       .filter(([, data]) => {
-        // If department has collegeId, filter by it
         if (data.collegeId) {
           return data.collegeId === collegeId;
         }
-        // Otherwise include all (backward compatibility)
         return true;
       })
       .map(([id, data]) => ({
@@ -106,9 +108,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -127,7 +135,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Department name is required" }, { status: 400 });
     }
 
-    // ✅ CRITICAL FIX: Use user's collegeId instead of hardcoded "college_001"
     const collegeId = userData.collegeId;
     
     if (!collegeId) {

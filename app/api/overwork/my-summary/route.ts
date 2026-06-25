@@ -1,5 +1,6 @@
+// app/api/overwork/my-summary/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface OverworkEntry {
@@ -26,20 +27,24 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get overwork config
     const configSnapshot = await rtdb.ref("overworkConfig/overwork_config").once("value");
     const config = configSnapshot.val() as OverworkConfig | null;
     const conversionHours = config?.conversionHours || 5;
 
-    // Get user's overwork entries
     const overworkSnapshot = await rtdb.ref("overworkEntries").once("value");
     const allEntries = overworkSnapshot.val() as Record<string, OverworkEntry> | null || {};
     

@@ -1,6 +1,6 @@
-// app/api/registrar/vacation/route.ts
+// app/api/registrar/vacation/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface LeaveRequest {
@@ -44,8 +44,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -60,7 +67,6 @@ export async function GET() {
 
     const collegeId = registrarData.collegeId;
 
-    // Get all office staff and head clerks in the college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, User> | null || {};
     
@@ -71,18 +77,15 @@ export async function GET() {
       )
       .map(([uid]) => uid);
 
-    // Get all leave requests
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Filter for department staff with Pending_Registrar status and vacation type
     const vacationRequests = Object.values(allRequests).filter(req => 
       staffUserIds.includes(req.applicantId) &&
       req.status === "Pending_Registrar" &&
       req.leaveType === "VL"
     );
 
-    // Sort by createdAt descending
     vacationRequests.sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );

@@ -1,6 +1,6 @@
-// app/api/registrar/dashboard/route.ts
+// app/api/registrar/dashboard/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface LeaveRequest {
@@ -82,14 +82,20 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const registrarId = decodedToken.uid;
 
-    // Get registrar user data
     const registrarSnapshot = await rtdb.ref(`users/${registrarId}`).once("value");
     const registrarData = registrarSnapshot.val() as User | null;
 
@@ -99,7 +105,6 @@ export async function GET() {
 
     const collegeId = registrarData.collegeId;
 
-    // Get all office staff and head clerks in the college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
@@ -111,17 +116,14 @@ export async function GET() {
       )
       .map(([uid]) => uid);
 
-    // Get all leave requests
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allLeaveRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Get pending leave requests (Pending_Registrar status)
     const pendingLeaves = Object.values(allLeaveRequests).filter(req => 
       staffUserIds.includes(req.applicantId) && 
       req.status === "Pending_Registrar"
     );
 
-    // Get pending comp-off credits
     const compOffSnapshot = await rtdb.ref("compOffCredits").once("value");
     const allCompOff = compOffSnapshot.val() as Record<string, CompOffCredit> | null || {};
 
@@ -130,7 +132,6 @@ export async function GET() {
       credit.status === "pending_approval"
     );
 
-    // Get pending overwork entries
     const overworkSnapshot = await rtdb.ref("overworkEntries").once("value");
     const allOverwork = overworkSnapshot.val() as Record<string, OverworkEntry> | null || {};
 
@@ -139,17 +140,14 @@ export async function GET() {
       entry.status === "pending"
     );
 
-    // Get pending vacation requests (leave requests with leaveType = "VL" and Pending_Registrar)
     const pendingVacation = Object.values(allLeaveRequests).filter(req => 
       staffUserIds.includes(req.applicantId) && 
       req.status === "Pending_Registrar" &&
       req.leaveType === "VL"
     );
 
-    // Count office staff
     const officeStaffCount = staffUserIds.length;
 
-    // Calculate approved and rejected this month
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
 

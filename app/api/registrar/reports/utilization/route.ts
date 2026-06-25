@@ -1,6 +1,6 @@
-// app/api/registrar/reports/utilization/route.ts
+// app/api/registrar/reports/utilization/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 
@@ -47,8 +47,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -66,11 +73,9 @@ export async function GET(request: Request) {
 
     const collegeId = registrarData.collegeId;
 
-    // Get all departments
     const departmentsSnapshot = await rtdb.ref("departments").once("value");
     const departments = departmentsSnapshot.val() || {};
 
-    // Get all users in college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
@@ -78,15 +83,12 @@ export async function GET(request: Request) {
       .filter(([, user]) => user.collegeId === collegeId && user.status === "active")
       .map(([uid, user]) => ({ ...user, uid }));
 
-    // Get leave balances
     const balancesSnapshot = await rtdb.ref("leaveBalances").once("value");
     const allBalances = balancesSnapshot.val() as Record<string, LeaveBalancesDoc> | null || {};
 
-    // Get leave requests for the academic year
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Parse academic year for date filtering
     const [startYear, endYear] = academicYear.split("-").map(Number);
     const startDate = new Date(startYear, 5, 1);
     const endDate = new Date(endYear, 4, 31);
@@ -96,7 +98,6 @@ export async function GET(request: Request) {
       return reqDate >= startDate && reqDate <= endDate && req.status === "Approved";
     });
 
-    // Department utilization
     const departmentUtilization: {
       departmentId: string;
       departmentName: string;
@@ -111,7 +112,6 @@ export async function GET(request: Request) {
       const deptUsers = collegeUsers.filter(u => u.departmentId === deptId);
       const employeeCount = deptUsers.length;
       
-      // Calculate allocated leaves (sum of all users' CL + EL + ML)
       let allocatedLeaves = 0;
       for (const user of deptUsers) {
         const balanceKey = `${user.uid}_${academicYear}`;
@@ -123,7 +123,6 @@ export async function GET(request: Request) {
         }
       }
       
-      // Calculate used leaves from approved requests
       let usedLeaves = 0;
       for (const req of yearRequests) {
         const user = collegeUsers.find(u => u.uid === req.applicantId);
@@ -146,10 +145,8 @@ export async function GET(request: Request) {
       });
     }
 
-    // Sort by utilization percent descending
     departmentUtilization.sort((a, b) => b.utilizationPercent - a.utilizationPercent);
 
-    // Overall college totals
     const totalAllocated = departmentUtilization.reduce((sum, d) => sum + d.allocatedLeaves, 0);
     const totalUsed = departmentUtilization.reduce((sum, d) => sum + d.usedLeaves, 0);
     const totalRemaining = departmentUtilization.reduce((sum, d) => sum + d.remainingLeaves, 0);

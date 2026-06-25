@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth, rtdb } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+
+const rtdb = getRTDB();
+const auth = getAuth();
 
 export async function GET() {
   try {

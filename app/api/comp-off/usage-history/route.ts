@@ -1,6 +1,6 @@
-// app/api/comp-off/usage-history/route.ts
+// app/api/comp-off/usage-history/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface CompOffUsage {
@@ -30,19 +30,23 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get all comp-off usage records
     const usageSnapshot = await rtdb.ref("compOffUsage").once("value");
     const allUsage = usageSnapshot.val() as Record<string, CompOffUsage> | null || {};
 
-    // Filter by userId
     const userUsage = Object.entries(allUsage)
       .filter((entry) => {
         const [, usage] = entry;
@@ -54,11 +58,9 @@ export async function GET() {
       }))
       .sort((a, b) => new Date(b.usedAt).getTime() - new Date(a.usedAt).getTime());
 
-    // Get credit details for each usage
     const usageWithDetails = await Promise.all(
       userUsage.map(async (usage) => {
         try {
-          // Use non-null assertion since we already checked rtdb is not null
           const creditSnapshot = await rtdb!.ref(`compOffCredits/${usage.creditId}`).once("value");
           const credit = creditSnapshot.val() as CompOffCredit | null;
           return {

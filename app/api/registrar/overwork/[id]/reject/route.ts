@@ -1,8 +1,16 @@
-// app/api/registrar/overwork/[id]/reject/route.ts
+// app/api/registrar/overwork/[id]/reject/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { sendEmail, getOverworkRejectedEmail } from "@/lib/utils/email";
+
+interface User {
+  uid: string;
+  name: string;
+  email: string;
+  roles: string[];
+  collegeId: string;
+}
 
 export async function POST(
   request: Request,
@@ -17,15 +25,22 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const registrarId = decodedToken.uid;
 
     const registrarSnapshot = await rtdb.ref(`users/${registrarId}`).once("value");
-    const registrarData = registrarSnapshot.val();
+    const registrarData = registrarSnapshot.val() as User | null;
 
     if (!registrarData?.roles?.includes("registrar")) {
       return NextResponse.json({ error: "Not authorized - Registrar only" }, { status: 403 });
@@ -45,7 +60,6 @@ export async function POST(
       updatedAt: new Date().toISOString(),
     });
 
-    // Create audit log
     const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`auditLogs/${auditLogId}`).set({
       id: auditLogId,
@@ -70,7 +84,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // Send email
     const userSnapshot = await rtdb.ref(`users/${entry.userId}`).once("value");
     const userData = userSnapshot.val();
 

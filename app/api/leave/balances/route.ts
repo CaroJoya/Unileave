@@ -1,11 +1,10 @@
-// app/api/leave/balances/route.ts
+// app/api/leave/balances/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import type { LeaveBalancesDoc, LeaveBalance } from "@/types/leave";
 
-// Default leave quotas per role
 const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
   faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
   lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
@@ -21,7 +20,6 @@ async function getRoleQuotas(role: string, academicYear: string): Promise<Record
   if (!rtdb) return DEFAULT_QUOTAS.faculty;
 
   try {
-    // First check if there's a policy for this academic year
     const policySnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
     const policy = policySnapshot.val();
     
@@ -42,7 +40,6 @@ async function getRoleQuotas(role: string, academicYear: string): Promise<Record
     console.error("Error fetching policy:", error);
   }
   
-  // Fallback to default quotas
   const roleKey = role === "lab_assistant" ? "lab_assistant" : 
                   role === "office_staff" ? "office_staff" : role;
   return DEFAULT_QUOTAS[roleKey] || DEFAULT_QUOTAS.faculty;
@@ -82,28 +79,23 @@ export async function GET() {
     const sessionCookie = cookieStore.get("session")?.value;
 
     if (!sessionCookie) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const auth = getAuth();
     const rtdb = getRTDB();
 
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
+      console.error('Firebase Admin not initialized');
       return NextResponse.json(
-        { error: "Server configuration error" },
+        { error: 'Server configuration error' },
         { status: 500 }
       );
     }
 
-    // Verify session
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // ✅ OPTIMIZED: Parallel queries for better performance
     const [userSnapshot, balanceSnapshot] = await Promise.all([
       rtdb.ref(`users/${userId}`).once("value"),
       rtdb.ref(`leaveBalances/${userId}_${getCurrentAcademicYear()}`).once("value"),
@@ -113,32 +105,22 @@ export async function GET() {
     let balanceDoc = balanceSnapshot.val();
 
     if (!userData) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Initialize balance if it doesn't exist
     if (!balanceDoc) {
       const academicYear = getCurrentAcademicYear();
       const userRole = userData.roles?.[0] || "faculty";
       balanceDoc = await initializeBalance(userId, userRole, academicYear);
     }
 
-    // ✅ Add cache headers for better performance
     const response = NextResponse.json({
       success: true,
       balances: balanceDoc.balances,
       academicYear: balanceDoc.academicYear,
     });
 
-    // Cache for 60 seconds, stale while revalidate for 5 minutes
-    response.headers.set(
-      'Cache-Control',
-      'private, max-age=60, stale-while-revalidate=300'
-    );
-
+    response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
     return response;
   } catch (error) {
     console.error("Error fetching leave balances:", error);
@@ -149,25 +131,22 @@ export async function GET() {
   }
 }
 
-// ✅ OPTIMIZED: Batch update for balance changes
 export async function PUT(request: Request) {
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session")?.value;
 
     if (!sessionCookie) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const auth = getAuth();
     const rtdb = getRTDB();
 
     if (!auth || !rtdb) {
+      console.error('Firebase Admin not initialized');
       return NextResponse.json(
-        { error: "Server configuration error" },
+        { error: 'Server configuration error' },
         { status: 500 }
       );
     }
@@ -199,10 +178,7 @@ export async function PUT(request: Request) {
     const balanceDoc = balanceSnapshot.val() as LeaveBalancesDoc | null;
 
     if (!balanceDoc) {
-      return NextResponse.json(
-        { error: "Leave balance not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Leave balance not found" }, { status: 404 });
     }
 
     const currentBalance = balanceDoc.balances[leaveType];
@@ -229,7 +205,6 @@ export async function PUT(request: Request) {
         available: currentBalance.available - daysUsed,
       };
     } else {
-      // Restore
       updatedBalance = {
         ...currentBalance,
         pending: Math.max(0, (currentBalance.pending || 0) - daysUsed),
@@ -237,7 +212,6 @@ export async function PUT(request: Request) {
       };
     }
 
-    // ✅ OPTIMIZED: Use update with nested object instead of multiple writes
     const updateData = {
       [`balances.${leaveType}`]: updatedBalance,
       updatedAt: new Date().toISOString(),
@@ -245,20 +219,13 @@ export async function PUT(request: Request) {
 
     await balanceRef.update(updateData);
 
-    const response = NextResponse.json({
+    return NextResponse.json({
       success: true,
       balances: {
         ...balanceDoc.balances,
         [leaveType]: updatedBalance,
       },
     });
-
-    response.headers.set(
-      'Cache-Control',
-      'private, max-age=60, stale-while-revalidate=300'
-    );
-
-    return response;
   } catch (error) {
     console.error("Error updating leave balances:", error);
     return NextResponse.json(
@@ -268,32 +235,29 @@ export async function PUT(request: Request) {
   }
 }
 
-// ✅ OPTIMIZED: Bulk balance fetch for admin/department views
+// ✅ FIXED POST handler
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session")?.value;
 
     if (!sessionCookie) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const auth = getAuth();
     const rtdb = getRTDB();
 
     if (!auth || !rtdb) {
+      console.error('Firebase Admin not initialized');
       return NextResponse.json(
-        { error: "Server configuration error" },
+        { error: 'Server configuration error' },
         { status: 500 }
       );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
-    // Check if user has admin role (hod, registrar, principal, head_clerk, super_admin)
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val();
     
@@ -307,7 +271,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json();
+    const body = await request.json() as { userIds: string[]; academicYear?: string };
     const { userIds, academicYear } = body;
 
     if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
@@ -319,7 +283,6 @@ export async function POST(request: Request) {
 
     const year = academicYear || getCurrentAcademicYear();
     
-    // ✅ OPTIMIZED: Batch fetch balances for multiple users
     const balancePromises = userIds.map((uid: string) =>
       rtdb.ref(`leaveBalances/${uid}_${year}`).once("value")
     );
@@ -332,19 +295,11 @@ export async function POST(request: Request) {
       balances[uid] = snapshot.val() || null;
     });
 
-    const response = NextResponse.json({
+    return NextResponse.json({
       success: true,
       balances,
       academicYear: year,
     });
-
-    // Cache for 60 seconds
-    response.headers.set(
-      'Cache-Control',
-      'private, max-age=60, stale-while-revalidate=300'
-    );
-
-    return response;
   } catch (error) {
     console.error("Error fetching bulk balances:", error);
     return NextResponse.json(

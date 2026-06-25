@@ -1,5 +1,5 @@
-// lib/services/audit-service.ts
-import { rtdb } from "@/lib/firebase/admin";
+// lib/services/audit-service.ts - FIXED
+import { getRTDB } from "@/lib/firebase/admin";
 
 export type AuditAction = 
   | "USER_CREATED"
@@ -101,6 +101,7 @@ export async function createAuditLog({
   ipAddress,
   userAgent,
 }: CreateAuditLogParams): Promise<string> {
+  const rtdb = getRTDB();
   if (!rtdb) {
     console.warn("RTDB not initialized, skipping audit log");
     return "";
@@ -134,6 +135,7 @@ export async function createAuditLog({
 }
 
 export async function getAuditLogs(filters: AuditLogFilters = {}): Promise<AuditLog[]> {
+  const rtdb = getRTDB();
   if (!rtdb) return [];
 
   try {
@@ -142,7 +144,6 @@ export async function getAuditLogs(filters: AuditLogFilters = {}): Promise<Audit
     
     let logs = Object.values(allLogs);
     
-    // Apply filters
     if (filters.startDate) {
       logs = logs.filter((log) => log.createdAt >= filters.startDate!);
     }
@@ -159,7 +160,6 @@ export async function getAuditLogs(filters: AuditLogFilters = {}): Promise<Audit
       logs = logs.filter((log) => log.userId === filters.userId);
     }
     
-    // Sort by newest first
     logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     
     if (filters.limit && filters.limit > 0) {
@@ -171,16 +171,4 @@ export async function getAuditLogs(filters: AuditLogFilters = {}): Promise<Audit
     console.error("Failed to get audit logs:", error);
     return [];
   }
-}
-
-export async function getAuditLogsByUser(userId: string, limit = 50): Promise<AuditLog[]> {
-  return getAuditLogs({ userId, limit });
-}
-
-export async function getAuditLogsByModule(module: AuditModule, limit = 50): Promise<AuditLog[]> {
-  return getAuditLogs({ module, limit });
-}
-
-export async function getAuditLogsByAction(action: AuditAction, limit = 50): Promise<AuditLog[]> {
-  return getAuditLogs({ action, limit });
 }

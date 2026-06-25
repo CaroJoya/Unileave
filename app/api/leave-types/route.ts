@@ -1,9 +1,8 @@
-// app/api/leave-types/route.ts - COMPLETE FILE
+// app/api/leave-types/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
-// Define the shape of a leave type
 interface LeaveType {
   id: string;
   leaveCode: string;
@@ -31,21 +30,24 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
-    // Just verify the user is logged in (no role check)
     await auth.verifySessionCookie(sessionCookie);
 
-    // Get all leave types
     const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
     const leaveTypesData = leaveTypesSnapshot.val() as Record<string, Omit<LeaveType, 'id'>> | null || {};
 
-    // Convert to array with proper typing
     const leaveTypes: LeaveType[] = Object.entries(leaveTypesData)
       .filter(([, data]) => {
-        // Type guard to ensure data has isActive property
         return data && typeof data === 'object' && 'isActive' in data && data.isActive !== false;
       })
       .map(([id, data]) => ({
@@ -53,7 +55,6 @@ export async function GET() {
         ...data,
       }));
 
-    // 🆕 Add cache headers for better performance
     return NextResponse.json(
       { leaveTypes },
       {

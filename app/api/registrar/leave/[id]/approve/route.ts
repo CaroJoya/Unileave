@@ -1,6 +1,6 @@
-// app/api/registrar/leave/[id]/approve/route.ts
+// app/api/registrar/leave/[id]/approve/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { sendEmail, getLeaveApprovedEmail } from "@/lib/utils/email";
 
@@ -41,8 +41,15 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -55,7 +62,6 @@ export async function POST(
       return NextResponse.json({ error: "Not authorized - Registrar only" }, { status: 403 });
     }
 
-    // Get leave request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const leaveRequest = requestSnapshot.val() as LeaveRequest | null;
 
@@ -63,12 +69,10 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // Verify request status
     if (leaveRequest.status !== "Pending_Registrar") {
       return NextResponse.json({ error: "Request is not pending registrar approval" }, { status: 400 });
     }
 
-    // Update leave request status
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Approved",
       approvedBy: "registrar",
@@ -76,7 +80,6 @@ export async function POST(
       updatedAt: new Date().toISOString(),
     });
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -91,7 +94,6 @@ export async function POST(
       actionAt: new Date().toISOString(),
     });
 
-    // Create audit log
     const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`auditLogs/${auditLogId}`).set({
       id: auditLogId,
@@ -110,7 +112,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // Create notification for applicant
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -122,7 +123,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // Send email to applicant
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as User | null;
 

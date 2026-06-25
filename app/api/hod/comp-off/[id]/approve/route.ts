@@ -1,6 +1,6 @@
-// app/api/hod/comp-off/[id]/approve/route.ts
+// app/api/hod/comp-off/[id]/approve/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { sendEmail, getCompOffApprovedEmail } from "@/lib/utils/email";
 
@@ -28,8 +28,15 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -42,7 +49,6 @@ export async function POST(
       return NextResponse.json({ error: "Not authorized - HOD only" }, { status: 403 });
     }
 
-    // Get comp-off credit
     const creditSnapshot = await rtdb.ref(`compOffCredits/${id}`).once("value");
     const credit = creditSnapshot.val() as CompOffCredit | null;
 
@@ -50,7 +56,6 @@ export async function POST(
       return NextResponse.json({ error: "Comp-off credit not found" }, { status: 404 });
     }
 
-    // Get user to verify department
     const userSnapshot = await rtdb.ref(`users/${credit.userId}`).once("value");
     const userData = userSnapshot.val();
 
@@ -62,13 +67,11 @@ export async function POST(
       return NextResponse.json({ error: "Comp-off is not pending approval" }, { status: 400 });
     }
 
-    // Update comp-off credit status to active
     await rtdb.ref(`compOffCredits/${id}`).update({
       status: "active",
       updatedAt: new Date().toISOString(),
     });
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -83,7 +86,6 @@ export async function POST(
       actionAt: new Date().toISOString(),
     });
 
-    // Create notification
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -95,7 +97,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // Send email
     if (userData?.email) {
       await sendEmail({
         to: userData.email,

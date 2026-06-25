@@ -1,11 +1,11 @@
-// app/api/leave/request/[id]/edit/route.ts - COMPLETE FILE WITH FIXED IMPORTS
+// app/api/leave/request/[id]/edit/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import { determineApprover, getStatusForApprover } from "@/lib/utils/routing";
 import { sendEmail, getResubmittedEmail } from "@/lib/utils/email";
-import type { LeaveRequest, LeaveStatus } from "@/types/leave"; // ✅ Removed unused LeaveType
+import type { LeaveRequest, LeaveStatus } from "@/types/leave";
 import type { Role } from "@/types/roles";
 
 interface UserData {
@@ -43,14 +43,21 @@ interface LeaveTypeData {
   allowHalfDay: boolean;
 }
 
-// ✅ Removed unused LeaveBalanceDoc interface
-
 interface ExistingLeaveRequest {
   id?: string;
   applicantId: string;
   status: string;
   startDate: string;
   endDate: string;
+}
+
+interface BalanceData {
+  balances?: {
+    [key: string]: {
+      pending: number;
+      available: number;
+    };
+  };
 }
 
 const EDITABLE_STATUSES: LeaveStatus[] = [
@@ -65,6 +72,7 @@ async function getApproverUserId(
   collegeId: string,
   departmentId?: string
 ): Promise<string | null> {
+  const rtdb = getRTDB();
   if (!rtdb) return null;
   
   if (role === "hod" && departmentId) {
@@ -94,7 +102,9 @@ async function getApproverUserId(
 }
 
 async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
+  const rtdb = getRTDB();
   if (!rtdb) return null;
+  
   const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
   const types = typesSnapshot.val() as Record<string, LeaveTypeData> | null || {};
 
@@ -123,14 +133,20 @@ export async function PUT(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get user data
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val() as UserData | null;
 
@@ -138,7 +154,6 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Get existing leave request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const existingRequest = requestSnapshot.val() as LeaveRequest | null;
 
@@ -146,7 +161,6 @@ export async function PUT(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // Check if user is the applicant
     if (existingRequest.applicantId !== userId) {
       return NextResponse.json(
         { error: "Not authorized to edit this request" },
@@ -174,7 +188,6 @@ export async function PUT(
       attachmentUrl,
     } = body;
 
-    // Leave type is optional in edit (can't change leave type)
     if (leaveType && leaveType !== existingRequest.leaveType) {
       return NextResponse.json(
         { error: "Leave type cannot be changed" },
@@ -184,7 +197,6 @@ export async function PUT(
 
     const leaveTypeCode = existingRequest.leaveType;
 
-    // Validate required fields
     if (!startDate) {
       return NextResponse.json({ error: "Start date is required" }, { status: 400 });
     }
@@ -207,7 +219,6 @@ export async function PUT(
       );
     }
 
-    // Get leave type config for validation
     const leaveTypeConfig = await getLeaveTypeConfig(leaveTypeCode);
     if (!leaveTypeConfig) {
       return NextResponse.json({ error: "Invalid leave type" }, { status: 400 });
@@ -234,7 +245,6 @@ export async function PUT(
       );
     }
 
-    // Check for overlapping leave requests
     const existingRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const existingRequests = existingRequestsSnapshot.val() as Record<string, ExistingLeaveRequest> | null || {};
 
@@ -265,7 +275,6 @@ export async function PUT(
 
     const dayDifference = totalDays - existingRequest.totalDays;
 
-    // Update balance using Firebase transaction (atomic operation)
     if (
       leaveTypeConfig.deductsBalance &&
       dayDifference !== 0 &&
@@ -276,7 +285,7 @@ export async function PUT(
       const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
       
       try {
-        const result = await balanceRef.transaction((currentData) => {
+        const result = await balanceRef.transaction((currentData: BalanceData | null) => {
           if (!currentData) {
             return undefined;
           }
@@ -305,7 +314,6 @@ export async function PUT(
           };
         });
         
-        // Check if transaction was aborted
         if (result.snapshot.val() === null && dayDifference > 0) {
           return NextResponse.json(
             { error: `Insufficient balance. Need ${dayDifference} more days` },
@@ -321,7 +329,6 @@ export async function PUT(
       }
     }
 
-    // Determine new status
     let newStatus: LeaveStatus = existingRequest.status;
     let newRevisionCount = existingRequest.revisionCount || 0;
 
@@ -365,7 +372,6 @@ export async function PUT(
       newStatus = existingRequest.status;
     }
 
-    // Update leave request
     await rtdb.ref(`leaveRequests/${id}`).update({
       startDate: new Date(startDate).toISOString(),
       endDate: new Date(endDate || startDate).toISOString(),
@@ -380,7 +386,6 @@ export async function PUT(
       updatedAt: new Date().toISOString(),
     });
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -395,7 +400,6 @@ export async function PUT(
       actionAt: new Date().toISOString(),
     });
 
-    // Send email notification if resubmitting
     if (existingRequest.status === "Pending_Revision") {
       const userRoles = existingRequest.applicantRoles as Role[];
       const route = determineApprover(userRoles, leaveTypeCode);

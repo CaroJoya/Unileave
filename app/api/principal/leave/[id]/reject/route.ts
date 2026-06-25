@@ -1,6 +1,6 @@
-// app/api/principal/leave/[id]/reject/route.ts
+// app/api/principal/leave/[id]/reject/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import { sendEmail, getLeaveRejectedEmail } from "@/lib/utils/email";
@@ -39,8 +39,11 @@ interface LeaveBalanceDoc {
 }
 
 async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
-  const typesSnapshot = await rtdb?.ref("leaveTypes").once("value");
-  const types = typesSnapshot?.val() as Record<string, { leaveCode: string; deductsBalance: boolean; isActive: boolean }> | null || {};
+  const rtdb = getRTDB();
+  if (!rtdb) return null;
+  
+  const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
+  const types = typesSnapshot.val() as Record<string, { leaveCode: string; deductsBalance: boolean; isActive: boolean }> | null || {};
   
   for (const [, type] of Object.entries(types)) {
     if (type.leaveCode === leaveCode && type.isActive) {
@@ -63,8 +66,15 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const body = await request.json();
@@ -84,7 +94,6 @@ export async function POST(
       return NextResponse.json({ error: "Not authorized - Principal only" }, { status: 403 });
     }
 
-    // Get leave request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const leaveRequest = requestSnapshot.val() as LeaveRequest | null;
 
@@ -92,12 +101,10 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // Verify request status
     if (leaveRequest.status !== "Pending_Principal") {
       return NextResponse.json({ error: "Request is not pending principal approval" }, { status: 400 });
     }
 
-    // Restore balance if leave type deducts balance
     const leaveTypeConfig = await getLeaveTypeConfig(leaveRequest.leaveType);
     if (leaveTypeConfig?.deductsBalance) {
       const academicYear = getCurrentAcademicYear();
@@ -118,14 +125,12 @@ export async function POST(
       }
     }
 
-    // Update leave request status
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Rejected_Principal",
       balanceRestored: leaveTypeConfig?.deductsBalance === true,
       updatedAt: new Date().toISOString(),
     });
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -140,7 +145,6 @@ export async function POST(
       actionAt: new Date().toISOString(),
     });
 
-    // Create audit log
     const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`auditLogs/${auditLogId}`).set({
       id: auditLogId,
@@ -159,7 +163,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // Create notification for applicant
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -171,7 +174,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // Send email to applicant
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as User | null;
 

@@ -1,6 +1,6 @@
-// app/api/registrar/reports/overrides/route.ts
+// app/api/registrar/reports/overrides/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface LeaveRequest {
@@ -54,8 +54,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -73,20 +80,16 @@ export async function GET(request: Request) {
     const endDate = searchParams.get("endDate") || "";
     const departmentId = searchParams.get("departmentId") || "";
 
-    // Get all leave requests
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Get approval logs for override tracking
     const logsSnapshot = await rtdb.ref("approvalLogs").once("value");
     const allLogs = logsSnapshot.val() as Record<string, ApprovalLog> | null || {};
 
-    // Filter override requests
     let overrideRequests = Object.values(allRequests).filter(req => 
       req.overriddenBy !== null && req.overriddenBy !== undefined
     );
 
-    // Apply date filters
     if (startDate) {
       overrideRequests = overrideRequests.filter(req => new Date(req.overriddenAt || "") >= new Date(startDate));
     }
@@ -97,14 +100,11 @@ export async function GET(request: Request) {
       overrideRequests = overrideRequests.filter(req => req.departmentId === departmentId);
     }
 
-    // Get the original approval chain for each override
     const overridesWithDetails = overrideRequests.map(req => {
-      // Find the approval log that shows where the override happened
       const overrideLog = Object.values(allLogs).find(
         log => log.leaveRequestId === req.id && log.action === "PRINCIPAL_OVERRIDE"
       );
       
-      // Find the original status before override
       const previousLog = overrideLog ? Object.values(allLogs).find(
         log => log.leaveRequestId === req.id && log.actionAt < overrideLog.actionAt && log.action === "APPROVE"
       ) : null;
@@ -132,33 +132,27 @@ export async function GET(request: Request) {
       };
     });
 
-    // Sort by override date descending
     overridesWithDetails.sort((a, b) => 
       new Date(b.overriddenAt || "").getTime() - new Date(a.overriddenAt || "").getTime()
     );
 
-    // Summary statistics
     const totalOverrides = overrideRequests.length;
     const overridesByReason: Record<string, number> = {};
     const overridesByDepartment: Record<string, number> = {};
     const overridesByMonth: Record<string, number> = {};
 
     for (const req of overrideRequests) {
-      // By reason
       const reason = req.overrideReason || "No reason provided";
       overridesByReason[reason] = (overridesByReason[reason] || 0) + 1;
       
-      // By department
       overridesByDepartment[req.departmentName] = (overridesByDepartment[req.departmentName] || 0) + 1;
       
-      // By month
       if (req.overriddenAt) {
         const monthKey = new Date(req.overriddenAt).toLocaleString("default", { month: "short", year: "numeric" });
         overridesByMonth[monthKey] = (overridesByMonth[monthKey] || 0) + 1;
       }
     }
 
-    // Convert to arrays for easier consumption
     const overridesByDepartmentArray = Object.entries(overridesByDepartment).map(([name, count]) => ({ department: name, count }));
     const overridesByReasonArray = Object.entries(overridesByReason).map(([reason, count]) => ({ reason: reason.substring(0, 50), count }));
     const overridesByMonthArray = Object.entries(overridesByMonth).map(([month, count]) => ({ month, count }));

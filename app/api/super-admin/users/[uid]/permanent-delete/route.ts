@@ -1,6 +1,6 @@
-// app/api/super-admin/users/[uid]/permanent-delete/route.ts
+// app/api/super-admin/users/[uid]/permanent-delete/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export async function DELETE(
@@ -16,17 +16,19 @@ export async function DELETE(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
+      console.error('Firebase Admin not initialized');
       return NextResponse.json(
-        { error: "Server configuration error" },
+        { error: 'Server configuration error' },
         { status: 500 }
       );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
-    // Check if user is super admin
     const adminSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const adminData = adminSnapshot.val();
     
@@ -34,7 +36,6 @@ export async function DELETE(
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    // Check if trying to delete yourself
     if (uid === decodedToken.uid) {
       return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 });
     }
@@ -43,7 +44,6 @@ export async function DELETE(
     const userData = userSnapshot.val();
 
     if (!userData) {
-      // User doesn't exist in RTDB, but might exist in Auth
       try {
         await auth.deleteUser(uid);
         return NextResponse.json({ 
@@ -51,7 +51,6 @@ export async function DELETE(
           message: "User deleted from Auth (RTDB user not found)" 
         });
       } catch {
-        // authError is intentionally not used
         return NextResponse.json({ 
           error: "User not found in database", 
           details: "User may already be deleted" 
@@ -59,18 +58,14 @@ export async function DELETE(
       }
     }
 
-    // Delete from Auth (with error handling)
     let authDeleted = false;
     try {
       await auth.deleteUser(uid);
       authDeleted = true;
     } catch {
-      // authError is intentionally not used - we continue even if Auth deletion fails
       console.error("Auth deletion error - continuing with RTDB deletion");
-      // Continue to delete from RTDB even if Auth deletion fails
     }
 
-    // Delete from Realtime Database
     await rtdb.ref(`users/${uid}`).remove();
 
     return NextResponse.json({ 

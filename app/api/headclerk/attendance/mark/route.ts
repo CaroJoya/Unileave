@@ -1,5 +1,6 @@
+// app/api/headclerk/attendance/mark/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface UserRecord {
@@ -40,9 +41,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -65,7 +72,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
 
-    // Get user data
     const targetUserSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const targetUser = targetUserSnapshot.val() as UserRecord | null;
 
@@ -73,7 +79,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Check if attendance already exists for this date
     const attendanceSnapshot = await rtdb.ref("attendance").once("value");
     const allAttendance = attendanceSnapshot.val() as Record<string, AttendanceRecord> | null || {};
     
@@ -101,14 +106,12 @@ export async function POST(request: Request) {
     };
 
     if (existingId) {
-      // Update existing record
       const existingRecord = allAttendance[existingId];
       await rtdb.ref(`attendance/${existingId}`).update({
         ...attendanceData,
         createdAt: existingRecord.createdAt,
       });
     } else {
-      // Create new record
       const newId = `att_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       await rtdb.ref(`attendance/${newId}`).set({
         ...attendanceData,

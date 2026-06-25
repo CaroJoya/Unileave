@@ -1,17 +1,14 @@
+// app/api/super-admin/departments/[id]/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
-interface User {
-  departmentId?: string;
-  [key: string]: unknown;
-}
-
-// GET - Already handled by app/api/super-admin/departments/route.ts, but included for completeness
-export async function GET() {
-  // ... (existing logic from app/super-admin/departments/[id]/route.ts) ...
-  // This GET is not strictly necessary for the fix, but we'll keep it to avoid 404s
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params;
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session")?.value;
 
@@ -19,9 +16,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -33,18 +36,17 @@ export async function GET() {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    const departmentsSnapshot = await rtdb.ref("departments").once("value");
-    const departments = departmentsSnapshot.val() || {};
+    const deptSnapshot = await rtdb.ref(`departments/${id}`).once("value");
+    const department = deptSnapshot.val();
 
-    const departmentsList = Object.entries(departments).map(([id, data]) => ({
-      id,
-      ...(data as object),
-    }));
+    if (!department) {
+      return NextResponse.json({ error: "Department not found" }, { status: 404 });
+    }
 
-    return NextResponse.json({ departments: departmentsList });
+    return NextResponse.json({ department: { id, ...department } });
   } catch (error) {
-    console.error("Error fetching departments:", error);
-    return NextResponse.json({ error: "Failed to fetch departments" }, { status: 500 });
+    console.error("Error fetching department:", error);
+    return NextResponse.json({ error: "Failed to fetch department" }, { status: 500 });
   }
 }
 
@@ -61,9 +63,15 @@ export async function PUT(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -114,9 +122,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -128,9 +142,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    // Check if any users are assigned to this department
     const usersSnapshot = await rtdb.ref("users").once("value");
-    const users = usersSnapshot.val() as Record<string, User> | null || {};
+    const users = usersSnapshot.val() as Record<string, { departmentId?: string }> | null || {};
     
     const hasUsers = Object.values(users).some((user) => user?.departmentId === id);
 
@@ -138,14 +151,17 @@ export async function DELETE(
       return NextResponse.json({ error: "Cannot delete department with assigned users" }, { status: 400 });
     }
 
-    // Also clear hodId if the department had one
     const deptRef = rtdb.ref(`departments/${id}`);
     const deptSnapshot = await deptRef.once("value");
     const existingDept = deptSnapshot.val();
 
     if (existingDept?.hodId) {
-      // Optionally, we could also clear the user's department reference here if needed
-      // For now, just remove the department node.
+      const hodRef = rtdb.ref(`users/${existingDept.hodId}`);
+      await hodRef.update({
+        departmentId: null,
+        departmentName: null,
+        updatedAt: new Date().toISOString(),
+      });
     }
 
     await deptRef.remove();

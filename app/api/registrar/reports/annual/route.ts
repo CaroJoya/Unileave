@@ -1,6 +1,6 @@
-// app/api/registrar/reports/annual/route.ts
+// app/api/registrar/reports/annual/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface LeaveRequest {
@@ -36,8 +36,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -56,7 +63,6 @@ export async function GET(request: Request) {
 
     const collegeId = registrarData.collegeId;
 
-    // Parse academic year (e.g., "2024-2025")
     let startYear: number, endYear: number;
     if (academicYear) {
       const [start, end] = academicYear.split("-").map(Number);
@@ -75,14 +81,12 @@ export async function GET(request: Request) {
       }
     }
 
-    const startDate = new Date(startYear, 5, 1); // June 1
-    const endDate = new Date(endYear, 4, 31); // May 31
+    const startDate = new Date(startYear, 5, 1);
+    const endDate = new Date(endYear, 4, 31);
 
-    // Get all users in college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
-    // Filter users by college and department
     const collegeUsers = Object.entries(allUsers)
       .filter(([, user]) => {
         if (user.collegeId !== collegeId) return false;
@@ -93,7 +97,6 @@ export async function GET(request: Request) {
     
     const userIds = collegeUsers.map(u => u.uid);
 
-    // Get all leave requests for the academic year
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
@@ -102,7 +105,6 @@ export async function GET(request: Request) {
       return userIds.includes(req.applicantId) && reqDate >= startDate && reqDate <= endDate;
     });
 
-    // Monthly breakdown
     const monthlyBreakdown: { month: string; total: number; approved: number; rejected: number }[] = [];
     const months = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May"];
     for (let i = 0; i < months.length; i++) {
@@ -119,7 +121,6 @@ export async function GET(request: Request) {
       });
     }
 
-    // Department summary
     const departmentSummaryMap: Record<string, { departmentName: string; total: number; approved: number; totalDays: number }> = {};
     for (const req of filteredRequests) {
       if (!departmentSummaryMap[req.departmentId]) {
@@ -136,7 +137,6 @@ export async function GET(request: Request) {
     }
     const departmentSummary = Object.values(departmentSummaryMap);
 
-    // Leave type annual summary
     const leaveTypeSummary: Record<string, { count: number; totalDays: number }> = {};
     const leaveTypes = ["CL", "EL", "ML", "CO", "VL", "OD"];
     for (const type of leaveTypes) {

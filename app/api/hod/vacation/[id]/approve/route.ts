@@ -1,6 +1,6 @@
-// app/api/hod/vacation/[id]/approve/route.ts
+// app/api/hod/vacation/[id]/approve/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { sendEmail, getVacationApprovedEmail } from "@/lib/utils/email";
 
@@ -34,8 +34,15 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -48,7 +55,6 @@ export async function POST(
       return NextResponse.json({ error: "Not authorized - HOD only" }, { status: 403 });
     }
 
-    // Get leave request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const leaveRequest = requestSnapshot.val() as LeaveRequest | null;
 
@@ -56,22 +62,18 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // Verify it's a vacation request
     if (leaveRequest.leaveType !== "VL") {
       return NextResponse.json({ error: "Not a vacation request" }, { status: 400 });
     }
 
-    // Verify department
     if (leaveRequest.departmentId !== hodData.departmentId) {
       return NextResponse.json({ error: "Not authorized for this department" }, { status: 403 });
     }
 
-    // Verify status
     if (leaveRequest.status !== "Pending_HOD") {
       return NextResponse.json({ error: "Request is not pending HOD approval" }, { status: 400 });
     }
 
-    // Update leave request
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Approved",
       approvedBy: "hod",
@@ -79,7 +81,6 @@ export async function POST(
       updatedAt: new Date().toISOString(),
     });
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -94,7 +95,6 @@ export async function POST(
       actionAt: new Date().toISOString(),
     });
 
-    // Create notification
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const paidMsg = leaveRequest.vacationDetails 
       ? ` (Paid: ${leaveRequest.vacationDetails.paidDays} days, Unpaid: ${leaveRequest.vacationDetails.unpaidDays} days)`
@@ -110,7 +110,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // Send email
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val();
 

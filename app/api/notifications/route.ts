@@ -1,6 +1,6 @@
-// app/api/notifications/route.ts - COMPLETE FILE WITH FIXED ESLINT
+// app/api/notifications/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getUserNotifications, getUnreadCount } from "@/lib/services/notification-service";
 
@@ -13,14 +13,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get pagination parameters
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "20"), 100);
     const offset = parseInt(searchParams.get("offset") || "0");
@@ -29,13 +35,10 @@ export async function GET(request: Request) {
     const notifications = await getUserNotifications(userId);
     const unreadCount = await getUnreadCount(userId);
 
-    // Filter by unread if requested
-    // ✅ Changed from 'let' to 'const' since it's not reassigned
     const filteredNotifications = unreadOnly 
       ? notifications.filter(n => !n.isRead)
       : notifications;
 
-    // Paginate
     const total = filteredNotifications.length;
     const paginated = filteredNotifications.slice(offset, offset + limit);
 

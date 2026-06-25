@@ -1,6 +1,6 @@
-// app/api/hod/vacation/route.ts
+// app/api/hod/vacation/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface LeaveRequest {
@@ -43,8 +43,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -63,11 +70,9 @@ export async function GET() {
       return NextResponse.json({ error: "HOD not assigned to department" }, { status: 400 });
     }
 
-    // Get all leave requests
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Filter for department faculty/lab assistant with Pending_HOD status and vacation type
     const vacationRequests = Object.values(allRequests).filter(req => 
       req.departmentId === departmentId &&
       req.status === "Pending_HOD" &&
@@ -75,7 +80,6 @@ export async function GET() {
       (req.applicantRoles?.includes("faculty") || req.applicantRoles?.includes("lab_assistant"))
     );
 
-    // Sort by createdAt descending (newest first)
     vacationRequests.sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );

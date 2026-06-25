@@ -1,7 +1,10 @@
 // app/api/auth/register-super-admin/route.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
-import { auth, rtdb } from "@/lib/firebase/admin";
+//import { auth, rtdb } from "@/lib/firebase/admin";
 
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
+const rtdb = getRTDB();
+const auth = getAuth();
 interface FirebaseError {
   code?: string;
   message: string;

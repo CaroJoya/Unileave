@@ -1,6 +1,6 @@
-// app/api/principal/direct-approvals/route.ts
+// app/api/principal/direct-approvals/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface LeaveRequest {
@@ -49,8 +49,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -65,7 +72,6 @@ export async function GET() {
 
     const collegeId = principalData.collegeId;
 
-    // Get all users in college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
@@ -73,7 +79,6 @@ export async function GET() {
       .filter(([, user]) => user.collegeId === collegeId)
       .map(([uid]) => uid);
 
-    // Get leave requests pending principal approval
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allLeaveRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
@@ -84,7 +89,6 @@ export async function GET() {
       )
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    // Get approval logs for each request
     const logsSnapshot = await rtdb.ref("approvalLogs").once("value");
     const allLogs = logsSnapshot.val() as Record<string, ApprovalLog> | null || {};
 

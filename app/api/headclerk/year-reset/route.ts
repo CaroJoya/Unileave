@@ -1,10 +1,8 @@
-// app/api/headclerk/year-reset/route.ts
+// app/api/headclerk/year-reset/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
-
-// ============ TYPES ============
 
 interface LeavePolicy {
   academicYear: string;
@@ -77,8 +75,6 @@ interface Notification {
   createdAt: string;
 }
 
-// ============ HELPERS ============
-
 function generateYearOptions(): string[] {
   const currentYear = new Date().getFullYear();
   const options = [];
@@ -89,8 +85,6 @@ function generateYearOptions(): string[] {
   return options;
 }
 
-// ============ GET HANDLER ============
-
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -100,8 +94,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -113,14 +114,11 @@ export async function GET() {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
     }
 
-    // Get current academic year
     const currentYear = getCurrentAcademicYear();
 
-    // Get all policies
     const policiesSnapshot = await rtdb.ref("leavePolicies").once("value");
     const policies = policiesSnapshot.val() as Record<string, LeavePolicy> | null || {};
 
-    // Get all leave types for carry-over configuration
     const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
     const leaveTypes = leaveTypesSnapshot.val() as Record<string, { leaveCode: string; isActive: boolean }> | null || {};
 
@@ -128,7 +126,6 @@ export async function GET() {
       .filter((type) => type.isActive !== false)
       .map((type) => type.leaveCode);
 
-    // Check if reset was already done for current year
     const resetLogsSnapshot = await rtdb.ref("auditLogs").once("value");
     const allLogs = resetLogsSnapshot.val() as Record<string, AuditLog> | null || {};
 
@@ -163,8 +160,6 @@ export async function GET() {
   }
 }
 
-// ============ POST HANDLER ============
-
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -174,13 +169,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
 
-    // Verify Head Clerk
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as { roles?: string[]; name?: string } | null;
 
@@ -190,7 +191,6 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as YearResetRequest;
 
-    // Validate request
     if (!body.confirmation) {
       return NextResponse.json({ error: "Confirmation required" }, { status: 400 });
     }
@@ -199,7 +199,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "New academic year is required" }, { status: 400 });
     }
 
-    // Check if policy already exists for new year
     const existingPolicySnapshot = await rtdb
       .ref(`leavePolicies/${body.newAcademicYear}`)
       .once("value");
@@ -212,7 +211,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get current policy for reference
     const currentAcademicYear = getCurrentAcademicYear();
     const currentPolicySnapshot = await rtdb
       .ref(`leavePolicies/${currentAcademicYear}`)
@@ -223,11 +221,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Current policy not found" }, { status: 404 });
     }
 
-    // Determine new policy data
     let newPolicy: LeavePolicy;
 
     if (body.action === "continue") {
-      // Copy current policy
       newPolicy = {
         academicYear: body.newAcademicYear,
         leaveAllocations: { ...currentPolicy.leaveAllocations },
@@ -239,7 +235,6 @@ export async function POST(request: Request) {
         isArchived: false,
       };
     } else {
-      // Use modified allocations
       if (!body.leaveAllocations) {
         return NextResponse.json(
           { error: "Leave allocations required for modify action" },
@@ -258,10 +253,8 @@ export async function POST(request: Request) {
       };
     }
 
-    // Save the new policy
     await rtdb.ref(`leavePolicies/${body.newAcademicYear}`).set(newPolicy);
 
-    // Get all active users
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, UserData> | null || {};
 
@@ -269,16 +262,13 @@ export async function POST(request: Request) {
       .filter(([, user]) => user.isEmployed !== false && user.status === "active")
       .map(([uid, user]) => ({ ...user, uid }));
 
-    // Initialize new balances for all users
     const balanceUpdates: Record<string, LeaveBalancesDoc> = {};
     const carryOverLogs: Record<string, { carryOverApplied: string[] }> = {};
 
     for (const user of activeUsers) {
-      // Determine role for allocation
       const roleKey = user.subRole || user.roles?.[0] || "faculty";
       const allocation = newPolicy.leaveAllocations[roleKey] || newPolicy.leaveAllocations.faculty || {};
 
-      // Get previous balance if exists
       const prevBalanceKey = `${user.uid}_${currentAcademicYear}`;
       const prevBalanceSnapshot = await rtdb
         .ref(`leaveBalances/${prevBalanceKey}`)
@@ -288,7 +278,6 @@ export async function POST(request: Request) {
       const newBalances: Record<string, LeaveBalance> = {};
       const carryOverApplied: string[] = [];
 
-      // Apply carry-over rules
       for (const rule of body.carryOverRules) {
         const prev = prevBalance?.balances?.[rule.leaveType];
         const allocated = (allocation as Record<string, number>)?.[rule.leaveType] || 0;
@@ -297,7 +286,6 @@ export async function POST(request: Request) {
         let carryOverAmount = 0;
 
         if (rule.carryOver && prev) {
-          // Calculate carry-over (unused balance from previous year)
           const unused = prev.available || 0;
           if (unused > 0) {
             if (rule.maxCarryOver !== null) {
@@ -327,7 +315,6 @@ export async function POST(request: Request) {
 
       balanceUpdates[`${user.uid}_${body.newAcademicYear}`] = balanceDoc;
 
-      // Log carry-over for this user
       if (carryOverApplied.length > 0) {
         carryOverLogs[user.uid] = {
           carryOverApplied,
@@ -335,7 +322,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Save all balances in batch
     const balanceRef = rtdb.ref("leaveBalances");
     const batchUpdates: Record<string, LeaveBalancesDoc> = {};
     for (const [key, value] of Object.entries(balanceUpdates)) {
@@ -343,7 +329,6 @@ export async function POST(request: Request) {
     }
     await balanceRef.update(batchUpdates);
 
-    // Archive previous year
     await rtdb.ref(`archivedPolicies/${currentAcademicYear}`).set({
       policy: currentPolicy,
       archivedAt: new Date().toISOString(),
@@ -351,13 +336,11 @@ export async function POST(request: Request) {
       newYear: body.newAcademicYear,
     });
 
-    // Mark current policy as archived
     await rtdb.ref(`leavePolicies/${currentAcademicYear}`).update({
       isArchived: true,
       archivedAt: new Date().toISOString(),
     });
 
-    // Create audit log
     const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     await rtdb.ref(`auditLogs/${auditLogId}`).set({
       id: auditLogId,
@@ -376,7 +359,6 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // Send notifications to all users
     const notifications: Record<string, Notification> = {};
     const baseNotificationId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 

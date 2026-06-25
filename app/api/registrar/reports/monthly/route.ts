@@ -1,6 +1,6 @@
-// app/api/registrar/reports/monthly/route.ts
+// app/api/registrar/reports/monthly/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface LeaveRequest {
@@ -40,8 +40,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -61,11 +68,9 @@ export async function GET(request: Request) {
 
     const collegeId = registrarData.collegeId;
 
-    // Get all users in college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
-    // Filter users by college and department
     const collegeUsers = Object.entries(allUsers)
       .filter(([, user]) => {
         if (user.collegeId !== collegeId) return false;
@@ -76,11 +81,9 @@ export async function GET(request: Request) {
     
     const userIds = collegeUsers.map(u => u.uid);
 
-    // Get all leave requests
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Filter by year and month
     const filteredRequests = Object.values(allRequests).filter(req => {
       const reqDate = new Date(req.createdAt);
       return userIds.includes(req.applicantId) && 
@@ -98,7 +101,6 @@ export async function GET(request: Request) {
     ).length;
     const revision = filteredRequests.filter(req => req.status === "Pending_Revision").length;
 
-    // Department breakdown
     const departmentBreakdownMap: Record<string, { departmentName: string; total: number; approved: number; rejected: number }> = {};
     for (const req of filteredRequests) {
       if (!departmentBreakdownMap[req.departmentId]) {
@@ -115,7 +117,6 @@ export async function GET(request: Request) {
     }
     const departmentBreakdown = Object.values(departmentBreakdownMap);
 
-    // Leave type breakdown
     const leaveTypeBreakdown: Record<string, { count: number; totalDays: number }> = {};
     const leaveTypes = ["CL", "EL", "ML", "CO", "VL", "OD"];
     for (const type of leaveTypes) {
@@ -128,7 +129,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // Daily breakdown
     const daysInMonth = new Date(year, month, 0).getDate();
     const dailyBreakdown: { date: string; total: number; approved: number; rejected: number }[] = [];
     for (let day = 1; day <= daysInMonth; day++) {

@@ -1,5 +1,6 @@
+// app/api/headclerk/faculty/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface UserRecord {
@@ -24,9 +25,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -44,11 +51,9 @@ export async function GET(request: Request) {
     const role = searchParams.get("role") || "";
     const status = searchParams.get("status") || "";
 
-    // Get all users
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, UserRecord> | null || {};
 
-    // Filter for faculty, lab assistants, office staff, and HOD (for viewing)
     let facultyList = Object.entries(users)
       .filter(([, user]: [string, UserRecord]) => {
         const roles = user.roles || [];
@@ -70,7 +75,6 @@ export async function GET(request: Request) {
         dateOfJoining: user.dateOfJoining || null,
       }));
 
-    // Apply filters
     if (search) {
       facultyList = facultyList.filter(member => 
         member.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -90,7 +94,6 @@ export async function GET(request: Request) {
       facultyList = facultyList.filter(member => member.status === status);
     }
 
-    // Sort by name
     facultyList.sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json({ faculty: facultyList });

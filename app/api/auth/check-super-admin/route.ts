@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { rtdb } from "@/lib/firebase/admin";
+//import { rtdb } from "@/lib/firebase/admin";
 
+import { getRTDB } from "@/lib/firebase/admin";
+const rtdb = getRTDB();
+//const auth = getAuth();
 export async function GET() {
   try {
     if (!rtdb) {

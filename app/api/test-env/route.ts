@@ -1,3 +1,4 @@
+// app/api/test-env/route.ts - FIXED
 import { NextResponse } from "next/server";
 
 export async function GET() {

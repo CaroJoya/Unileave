@@ -1,7 +1,6 @@
-// app/api/leave/my-requests/route.ts
-// (Rename from my-leave/route.ts to my-requests/route.ts)
+// app/api/leave/my-requests/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import type { LeaveRequest, ApprovalLog, RevisionHistory } from "@/types/leave";
 
@@ -14,8 +13,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -27,16 +33,13 @@ export async function GET(request: Request) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
-    // Get all leave requests
     const requestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = requestsSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Filter by user
     let userRequests = Object.values(allRequests).filter(
       (req) => req.applicantId === userId
     );
 
-    // Apply filters
     if (leaveType) {
       userRequests = userRequests.filter((req) => req.leaveType === leaveType);
     }
@@ -52,12 +55,10 @@ export async function GET(request: Request) {
       userRequests = userRequests.filter((req) => new Date(req.endDate) <= end);
     }
 
-    // Sort by createdAt descending
     userRequests.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
-    // Get approval logs and revision history for each request
     const logsSnapshot = await rtdb.ref("approvalLogs").once("value");
     const allLogs = logsSnapshot.val() as Record<string, ApprovalLog> | null || {};
 

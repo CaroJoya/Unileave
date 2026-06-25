@@ -1,39 +1,48 @@
+// app/api/auth/session/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/firebase/admin";
+import type { NextRequest } from "next/server";
+import { getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { rateLimitMiddleware } from "@/lib/middleware/rate-limit";
 
 export async function POST(request: Request) {
   try {
+    // ✅ FIX: Create a NextRequest-like object for rate limiting
+    // The rateLimitMiddleware expects NextRequest, but we have Request
+    // We'll pass the request as any since we only use headers and pathname
+    const rateLimitResponse = rateLimitMiddleware(request as unknown as NextRequest, {
+      windowMs: 5 * 60 * 1000,
+      maxRequests: 5,
+      skipPaths: [],
+    });
+    
+    if (rateLimitResponse) {
+      return rateLimitResponse;
+    }
+
     const body = await request.json();
     const { idToken } = body;
 
-    console.log("Session API called, idToken exists:", !!idToken);
-
     if (!idToken) {
-      console.error("No ID token provided");
       return NextResponse.json({ error: "ID token is required" }, { status: 400 });
     }
 
-    // Check if Firebase Admin is initialized
+    const auth = getAuth();
+
     if (!auth) {
       console.error("Firebase Admin not initialized");
       return NextResponse.json(
-        { error: "Firebase Admin not configured" },
+        { error: "Firebase Admin not configured. Please check environment variables." },
         { status: 500 }
       );
     }
 
-    // Max allowed is 14 days (1,209,600,000 ms)
-    const expiresIn = 60 * 60 * 24 * 14 * 1000; // 14 days
-    console.log("Creating session cookie with expiry (ms):", expiresIn);
+    const expiresIn = 60 * 60 * 24 * 14 * 1000;
     
     const sessionCookie = await auth.createSessionCookie(idToken, {
       expiresIn,
     });
-    
-    console.log("Session cookie created successfully");
 
-    // Set cookie - using "session" (consistent with proxy.ts)
     const cookieStore = await cookies();
     cookieStore.set("session", sessionCookie, {
       maxAge: expiresIn / 1000,
@@ -43,13 +52,9 @@ export async function POST(request: Request) {
       sameSite: "lax",
     });
 
-    console.log("Cookie set successfully");
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    console.error("Session creation error details:", {
-      message: error instanceof Error ? error.message : String(error),
-    });
-    
+    console.error("Session creation error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to create session" },
       { status: 500 }
@@ -80,7 +85,9 @@ export async function GET() {
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }
 
+    const auth = getAuth();
     if (!auth) {
+      console.error("Firebase Admin not initialized");
       return NextResponse.json({ authenticated: false }, { status: 500 });
     }
 

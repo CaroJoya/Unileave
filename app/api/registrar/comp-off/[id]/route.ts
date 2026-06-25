@@ -1,6 +1,6 @@
-// app/api/registrar/comp-off/route.ts
+// app/api/registrar/comp-off/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface CompOffCredit {
@@ -34,8 +34,15 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -50,7 +57,6 @@ export async function GET() {
 
     const collegeId = registrarData.collegeId;
 
-    // Get all office staff and head clerks in the college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, User> | null || {};
     
@@ -61,7 +67,6 @@ export async function GET() {
       )
       .map(([uid]) => uid);
 
-    // Get comp-off credits
     const creditsSnapshot = await rtdb.ref("compOffCredits").once("value");
     const allCredits = creditsSnapshot.val() as Record<string, CompOffCredit> | null || {};
 

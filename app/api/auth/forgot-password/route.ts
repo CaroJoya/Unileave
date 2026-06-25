@@ -1,8 +1,10 @@
 // app/api/auth/forgot-password/route.ts
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/firebase/admin";
+//import { auth } from "@/lib/firebase/admin";
 import { sendEmail } from "@/lib/utils/email";
-
+import {  getAuth } from "@/lib/firebase/admin";
+//const rtdb = getRTDB();
+const auth = getAuth();
 export async function POST(request: Request) {
   try {
     const { email } = await request.json();

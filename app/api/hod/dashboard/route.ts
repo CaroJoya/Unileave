@@ -1,6 +1,6 @@
-// app/api/hod/dashboard/route.ts
+// app/api/hod/dashboard/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface LeaveRequest {
@@ -45,14 +45,20 @@ export async function GET() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const hodId = decodedToken.uid;
 
-    // Get HOD user data
     const hodSnapshot = await rtdb.ref(`users/${hodId}`).once("value");
     const hodData = hodSnapshot.val() as User | null;
 
@@ -66,22 +72,18 @@ export async function GET() {
       return NextResponse.json({ error: "HOD not assigned to any department" }, { status: 400 });
     }
 
-    // Get all leave requests
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allLeaveRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Filter leave requests for HOD's department with Pending_HOD status
     const pendingLeaveRequests = Object.values(allLeaveRequests).filter(req => 
       req.departmentId === departmentId && 
       req.status === "Pending_HOD" &&
       (req.applicantRoles?.includes("faculty") || req.applicantRoles?.includes("lab_assistant"))
     );
 
-    // Get comp-off credits pending approval
     const compOffSnapshot = await rtdb.ref("compOffCredits").once("value");
     const allCompOff = compOffSnapshot.val() as Record<string, CompOffCredit> | null || {};
 
-    // Get users in department to filter comp-off requests
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
@@ -98,7 +100,6 @@ export async function GET() {
       credit.status === "pending_approval"
     );
 
-    // Get overwork entries pending approval
     const overworkSnapshot = await rtdb.ref("overworkEntries").once("value");
     const allOverwork = overworkSnapshot.val() as Record<string, OverworkEntry> | null || {};
 
@@ -108,14 +109,12 @@ export async function GET() {
       departmentUserIds.includes(entry.userId)
     );
 
-    // Get vacation requests (leave requests with leaveType = "VL")
     const pendingVacation = Object.values(allLeaveRequests).filter(req => 
       req.departmentId === departmentId && 
       req.status === "Pending_HOD" &&
       req.leaveType === "VL"
     );
 
-    // Count faculty in department
     const facultyCount = departmentUserIds.length;
 
     return NextResponse.json({

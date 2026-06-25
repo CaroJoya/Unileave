@@ -1,6 +1,6 @@
-// app/api/registrar/reports/leave-types/route.ts
+// app/api/registrar/reports/leave-types/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 
@@ -55,8 +55,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -75,12 +82,10 @@ export async function GET(request: Request) {
 
     const collegeId = registrarData.collegeId;
 
-    // Parse academic year
     const [startYear, endYear] = academicYear.split("-").map(Number);
     const startDate = new Date(startYear, 5, 1);
     const endDate = new Date(endYear, 4, 31);
 
-    // Get all users in college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
@@ -94,7 +99,6 @@ export async function GET(request: Request) {
 
     const userIds = collegeUsers.map(u => u.uid);
 
-    // Get leave requests
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
@@ -106,7 +110,6 @@ export async function GET(request: Request) {
              req.status === "Approved";
     });
 
-    // Leave type statistics
     const leaveTypes = ["CL", "EL", "ML", "CO", "VL", "OD"];
     const leaveTypeStats: {
       leaveCode: string;
@@ -139,12 +142,10 @@ export async function GET(request: Request) {
       });
     }
 
-    // Calculate percentages
     for (const stat of leaveTypeStats) {
       stat.percentageOfTotal = totalDaysAll > 0 ? parseFloat(((stat.totalDays / totalDaysAll) * 100).toFixed(1)) : 0;
     }
 
-    // Department-level breakdown for a specific leave type
     const departmentBreakdown: {
       leaveType: string;
       departments: { departmentName: string; totalDays: number; requestCount: number }[];
@@ -175,7 +176,6 @@ export async function GET(request: Request) {
       });
     }
 
-    // Monthly trend by leave type
     const months = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May"];
     const monthlyTrend: {
       month: string;
@@ -194,27 +194,27 @@ export async function GET(request: Request) {
         return reqDate.getMonth() === monthDate.getMonth() && reqDate.getFullYear() === monthDate.getFullYear();
       });
       
-          const monthData: { month: string; CL: number; EL: number; ML: number; CO: number; VL: number; OD: number } = {
-      month: `${months[i]} ${monthDate.getFullYear()}`,
-      CL: 0,
-      EL: 0,
-      ML: 0,
-      CO: 0,
-      VL: 0,
-      OD: 0,
-    };
-    
-    for (const type of leaveTypes) {
-      const count = monthRequests.filter(r => r.leaveType === type).length;
-      if (type === "CL") monthData.CL = count;
-      else if (type === "EL") monthData.EL = count;
-      else if (type === "ML") monthData.ML = count;
-      else if (type === "CO") monthData.CO = count;
-      else if (type === "VL") monthData.VL = count;
-      else if (type === "OD") monthData.OD = count;
-    }
-    
-    monthlyTrend.push(monthData);
+      const monthData: { month: string; CL: number; EL: number; ML: number; CO: number; VL: number; OD: number } = {
+        month: `${months[i]} ${monthDate.getFullYear()}`,
+        CL: 0,
+        EL: 0,
+        ML: 0,
+        CO: 0,
+        VL: 0,
+        OD: 0,
+      };
+      
+      for (const type of leaveTypes) {
+        const count = monthRequests.filter(r => r.leaveType === type).length;
+        if (type === "CL") monthData.CL = count;
+        else if (type === "EL") monthData.EL = count;
+        else if (type === "ML") monthData.ML = count;
+        else if (type === "CO") monthData.CO = count;
+        else if (type === "VL") monthData.VL = count;
+        else if (type === "OD") monthData.OD = count;
+      }
+      
+      monthlyTrend.push(monthData);
     }
 
     return NextResponse.json({

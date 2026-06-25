@@ -1,5 +1,6 @@
+// app/api/auth/restore-account/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { auth, rtdb } from "@/lib/firebase/admin";
+import { getAuth, getRTDB } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export async function POST() {
@@ -14,10 +15,13 @@ export async function POST() {
       );
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
+      console.error('Firebase Admin not initialized');
       return NextResponse.json(
-        { error: "Server configuration error" },
+        { error: 'Server configuration error' },
         { status: 500 }
       );
     }
@@ -25,7 +29,6 @@ export async function POST() {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // ✅ FIXED: Using RTDB instead of Firestore
     const snapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = snapshot.val();
 
@@ -36,7 +39,6 @@ export async function POST() {
       );
     }
 
-    // Check if account is deleted
     if (userData.status !== "deleted") {
       return NextResponse.json(
         { error: "Account is not deactivated" },
@@ -44,7 +46,6 @@ export async function POST() {
       );
     }
 
-    // Check if within 30-day window
     const deletedAt = new Date(userData.deletedAt);
     const now = new Date();
     const daysSinceDeletion = (now.getTime() - deletedAt.getTime()) / (1000 * 60 * 60 * 24);
@@ -56,7 +57,6 @@ export async function POST() {
       );
     }
 
-    // Restore account in RTDB
     await rtdb.ref(`users/${userId}`).update({
       status: "active",
       deletedAt: null,

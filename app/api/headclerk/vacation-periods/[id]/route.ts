@@ -1,6 +1,6 @@
-// app/api/headclerk/vacation-periods/[id]/route.ts
+// app/api/headclerk/vacation-periods/[id]/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface VacationPeriod {
@@ -27,8 +27,15 @@ export async function PUT(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -62,7 +69,6 @@ export async function PUT(
       updatedAt: new Date().toISOString(),
     };
 
-    // Recalculate total days if dates changed
     if (startDate || endDate) {
       const start = new Date(updatedData.startDate);
       const end = new Date(updatedData.endDate);
@@ -71,7 +77,6 @@ export async function PUT(
 
     await vacationRef.update(updatedData);
 
-    // Create audit log
     await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",
@@ -107,8 +112,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -128,13 +140,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Vacation period not found" }, { status: 404 });
     }
 
-    // Soft delete - just mark inactive
     await vacationRef.update({
       isActive: false,
       updatedAt: new Date().toISOString(),
     });
 
-    // Create audit log
     await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",

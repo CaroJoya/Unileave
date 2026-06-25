@@ -1,5 +1,6 @@
+// app/api/super-admin/users/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 interface User {
@@ -23,10 +24,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
+      console.error('Firebase Admin not initialized');
       return NextResponse.json(
-        { error: "Server configuration error. Please check environment variables." },
+        { error: 'Server configuration error' },
         { status: 500 }
       );
     }
@@ -96,10 +100,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      console.error("Firebase Admin not initialized");
+      console.error('Firebase Admin not initialized');
       return NextResponse.json(
-        { error: "Server configuration error. Please check environment variables." },
+        { error: 'Server configuration error' },
         { status: 500 }
       );
     }
@@ -120,12 +127,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Validate password length
     if (password.length < 6) {
       return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
     }
 
-    // Create Firebase Auth user
     let userRecord;
     try {
       console.log("Creating Firebase Auth user with email:", email);
@@ -146,21 +151,19 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    // Get department info
     const deptSnapshot = await rtdb.ref(`departments/${departmentId}`).once("value");
     const department = deptSnapshot.val() as { name: string } | null;
 
     if (!department) {
-      // Clean up: delete the auth user if department doesn't exist
       await auth.deleteUser(userRecord.uid);
       return NextResponse.json({ error: "Department not found" }, { status: 404 });
     }
 
-    // Get college info
-    const collegeSnapshot = await rtdb.ref("colleges/college_001").once("value");
+    // Get admin's college ID
+    const adminCollegeId = adminData.collegeId || "college_001";
+    const collegeSnapshot = await rtdb.ref(`colleges/${adminCollegeId}`).once("value");
     const college = collegeSnapshot.val() as { name: string } | null;
 
-    // Create user data in Realtime Database
     const userData = {
       uid: userRecord.uid,
       name,
@@ -169,7 +172,7 @@ export async function POST(request: Request) {
       roles,
       departmentId,
       departmentName: department?.name || "",
-      collegeId: "college_001",
+      collegeId: adminCollegeId,
       collegeName: college?.name || "",
       status: "active",
       isEmployed: true,
@@ -182,12 +185,10 @@ export async function POST(request: Request) {
       console.log("User data saved to Realtime Database successfully");
     } catch (dbError) {
       console.error("Database save error:", dbError);
-      // Clean up: delete the auth user if database save fails
       await auth.deleteUser(userRecord.uid);
       return NextResponse.json({ error: "Failed to save user data" }, { status: 500 });
     }
 
-    // ✅ NEW: If the user has the 'hod' role, auto-assign as HOD of their department
     if (roles.includes("hod")) {
       try {
         const deptRef = rtdb.ref(`departments/${departmentId}`);
@@ -195,11 +196,8 @@ export async function POST(request: Request) {
         const deptData = deptSnapshot.val();
 
         if (deptData) {
-          // Check if department already has a HOD (optional, but good practice)
           if (deptData.hodId) {
-            console.warn(`Department ${departmentId} already has a HOD (${deptData.hodId}). Overwriting with new user.`);
-            
-            // Clear the old HOD's department reference
+            console.warn(`Department ${departmentId} already has a HOD (${deptData.hodId}). Overwriting.`);
             const oldHodRef = rtdb.ref(`users/${deptData.hodId}`);
             await oldHodRef.update({
               departmentId: null,
@@ -215,13 +213,9 @@ export async function POST(request: Request) {
           });
           
           console.log(`Auto-assigned user ${userRecord.uid} as HOD of department ${departmentId}`);
-        } else {
-          console.warn(`Department ${departmentId} not found for HOD assignment.`);
         }
       } catch (hodError) {
         console.error("Failed to auto-assign HOD:", hodError);
-        // We don't want to fail the entire user creation if HOD assignment fails,
-        // so we just log the error.
       }
     }
 
