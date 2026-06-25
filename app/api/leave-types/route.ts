@@ -1,4 +1,4 @@
-// app/api/leave-types/route.ts
+// app/api/leave-types/route.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
 import { rtdb, auth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -53,7 +53,16 @@ export async function GET() {
         ...data,
       }));
 
-    return NextResponse.json({ leaveTypes });
+    // 🆕 Add cache headers for better performance
+    return NextResponse.json(
+      { leaveTypes },
+      {
+        headers: {
+          'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+          'Vary': 'Accept-Encoding',
+        },
+      }
+    );
   } catch (error) {
     console.error("Error fetching leave types:", error);
     return NextResponse.json(

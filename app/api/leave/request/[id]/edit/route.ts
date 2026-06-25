@@ -1,14 +1,13 @@
-// app/api/leave/request/[id]/edit/route.ts
+// app/api/leave/request/[id]/edit/route.ts - COMPLETE FILE WITH FIXED IMPORTS
 import { NextResponse } from "next/server";
 import { rtdb, auth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import { determineApprover, getStatusForApprover } from "@/lib/utils/routing";
 import { sendEmail, getResubmittedEmail } from "@/lib/utils/email";
-import type { LeaveRequest, LeaveStatus } from "@/types/leave"; // ✅ Removed LeaveType
+import type { LeaveRequest, LeaveStatus } from "@/types/leave"; // ✅ Removed unused LeaveType
 import type { Role } from "@/types/roles";
 
-// Type definitions
 interface UserData {
   name: string;
   roles: string[];
@@ -44,25 +43,16 @@ interface LeaveTypeData {
   allowHalfDay: boolean;
 }
 
-interface LeaveBalanceDoc {
-  balances: {
-    [key: string]: {
-      pending: number;
-      available: number;
-    };
-  };
-}
+// ✅ Removed unused LeaveBalanceDoc interface
 
-// ✅ Added id to ExistingLeaveRequest
 interface ExistingLeaveRequest {
-  id?: string; // Optional since it might not exist on all requests
+  id?: string;
   applicantId: string;
   status: string;
   startDate: string;
   endDate: string;
 }
 
-// ✅ Only editable if NOT approved or rejected
 const EDITABLE_STATUSES: LeaveStatus[] = [
   "Pending_HOD",
   "Pending_Registrar", 
@@ -75,15 +65,17 @@ async function getApproverUserId(
   collegeId: string,
   departmentId?: string
 ): Promise<string | null> {
+  if (!rtdb) return null;
+  
   if (role === "hod" && departmentId) {
-    const deptSnapshot = await rtdb?.ref(`departments/${departmentId}`).once("value");
-    const dept = deptSnapshot?.val() as DepartmentData | null;
+    const deptSnapshot = await rtdb.ref(`departments/${departmentId}`).once("value");
+    const dept = deptSnapshot.val() as DepartmentData | null;
     return dept?.hodId || null;
   }
 
   if (role === "registrar") {
-    const usersSnapshot = await rtdb?.ref("users").once("value");
-    const users = usersSnapshot?.val() as Record<string, RegistrarUserData> | null || {};
+    const usersSnapshot = await rtdb.ref("users").once("value");
+    const users = usersSnapshot.val() as Record<string, RegistrarUserData> | null || {};
     for (const [uid, user] of Object.entries(users)) {
       if (user.roles?.includes("registrar") && user.collegeId === collegeId) {
         return uid;
@@ -93,8 +85,8 @@ async function getApproverUserId(
   }
 
   if (role === "principal") {
-    const collegeSnapshot = await rtdb?.ref(`colleges/${collegeId}`).once("value");
-    const college = collegeSnapshot?.val() as CollegeData | null;
+    const collegeSnapshot = await rtdb.ref(`colleges/${collegeId}`).once("value");
+    const college = collegeSnapshot.val() as CollegeData | null;
     return college?.principalId || null;
   }
 
@@ -102,8 +94,9 @@ async function getApproverUserId(
 }
 
 async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
-  const typesSnapshot = await rtdb?.ref("leaveTypes").once("value");
-  const types = typesSnapshot?.val() as Record<string, LeaveTypeData> | null || {};
+  if (!rtdb) return null;
+  const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
+  const types = typesSnapshot.val() as Record<string, LeaveTypeData> | null || {};
 
   for (const [, type] of Object.entries(types)) {
     if (type.leaveCode === leaveCode && type.isActive) {
@@ -161,7 +154,6 @@ export async function PUT(
       );
     }
 
-    // ✅ Check if editable (not approved or rejected)
     if (!EDITABLE_STATUSES.includes(existingRequest.status)) {
       return NextResponse.json(
         { error: "This request cannot be edited. It has already been approved or rejected." },
@@ -182,10 +174,7 @@ export async function PUT(
       attachmentUrl,
     } = body;
 
-    // ✅ VALIDATION: Same as fresh leave request
-
     // Leave type is optional in edit (can't change leave type)
-    // But if provided, validate it matches
     if (leaveType && leaveType !== existingRequest.leaveType) {
       return NextResponse.json(
         { error: "Leave type cannot be changed" },
@@ -193,7 +182,6 @@ export async function PUT(
       );
     }
 
-    // Use existing leave type
     const leaveTypeCode = existingRequest.leaveType;
 
     // Validate required fields
@@ -201,12 +189,10 @@ export async function PUT(
       return NextResponse.json({ error: "Start date is required" }, { status: 400 });
     }
 
-    // Validate total days
     if (!totalDays || totalDays <= 0) {
       return NextResponse.json({ error: "Total days must be greater than 0" }, { status: 400 });
     }
 
-    // Validate alternate faculty name
     if (!alternateFacultyName || alternateFacultyName.trim() === "") {
       return NextResponse.json(
         { error: "Alternate faculty name is required" },
@@ -227,7 +213,6 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid leave type" }, { status: 400 });
     }
 
-    // ✅ Validate half-day
     if (isHalfDay && !leaveTypeConfig.allowHalfDay) {
       return NextResponse.json(
         { error: "Half-day leave is not allowed for this leave type" },
@@ -242,7 +227,6 @@ export async function PUT(
       );
     }
 
-    // ✅ Validate attachment
     if (leaveTypeConfig.requiresAttachment && !attachmentUrl) {
       return NextResponse.json(
         { error: "Attachment is required for this leave type" },
@@ -250,14 +234,12 @@ export async function PUT(
       );
     }
 
-    // ✅ Check for overlapping leave requests (excluding the current request being edited)
+    // Check for overlapping leave requests
     const existingRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
-    const existingRequests = existingRequestsSnapshot?.val() as Record<string, ExistingLeaveRequest> | null || {};
+    const existingRequests = existingRequestsSnapshot.val() as Record<string, ExistingLeaveRequest> | null || {};
 
     const hasOverlap = Object.values(existingRequests).some((req) => {
-      // Skip the current request being edited
       if (req.applicantId !== userId) return false;
-      // ✅ Use req.id to skip the current request (id is now defined in the interface)
       if (req.id === id) return false;
       if (
         req.status === "Cancelled" ||
@@ -281,11 +263,9 @@ export async function PUT(
       );
     }
 
-    // ✅ Calculate the difference in days for balance adjustment
     const dayDifference = totalDays - existingRequest.totalDays;
 
-    // ✅ Update balance if leave type deducts balance and there's a difference
-    // AND the request hasn't been approved yet (balance hasn't been fully deducted)
+    // Update balance using Firebase transaction (atomic operation)
     if (
       leaveTypeConfig.deductsBalance &&
       dayDifference !== 0 &&
@@ -294,43 +274,58 @@ export async function PUT(
       const academicYear = getCurrentAcademicYear();
       const balanceKey = `${userId}_${academicYear}`;
       const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
-      const balanceSnapshot = await balanceRef.once("value");
-      const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
-
-      if (balanceDoc) {
-        const currentAvailable = balanceDoc.balances[leaveTypeCode]?.available || 0;
-
-        // If increasing days, check if enough balance available
-        if (dayDifference > 0 && currentAvailable < dayDifference) {
+      
+      try {
+        const result = await balanceRef.transaction((currentData) => {
+          if (!currentData) {
+            return undefined;
+          }
+          
+          const currentBalance = currentData.balances?.[leaveTypeCode] || { 
+            pending: 0, 
+            available: 0 
+          };
+          
+          const newAvailable = (currentBalance.available || 0) - dayDifference;
+          
+          if (dayDifference > 0 && newAvailable < 0) {
+            return undefined;
+          }
+          
+          return {
+            ...currentData,
+            balances: {
+              ...currentData.balances,
+              [leaveTypeCode]: {
+                pending: Math.max(0, (currentBalance.pending || 0) + dayDifference),
+                available: newAvailable,
+              }
+            },
+            updatedAt: new Date().toISOString(),
+          };
+        });
+        
+        // Check if transaction was aborted
+        if (result.snapshot.val() === null && dayDifference > 0) {
           return NextResponse.json(
             { error: `Insufficient balance. Need ${dayDifference} more days` },
             { status: 400 }
           );
         }
-
-        // Update balance using proper nested object
-        const currentBalance = balanceDoc.balances[leaveTypeCode] || { pending: 0, available: 0 };
-        const updateData = {
-          balances: {
-            ...balanceDoc.balances,
-            [leaveTypeCode]: {
-              pending: Math.max(0, (currentBalance.pending || 0) + dayDifference),
-              available: (currentBalance.available || 0) - dayDifference,
-            }
-          },
-          updatedAt: new Date().toISOString(),
-        };
-        
-        await balanceRef.update(updateData);
+      } catch (error) {
+        console.error("Balance update transaction failed:", error);
+        return NextResponse.json(
+          { error: "Failed to update leave balance. Please try again." },
+          { status: 500 }
+        );
       }
     }
 
-    // ✅ Determine new status based on routing
+    // Determine new status
     let newStatus: LeaveStatus = existingRequest.status;
     let newRevisionCount = existingRequest.revisionCount || 0;
 
     if (existingRequest.status === "Pending_Revision") {
-      // Resubmit after remarks - go back to original approver
       const userRoles = existingRequest.applicantRoles as Role[];
       const route = determineApprover(userRoles, leaveTypeCode);
       const approverRole = route.firstApproverRole;
@@ -350,12 +345,10 @@ export async function PUT(
       newStatus = getStatusForApprover(approverRole) as LeaveStatus;
       newRevisionCount = existingRequest.revisionCount + 1;
 
-      // Update current approver
       await rtdb.ref(`leaveRequests/${id}`).update({
         currentApproverId: approverUserId,
       });
 
-      // Create revision history entry
       const revisionId = `rev_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       await rtdb.ref(`revisionHistory/${revisionId}`).set({
         id: revisionId,
@@ -369,11 +362,10 @@ export async function PUT(
         resubmittedAt: new Date().toISOString(),
       });
     } else {
-      // For Pending_HOD or Pending_Registrar - keep same status
       newStatus = existingRequest.status;
     }
 
-    // ✅ Update leave request with ALL editable fields
+    // Update leave request
     await rtdb.ref(`leaveRequests/${id}`).update({
       startDate: new Date(startDate).toISOString(),
       endDate: new Date(endDate || startDate).toISOString(),
@@ -388,7 +380,7 @@ export async function PUT(
       updatedAt: new Date().toISOString(),
     });
 
-    // ✅ Create approval log
+    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -403,7 +395,7 @@ export async function PUT(
       actionAt: new Date().toISOString(),
     });
 
-    // ✅ Send email notification if resubmitting after revision
+    // Send email notification if resubmitting
     if (existingRequest.status === "Pending_Revision") {
       const userRoles = existingRequest.applicantRoles as Role[];
       const route = determineApprover(userRoles, leaveTypeCode);
@@ -420,14 +412,10 @@ export async function PUT(
 
         if (approverData?.email) {
           const statusPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/status`;
-          const emailHtml = getResubmittedEmail(
-            userData.name,
-            statusPageUrl
-          );
           await sendEmail({
             to: approverData.email,
             subject: `Resubmitted: Leave Request from ${userData.name}`,
-            html: emailHtml,
+            html: getResubmittedEmail(userData.name, statusPageUrl),
           });
         }
       }

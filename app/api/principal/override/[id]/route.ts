@@ -1,4 +1,4 @@
-// app/api/principal/override/[id]/route.ts
+// app/api/principal/override/[id]/route.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
 import { rtdb, auth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -16,6 +16,7 @@ interface LeaveRequest {
   totalDays: number;
   status: string;
   approvedBy?: string;
+  collegeId?: string;
 }
 
 interface User {
@@ -23,6 +24,7 @@ interface User {
   name: string;
   email: string;
   roles: string[];
+  collegeId?: string;
 }
 
 interface LeaveTypeConfig {
@@ -38,9 +40,32 @@ interface LeaveBalanceDoc {
   };
 }
 
+// 🆕 Helper to get HOD ID
+async function getHODId(departmentId: string): Promise<string | null> {
+  if (!rtdb) return null;
+  const deptSnapshot = await rtdb.ref(`departments/${departmentId}`).once("value");
+  const dept = deptSnapshot.val() as { hodId: string | null } | null;
+  return dept?.hodId || null;
+}
+
+// 🆕 Helper to get Registrar ID
+async function getRegistrarId(collegeId: string): Promise<string | null> {
+  if (!rtdb) return null;
+  const usersSnapshot = await rtdb.ref("users").once("value");
+  const users = usersSnapshot.val() as Record<string, { roles: string[]; collegeId: string }> | null || {};
+  
+  for (const [uid, user] of Object.entries(users)) {
+    if (user.roles?.includes("registrar") && user.collegeId === collegeId) {
+      return uid;
+    }
+  }
+  return null;
+}
+
 async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
-  const typesSnapshot = await rtdb?.ref("leaveTypes").once("value");
-  const types = typesSnapshot?.val() as Record<string, { leaveCode: string; deductsBalance: boolean; isActive: boolean }> | null || {};
+  if (!rtdb) return null;
+  const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
+  const types = typesSnapshot.val() as Record<string, { leaveCode: string; deductsBalance: boolean; isActive: boolean }> | null || {};
   
   for (const [, type] of Object.entries(types)) {
     if (type.leaveCode === leaveCode && type.isActive) {
@@ -112,6 +137,11 @@ export async function POST(
       return NextResponse.json({ error: "Cannot override leave that has already started" }, { status: 400 });
     }
 
+    // Get applicant's college ID
+    const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
+    const applicantData = applicantSnapshot.val() as { collegeId: string } | null;
+    const collegeId = applicantData?.collegeId || principalData.collegeId || "";
+
     // Restore balance if leave type deducts balance
     const leaveTypeConfig = await getLeaveTypeConfig(leaveRequest.leaveType);
     if (leaveTypeConfig?.deductsBalance) {
@@ -169,16 +199,16 @@ export async function POST(
       module: "leaveRequests",
       targetId: id,
       targetUser: leaveRequest.applicantId,
-      details: {
+      details: JSON.stringify({
         leaveType: leaveRequest.leaveType,
         totalDays: leaveRequest.totalDays,
         originalApprover: leaveRequest.approvedBy,
         overrideReason: reason,
-      },
+      }),
       createdAt: new Date().toISOString(),
     });
 
-    // Create notification for applicant ONLY (no HOD/Registrar)
+    // 🆕 1. Create notification for applicant
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -187,16 +217,48 @@ export async function POST(
       message: `Your ${leaveRequest.leaveType} leave request has been overridden by Principal. Reason: ${reason}`,
       type: "principal_override",
       isRead: false,
+      metadata: JSON.stringify({
+        leaveRequestId: id,
+        leaveType: leaveRequest.leaveType,
+        overrideReason: reason,
+      }),
       createdAt: new Date().toISOString(),
     });
 
-    // Send email to applicant ONLY (no HOD/Registrar)
-    const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
-    const applicantData = applicantSnapshot.val() as User | null;
+    // 🆕 2. Create notification for original approver (HOD or Registrar)
+    let originalApproverId: string | null = null;
+    if (leaveRequest.approvedBy === "hod") {
+      originalApproverId = await getHODId(leaveRequest.departmentId);
+    } else if (leaveRequest.approvedBy === "registrar" && collegeId) {
+      originalApproverId = await getRegistrarId(collegeId);
+    }
 
-    if (applicantData?.email) {
+    if (originalApproverId) {
+      const approverNotifId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      await rtdb.ref(`notifications/${approverNotifId}`).set({
+        id: approverNotifId,
+        userId: originalApproverId,
+        title: "Your Approved Leave Was Overridden",
+        message: `The Principal has overridden the ${leaveRequest.leaveType} leave request you approved for ${leaveRequest.applicantName}. Reason: ${reason}`,
+        type: "principal_override",
+        isRead: false,
+        metadata: JSON.stringify({
+          leaveRequestId: id,
+          applicantId: leaveRequest.applicantId,
+          originalApproverRole: leaveRequest.approvedBy,
+          overrideReason: reason,
+        }),
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // Send email to applicant
+    const applicantEmailSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
+    const applicantEmailData = applicantEmailSnapshot.val() as User | null;
+
+    if (applicantEmailData?.email) {
       await sendEmail({
-        to: applicantData.email,
+        to: applicantEmailData.email,
         subject: `Leave Request Overridden - ${leaveRequest.leaveType}`,
         html: getLeaveRejectedEmail(
           leaveRequest.applicantName,

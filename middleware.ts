@@ -1,6 +1,7 @@
-// middleware.ts - ADD CACHING
+// middleware.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { rateLimitMiddleware } from "@/lib/middleware/rate-limit";
 
 const publicRoutes = ["/login", "/forgot-password", "/reset-password"];
 const protectedRoutes = [
@@ -19,10 +20,32 @@ const protectedRoutes = [
   "/principal",
 ];
 
+// API routes that should be rate limited
+const apiRoutes = ["/api/auth", "/api/leave", "/api/hod", "/api/registrar", "/api/principal"];
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Skip for API routes
+  // ✅ Apply rate limiting to API routes
+  if (apiRoutes.some(route => pathname.startsWith(route))) {
+    const rateLimitResponse = rateLimitMiddleware(request, {
+      windowMs: 60 * 1000, // 1 minute
+      maxRequests: 60, // 60 requests per minute
+      skipPaths: [
+        "/api/health", 
+        "/api/test", 
+        "/api/test-env", 
+        "/api/hello",
+        "/api/leave-types", // Public endpoint
+      ],
+    });
+    
+    if (rateLimitResponse) {
+      return rateLimitResponse;
+    }
+  }
+  
+  // ✅ Skip middleware for API routes (but after rate limiting)
   if (pathname.startsWith("/api")) {
     return NextResponse.next();
   }
@@ -38,17 +61,10 @@ export function middleware(request: NextRequest) {
   
   // Allow public routes
   if (publicRoutes.some(route => pathname.startsWith(route))) {
-    const response = NextResponse.next();
-    
-    // ✅ Add caching for public routes
-    if (pathname === "/login") {
-      response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
-    }
-    
-    return response;
+    return NextResponse.next();
   }
   
-  // Protect routes
+  // Protect routes that start with protected paths
   if (protectedRoutes.some(route => pathname.startsWith(route))) {
     if (!isAuthenticated) {
       const url = new URL("/login", request.url);
@@ -57,14 +73,7 @@ export function middleware(request: NextRequest) {
     }
   }
   
-  const response = NextResponse.next();
-  
-  // ✅ Cache static assets
-  if (pathname.startsWith("/_next/static")) {
-    response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-  }
-  
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {

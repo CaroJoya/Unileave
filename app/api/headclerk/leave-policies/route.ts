@@ -1,4 +1,4 @@
-// app/api/headclerk/leave-policies/route.ts
+// app/api/headclerk/leave-policies/route.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
 import { rtdb, auth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -70,6 +70,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Academic year and leave allocations are required" }, { status: 400 });
     }
 
+    // 🆕 Check if policy already exists for this academic year
+    const existingPolicySnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
+    if (existingPolicySnapshot.exists()) {
+      return NextResponse.json({ 
+        error: `A leave policy for academic year ${academicYear} already exists. Use PUT to update it.`,
+        existing: true,
+      }, { status: 409 });
+    }
+
     // Validate required roles in allocations
     const requiredRoles = ["faculty", "lab_assistant", "office_staff", "hod", "registrar", "principal", "head_clerk"];
     for (const role of requiredRoles) {
@@ -109,5 +118,73 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Error creating leave policy:", error);
     return NextResponse.json({ error: "Failed to create leave policy" }, { status: 500 });
+  }
+}
+
+// 🆕 PUT Handler for updating existing policies
+export async function PUT(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get("session")?.value;
+
+    if (!sessionCookie) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    if (!auth || !rtdb) {
+      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    }
+
+    const decodedToken = await auth.verifySessionCookie(sessionCookie);
+    
+    const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
+    const userData = userSnapshot.val();
+    
+    if (!userData?.roles?.includes("head_clerk")) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { academicYear, leaveAllocations, applyRule } = body;
+
+    if (!academicYear || !leaveAllocations) {
+      return NextResponse.json({ error: "Academic year and leave allocations are required" }, { status: 400 });
+    }
+
+    // Check if policy exists
+    const existingSnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
+    if (!existingSnapshot.exists()) {
+      return NextResponse.json({ error: "Policy not found" }, { status: 404 });
+    }
+
+    // Validate required roles in allocations
+    const requiredRoles = ["faculty", "lab_assistant", "office_staff", "hod", "registrar", "principal", "head_clerk"];
+    for (const role of requiredRoles) {
+      if (!leaveAllocations[role]) {
+        return NextResponse.json({ error: `Missing allocations for role: ${role}` }, { status: 400 });
+      }
+      
+      const requiredTypes = ["CL", "EL", "ML", "CO"];
+      for (const type of requiredTypes) {
+        if (typeof leaveAllocations[role][type] !== "number") {
+          return NextResponse.json({ error: `Missing or invalid ${type} quota for ${role}` }, { status: 400 });
+        }
+      }
+    }
+
+    const existing = existingSnapshot.val();
+    const updatedPolicy = {
+      ...existing,
+      leaveAllocations,
+      applyRule: applyRule || existing.applyRule,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await rtdb.ref(`leavePolicies/${academicYear}`).set(updatedPolicy);
+
+    return NextResponse.json({ success: true, policy: updatedPolicy });
+  } catch (error) {
+    console.error("Error updating leave policy:", error);
+    return NextResponse.json({ error: "Failed to update leave policy" }, { status: 500 });
   }
 }

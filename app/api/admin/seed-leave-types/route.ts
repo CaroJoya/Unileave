@@ -1,4 +1,4 @@
-// app/api/admin/seed-leave-types/route.ts
+// app/api/admin/seed-leave-types/route.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
 import { rtdb, auth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -205,7 +205,7 @@ function getDefaultPolicy(): LeavePolicy {
   };
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     // Check authentication
     const cookieStore = await cookies();
@@ -228,16 +228,28 @@ export async function POST() {
       return NextResponse.json({ error: "Not authorized - Super Admin only" }, { status: 403 });
     }
 
+    // 🆕 Check for force flag
+    const { searchParams } = new URL(request.url);
+    const force = searchParams.get("force") === "true";
+
     // Check if leave types already exist
     const existingSnapshot = await rtdb.ref("leaveTypes").once("value");
     const existingTypes = existingSnapshot.val();
 
     if (existingTypes && Object.keys(existingTypes).length > 0) {
-      return NextResponse.json({
-        success: false,
-        message: `Leave types already exist (${Object.keys(existingTypes).length} types found). Use force=true to override.`,
-        existing: Object.keys(existingTypes),
-      }, { status: 409 });
+      if (!force) {
+        return NextResponse.json({
+          success: false,
+          message: `Leave types already exist (${Object.keys(existingTypes).length} types found). Use force=true to override.`,
+          existing: Object.keys(existingTypes),
+        }, { status: 409 });
+      }
+      
+      // 🆕 Force mode: delete existing types first
+      console.log("Force mode enabled - deleting existing leave types...");
+      await rtdb.ref("leaveTypes").remove();
+      await rtdb.ref("leavePolicies").remove();
+      console.log("Existing leave types and policies removed.");
     }
 
     // Seed leave types
@@ -270,6 +282,7 @@ export async function POST() {
       details: JSON.stringify({
         typesSeeded: seeded.length,
         policyCreated: policy.academicYear,
+        forceMode: force,
         timestamp: new Date().toISOString(),
       }),
       createdAt: new Date().toISOString(),
@@ -277,7 +290,7 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      message: `Successfully seeded ${seeded.length} leave types`,
+      message: `Successfully seeded ${seeded.length} leave types${force ? ' (force mode)' : ''}`,
       seeded,
       policy: policy.academicYear,
     });

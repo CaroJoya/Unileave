@@ -1,7 +1,7 @@
+// app/api/auth/register-super-admin/route.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
 import { auth, rtdb } from "@/lib/firebase/admin";
 
-// Define error type
 interface FirebaseError {
   code?: string;
   message: string;
@@ -58,34 +58,63 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ FIXED: Use consistent college_001 (Option A - Quick Fix)
-    // This matches what all other routes expect
-    const collegeId = "college_001";
+    // 🆕 DYNAMIC: Generate college ID or find existing
+    let collegeId: string;
     
-    // Create college document
-    const collegeData = {
-      id: collegeId,
-      name: collegeName,
-      principalId: null,
-      principalName: null,
-      address: "",
-      isActive: true,
-      createdBy: userRecord.uid,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    
-    try {
+    // Check if college with this name already exists
+    const collegesSnapshot = await rtdb.ref("colleges").once("value");
+    const colleges = collegesSnapshot.val() || {};
+    let existingCollegeId: string | null = null;
+
+    for (const [id, data] of Object.entries(colleges)) {
+      const collegeData = data as { name: string };
+      if (collegeData.name === collegeName) {
+        existingCollegeId = id;
+        break;
+      }
+    }
+
+    if (existingCollegeId) {
+      collegeId = existingCollegeId;
+      console.log("Found existing college:", collegeId);
+      
+      // Update existing college if needed
+      const collegeData = {
+        id: collegeId,
+        name: collegeName,
+        principalId: userRecord.uid,
+        principalName: name,
+        address: "",
+        isActive: true,
+        updatedAt: new Date().toISOString(),
+      };
+      
+      // Merge with existing data
+      const existingCollegeSnapshot = await rtdb.ref(`colleges/${collegeId}`).once("value");
+      const existingData = existingCollegeSnapshot.val() || {};
+      await rtdb.ref(`colleges/${collegeId}`).set({
+        ...existingData,
+        ...collegeData,
+      });
+      console.log("College updated with new principal");
+    } else {
+      // Create new college with dynamic ID
+      collegeId = `college_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      
+      const collegeData = {
+        id: collegeId,
+        name: collegeName,
+        principalId: userRecord.uid,
+        principalName: name,
+        address: "",
+        isActive: true,
+        createdBy: userRecord.uid,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
       await rtdb.ref(`colleges/${collegeId}`).set(collegeData);
-      console.log("College saved to RTDB with ID:", collegeId);
-    } catch (collegeError: unknown) {
-      const error = collegeError as FirebaseError;
-      console.error("College save error:", error);
-      await auth.deleteUser(userRecord.uid);
-      return NextResponse.json(
-        { error: "Failed to save college data" },
-        { status: 500 }
-      );
+      console.log("New college created with ID:", collegeId);
     }
 
     // Create default Office department for this college
@@ -110,7 +139,7 @@ export async function POST(request: Request) {
       // Non-critical, continue
     }
 
-    // ✅ FIXED: Renamed to userDocData to avoid duplicate declaration
+    // Save user data
     const userDocData = {
       uid: userRecord.uid,
       name,
@@ -135,7 +164,9 @@ export async function POST(request: Request) {
       console.error("RTDB save error:", error);
       // Clean up: delete auth user and college
       await auth.deleteUser(userRecord.uid);
-      await rtdb.ref(`colleges/${collegeId}`).remove();
+      if (!existingCollegeId) {
+        await rtdb.ref(`colleges/${collegeId}`).remove();
+      }
       return NextResponse.json(
         { error: "Failed to save user data" },
         { status: 500 }
