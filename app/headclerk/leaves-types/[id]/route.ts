@@ -1,6 +1,6 @@
-// app/api/headclerk/leave-types/[id]/route.ts
+// app/headclerk/leaves-types/[id]/route.ts - FIXED
 import { NextResponse } from "next/server";
-import { rtdb, auth } from "@/lib/firebase/admin";
+import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
 export async function PUT(
@@ -16,8 +16,15 @@ export async function PUT(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -86,8 +93,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
     if (!auth || !rtdb) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
@@ -99,7 +113,6 @@ export async function DELETE(
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    // Soft delete - just mark inactive
     const leaveTypeRef = rtdb.ref(`leaveTypes/${id}`);
     const snapshot = await leaveTypeRef.once("value");
     const existing = snapshot.val();
