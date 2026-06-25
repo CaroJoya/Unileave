@@ -1,8 +1,7 @@
-// components/layout/Navbar.tsx - Updated with RoleSwitcher
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -23,7 +22,17 @@ import { RoleSwitcher } from "./RoleSwitcher";
 
 export default function Navbar() {
   const router = useRouter();
-  const { user, userRoles, isAuthenticated, logout } = useAuthStore();
+  const pathname = usePathname();
+
+  const {
+    user,
+    userRoles,
+    isAuthenticated,
+    hydrationComplete,
+    isLoading,
+    logout,
+  } = useAuthStore();
+
   const { currentRole, setCurrentRole } = useRoleStore();
 
   const handleLogout = async () => {
@@ -35,7 +44,7 @@ export default function Navbar() {
   const getInitials = (name: string) => {
     return name
       .split(" ")
-      .map(n => n[0])
+      .map((n) => n[0])
       .join("")
       .toUpperCase()
       .slice(0, 2);
@@ -50,8 +59,24 @@ export default function Navbar() {
     return "/dashboard";
   };
 
-  // Don't show navbar on login page
-  if (!isAuthenticated) return null;
+  const publicRoutes = [
+    "/",
+    "/login",
+    "/forgot-password",
+    "/reset-password",
+  ];
+
+  if (publicRoutes.includes(pathname)) {
+    return null;
+  }
+
+  if (!hydrationComplete || isLoading) {
+    return null;
+  }
+
+  if (!isAuthenticated || !user) {
+    return null;
+  }
 
   const dashboardUrl = getDashboardUrl();
 
@@ -64,33 +89,44 @@ export default function Navbar() {
           </Link>
 
           <div className="flex items-center space-x-3">
-            {/* Role Switcher - Only shown for multi-role users */}
             <RoleSwitcher />
-            
+
             <NotificationBell />
-            
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                <Button
+                  variant="ghost"
+                  className="relative h-8 w-8 rounded-full"
+                >
                   <Avatar className="h-8 w-8">
                     <AvatarFallback className="bg-primary/10 text-primary">
-                      {user?.name ? getInitials(user.name) : "U"}
+                      {user.name ? getInitials(user.name) : "U"}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
+
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">{user?.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                    <p className="text-sm font-medium">{user.name}</p>
+
+                    <p className="text-xs text-muted-foreground truncate">
+                      {user.email}
+                    </p>
+
                     <div className="mt-1">
                       <RoleBadge roles={userRoles} />
                     </div>
+
                     {userRoles.length > 1 && (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {userRoles.map((role) => (
-                          <span key={role} className="text-[10px] px-1.5 py-0.5 bg-gray-100 rounded-full text-gray-600">
+                          <span
+                            key={role}
+                            className="text-[10px] px-1.5 py-0.5 bg-gray-100 rounded-full text-gray-600"
+                          >
                             {role.replace("_", " ")}
                           </span>
                         ))}
@@ -98,20 +134,29 @@ export default function Navbar() {
                     )}
                   </div>
                 </DropdownMenuLabel>
+
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push("/profile")} className="cursor-pointer">
+
+                <DropdownMenuItem
+                  onClick={() => router.push("/profile")}
+                  className="cursor-pointer"
+                >
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>
+
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
+
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="cursor-pointer text-red-600"
+                >
                   <LogOut className="mr-2 h-4 w-4" />
                   Logout
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Mobile Navigation */}
             <MobileNav />
           </div>
         </div>

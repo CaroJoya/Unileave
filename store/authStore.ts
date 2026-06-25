@@ -242,14 +242,16 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           console.error("Logout error:", error);
         } finally {
-          set({ 
-            user: null, 
-            userRoles: [],
-            isAuthenticated: false,
-            isLoading: false,
-            error: null
-          });
-        }
+          localStorage.removeItem("unileave-auth");
+
+            set({
+              user: null,
+              userRoles: [],
+              isAuthenticated: false,
+              isLoading: false,
+              error: null,
+      });
+      }
       },
 
       forgotPassword: async (email: string) => {
