@@ -1,3 +1,4 @@
+// app/headclerk/dashboard/page.tsx
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -36,7 +37,11 @@ import { toast } from "sonner";
 import { Pencil, Plus, Sun, Snowflake } from "lucide-react";
 import { AttendanceCalendar } from "@/components/headclerk/AttendanceCalendar";
 import { FacultyList } from "@/components/headclerk/FacultyList";
+import { YearReset } from "@/components/headclerk/YearReset";
 import type { Department, StaffUser } from "@/types/attendance";
+
+// ============ TYPES ============
+
 interface LeaveType {
   id: string;
   leaveCode: string;
@@ -109,7 +114,7 @@ const defaultAllocations: Record<RoleKey, { CL: number; EL: number; ML: number; 
 export default function HeadClerkDashboardPage() {
   const { user, isLoading } = useAuthStore();
   const router = useRouter();
-  
+
   // Leave Types State
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,10 +215,7 @@ export default function HeadClerkDashboardPage() {
       toast.success("Leave type created successfully");
       setShowCreateDialog(false);
       resetForm();
-      
-      // ✅ SMART REDIRECT: Refresh the list to show the new leave type
       await fetchLeaveTypes();
-      
       toast.success("📋 Leave types list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create leave type";
@@ -236,10 +238,7 @@ export default function HeadClerkDashboardPage() {
       }
 
       toast.success(`Leave type ${!leaveType.isActive ? "activated" : "deactivated"}`);
-      
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchLeaveTypes();
-      
       toast.success("📋 Leave types list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update leave type";
@@ -322,10 +321,7 @@ export default function HeadClerkDashboardPage() {
       toast.success("Leave policy saved successfully");
       setShowPolicyDialog(false);
       resetPolicyForm();
-      
-      // ✅ SMART REDIRECT: Refresh the list to show the new policy
       await fetchPolicies();
-      
       toast.success("📋 Policies list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save policy";
@@ -379,10 +375,7 @@ export default function HeadClerkDashboardPage() {
       }
 
       toast.success("Overwork configuration saved successfully");
-      
-      // ✅ SMART REDIRECT: Refresh the config to show updated values
       await fetchOverworkConfig();
-      
       toast.success("⚙️ Configuration updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save configuration";
@@ -394,33 +387,30 @@ export default function HeadClerkDashboardPage() {
 
   // ========== VACATION PERIODS FUNCTIONS ==========
   const fetchVacations = useCallback(async () => {
-  try {
-    const response = await fetch("/api/headclerk/vacation-periods");
-    
-    // Check if response is OK before parsing JSON
-    if (!response.ok) {
-      // Try to get error message from response
-      let errorMessage = `Failed to fetch vacation periods: ${response.status}`;
-      try {
-        const data = await response.json();
-        errorMessage = data.error || errorMessage;
-      } catch {
-        // If response is not JSON, use status text
-        errorMessage = `Failed to fetch vacation periods: ${response.statusText}`;
+    try {
+      const response = await fetch("/api/headclerk/vacation-periods");
+
+      if (!response.ok) {
+        let errorMessage = `Failed to fetch vacation periods: ${response.status}`;
+        try {
+          const data = await response.json();
+          errorMessage = data.error || errorMessage;
+        } catch {
+          errorMessage = `Failed to fetch vacation periods: ${response.statusText}`;
+        }
+        toast.error(errorMessage);
+        setVacations([]);
+        return;
       }
-      toast.error(errorMessage);
+
+      const data = await response.json();
+      setVacations(data.vacations || []);
+    } catch (error) {
+      console.error("Failed to fetch vacations:", error);
+      toast.error("Failed to fetch vacation periods");
       setVacations([]);
-      return;
     }
-    
-    const data = await response.json();
-    setVacations(data.vacations || []);
-  } catch (error) {
-    console.error("Failed to fetch vacations:", error);
-    toast.error("Failed to fetch vacation periods");
-    setVacations([]);
-  }
-}, []);
+  }, []);
 
   const calculateTotalDays = (startDate: string, endDate: string) => {
     if (!startDate || !endDate) return 0;
@@ -454,10 +444,7 @@ export default function HeadClerkDashboardPage() {
       }
 
       toast.success("Vacation period deactivated");
-      
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchVacations();
-      
       toast.success("📋 Vacation periods list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to deactivate";
@@ -508,10 +495,7 @@ export default function HeadClerkDashboardPage() {
       toast.success("Vacation period created successfully");
       setShowVacationDialog(false);
       resetVacationForm();
-      
-      // ✅ SMART REDIRECT: Refresh the list to show the new vacation period
       await fetchVacations();
-      
       toast.success("📋 Vacation periods list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create";
@@ -545,15 +529,14 @@ export default function HeadClerkDashboardPage() {
   }, []);
 
   const handleAttendanceRefresh = () => {
-    setAttendanceKey(prev => prev + 1);
+    setAttendanceKey((prev) => prev + 1);
     fetchAttendanceData();
   };
 
-  // Auth check - EARLY return after hooks
+  // ========== AUTH CHECK ==========
   const hasRedirected = useRef(false);
   const hasFetched = useRef(false);
 
-  // Auth check - runs only once
   useEffect(() => {
     if (!isLoading && !user && !hasRedirected.current) {
       hasRedirected.current = true;
@@ -565,9 +548,7 @@ export default function HeadClerkDashboardPage() {
     }
   }, [user, isLoading, router]);
 
-  // Fetch all data - NOW functions are declared before this useEffect
-  // Replace the existing useEffect that calls fetch functions directly
-  // Data fetch - runs only once
+  // ========== DATA FETCH ==========
   useEffect(() => {
     if (user?.roles?.includes("head_clerk") && !hasFetched.current) {
       hasFetched.current = true;
@@ -577,13 +558,14 @@ export default function HeadClerkDashboardPage() {
           fetchPolicies(),
           fetchOverworkConfig(),
           fetchVacations(),
-          fetchAttendanceData()
+          fetchAttendanceData(),
         ]);
       };
       loadAllData();
     }
   }, [user, fetchLeaveTypes, fetchPolicies, fetchOverworkConfig, fetchVacations, fetchAttendanceData]);
 
+  // ========== RENDER ==========
   if (isLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -601,7 +583,7 @@ export default function HeadClerkDashboardPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Head Clerk Dashboard</h1>
         <p className="text-muted-foreground mt-2">
-          Manage leave types, policies, overwork configuration, vacation periods, and attendance
+          Manage leave types, policies, overwork configuration, vacation periods, attendance, and year reset
         </p>
       </div>
 
@@ -609,6 +591,7 @@ export default function HeadClerkDashboardPage() {
         <TabsList className="flex flex-wrap">
           <TabsTrigger value="leave-types">Leave Types</TabsTrigger>
           <TabsTrigger value="leave-policies">Leave Policies</TabsTrigger>
+          <TabsTrigger value="year-reset">Year Reset</TabsTrigger>
           <TabsTrigger value="overwork">Overwork Config</TabsTrigger>
           <TabsTrigger value="vacation">Vacation Periods</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
@@ -658,20 +641,14 @@ export default function HeadClerkDashboardPage() {
                           <TableCell>
                             <span
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                type.isActive
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-red-100 text-red-800"
+                                type.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
                               }`}
                             >
                               {type.isActive ? "Active" : "Inactive"}
                             </span>
                           </TableCell>
                           <TableCell>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleToggleActive(type)}
-                            >
+                            <Button size="sm" variant="outline" onClick={() => handleToggleActive(type)}>
                               {type.isActive ? "Deactivate" : "Activate"}
                             </Button>
                           </TableCell>
@@ -728,20 +705,14 @@ export default function HeadClerkDashboardPage() {
                           <TableCell>
                             <span
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                policy.isActive !== false
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-red-100 text-red-800"
+                                policy.isActive !== false ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
                               }`}
                             >
                               {policy.isActive !== false ? "Active" : "Inactive"}
                             </span>
                           </TableCell>
                           <TableCell>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEditPolicy(policy)}
-                            >
+                            <Button size="sm" variant="outline" onClick={() => handleEditPolicy(policy)}>
                               <Pencil className="h-4 w-4 mr-1" />
                               Edit
                             </Button>
@@ -754,6 +725,11 @@ export default function HeadClerkDashboardPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* YEAR RESET TAB */}
+        <TabsContent value="year-reset">
+          <YearReset />
         </TabsContent>
 
         {/* OVERWORK CONFIG TAB */}
@@ -777,10 +753,12 @@ export default function HeadClerkDashboardPage() {
                       min="1"
                       max="24"
                       value={overworkConfig.conversionHours}
-                      onChange={(e) => setOverworkConfig({ 
-                        ...overworkConfig, 
-                        conversionHours: parseFloat(e.target.value) || 5 
-                      })}
+                      onChange={(e) =>
+                        setOverworkConfig({
+                          ...overworkConfig,
+                          conversionHours: parseFloat(e.target.value) || 5,
+                        })
+                      }
                       className="w-24"
                     />
                     <span className="text-muted-foreground">hours = 1 earned leave day</span>
@@ -800,10 +778,12 @@ export default function HeadClerkDashboardPage() {
                       min="0.5"
                       max="24"
                       value={overworkConfig.minHoursPerEntry}
-                      onChange={(e) => setOverworkConfig({ 
-                        ...overworkConfig, 
-                        minHoursPerEntry: parseFloat(e.target.value) || 0.5 
-                      })}
+                      onChange={(e) =>
+                        setOverworkConfig({
+                          ...overworkConfig,
+                          minHoursPerEntry: parseFloat(e.target.value) || 0.5,
+                        })
+                      }
                       className="w-24"
                     />
                     <span className="text-muted-foreground">hours minimum</span>
@@ -823,10 +803,12 @@ export default function HeadClerkDashboardPage() {
                       min="0.5"
                       max="24"
                       value={overworkConfig.maxHoursPerDay}
-                      onChange={(e) => setOverworkConfig({ 
-                        ...overworkConfig, 
-                        maxHoursPerDay: parseFloat(e.target.value) || 24 
-                      })}
+                      onChange={(e) =>
+                        setOverworkConfig({
+                          ...overworkConfig,
+                          maxHoursPerDay: parseFloat(e.target.value) || 24,
+                        })
+                      }
                       className="w-24"
                     />
                     <span className="text-muted-foreground">hours maximum per day</span>
@@ -843,10 +825,12 @@ export default function HeadClerkDashboardPage() {
                       type="checkbox"
                       id="autoConversionEnabled"
                       checked={overworkConfig.autoConversionEnabled}
-                      onChange={(e) => setOverworkConfig({ 
-                        ...overworkConfig, 
-                        autoConversionEnabled: e.target.checked 
-                      })}
+                      onChange={(e) =>
+                        setOverworkConfig({
+                          ...overworkConfig,
+                          autoConversionEnabled: e.target.checked,
+                        })
+                      }
                       className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
                     />
                     <Label htmlFor="autoConversionEnabled" className="font-normal cursor-pointer">
@@ -864,7 +848,8 @@ export default function HeadClerkDashboardPage() {
                 <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                   <p className="text-sm">
                     <span className="font-medium">Current Rule:</span> Every{" "}
-                    <span className="text-primary font-medium">{overworkConfig.conversionHours}</span> hours = 1 earned leave day
+                    <span className="text-primary font-medium">{overworkConfig.conversionHours}</span> hours = 1 earned
+                    leave day
                   </p>
                   <p className="text-sm">
                     <span className="font-medium">Example:</span> Staff with{" "}
@@ -875,10 +860,7 @@ export default function HeadClerkDashboardPage() {
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span>Progress to next leave:</span>
                       <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-primary rounded-full"
-                          style={{ width: "35%" }}
-                        />
+                        <div className="h-full bg-primary rounded-full" style={{ width: "35%" }} />
                       </div>
                       <span>3.5 / {overworkConfig.conversionHours} hours</span>
                     </div>
@@ -936,49 +918,46 @@ export default function HeadClerkDashboardPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {vacations.filter(v => v.vacationType === "Summer Vacation").map((vacation) => (
-                            <TableRow key={vacation.id}>
-                              <TableCell className="font-medium">{vacation.year}</TableCell>
-                              <TableCell>
-                                {new Date(vacation.startDate).toLocaleDateString()} - {new Date(vacation.endDate).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell>{vacation.totalDays} days</TableCell>
-                              <TableCell>{vacation.paidLeaveQuota} days</TableCell>
-                              <TableCell>
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                    vacation.isActive
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-red-100 text-red-800"
-                                  }`}
-                                >
-                                  {vacation.isActive ? "Active" : "Inactive"}
-                                </span>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleEditVacation(vacation)}
+                          {vacations
+                            .filter((v) => v.vacationType === "Summer Vacation")
+                            .map((vacation) => (
+                              <TableRow key={vacation.id}>
+                                <TableCell className="font-medium">{vacation.year}</TableCell>
+                                <TableCell>
+                                  {new Date(vacation.startDate).toLocaleDateString()} -{" "}
+                                  {new Date(vacation.endDate).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell>{vacation.totalDays} days</TableCell>
+                                <TableCell>{vacation.paidLeaveQuota} days</TableCell>
+                                <TableCell>
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                                    }`}
                                   >
-                                    <Pencil className="h-4 w-4 mr-1" />
-                                    Edit
-                                  </Button>
-                                  {vacation.isActive && (
-                                    <Button
-                                      size="sm"
-                                      variant="destructive"
-                                      onClick={() => handleDeactivateVacation(vacation.id)}
-                                    >
-                                      Deactivate
+                                    {vacation.isActive ? "Active" : "Inactive"}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)}>
+                                      <Pencil className="h-4 w-4 mr-1" />
+                                      Edit
                                     </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          {vacations.filter(v => v.vacationType === "Summer Vacation").length === 0 && (
+                                    {vacation.isActive && (
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={() => handleDeactivateVacation(vacation.id)}
+                                      >
+                                        Deactivate
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          {vacations.filter((v) => v.vacationType === "Summer Vacation").length === 0 && (
                             <TableRow>
                               <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
                                 No Summer Vacation periods configured
@@ -1008,49 +987,46 @@ export default function HeadClerkDashboardPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {vacations.filter(v => v.vacationType === "Winter Vacation").map((vacation) => (
-                            <TableRow key={vacation.id}>
-                              <TableCell className="font-medium">{vacation.year}</TableCell>
-                              <TableCell>
-                                {new Date(vacation.startDate).toLocaleDateString()} - {new Date(vacation.endDate).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell>{vacation.totalDays} days</TableCell>
-                              <TableCell>{vacation.paidLeaveQuota} days</TableCell>
-                              <TableCell>
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                    vacation.isActive
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-red-100 text-red-800"
-                                  }`}
-                                >
-                                  {vacation.isActive ? "Active" : "Inactive"}
-                                </span>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleEditVacation(vacation)}
+                          {vacations
+                            .filter((v) => v.vacationType === "Winter Vacation")
+                            .map((vacation) => (
+                              <TableRow key={vacation.id}>
+                                <TableCell className="font-medium">{vacation.year}</TableCell>
+                                <TableCell>
+                                  {new Date(vacation.startDate).toLocaleDateString()} -{" "}
+                                  {new Date(vacation.endDate).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell>{vacation.totalDays} days</TableCell>
+                                <TableCell>{vacation.paidLeaveQuota} days</TableCell>
+                                <TableCell>
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                                    }`}
                                   >
-                                    <Pencil className="h-4 w-4 mr-1" />
-                                    Edit
-                                  </Button>
-                                  {vacation.isActive && (
-                                    <Button
-                                      size="sm"
-                                      variant="destructive"
-                                      onClick={() => handleDeactivateVacation(vacation.id)}
-                                    >
-                                      Deactivate
+                                    {vacation.isActive ? "Active" : "Inactive"}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)}>
+                                      <Pencil className="h-4 w-4 mr-1" />
+                                      Edit
                                     </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          {vacations.filter(v => v.vacationType === "Winter Vacation").length === 0 && (
+                                    {vacation.isActive && (
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={() => handleDeactivateVacation(vacation.id)}
+                                      >
+                                        Deactivate
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          {vacations.filter((v) => v.vacationType === "Winter Vacation").length === 0 && (
                             <TableRow>
                               <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
                                 No Winter Vacation periods configured
@@ -1077,7 +1053,7 @@ export default function HeadClerkDashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent key={attendanceKey}>
-              <AttendanceCalendar 
+              <AttendanceCalendar
                 departments={departmentsList}
                 staffUsers={staffUsers}
                 onRefresh={handleAttendanceRefresh}
@@ -1401,10 +1377,10 @@ export default function HeadClerkDashboardPage() {
               <Select
                 value={vacationForm.vacationType}
                 onValueChange={(value) => {
-                  setVacationForm({ 
-                    ...vacationForm, 
+                  setVacationForm({
+                    ...vacationForm,
                     vacationType: value,
-                    paidLeaveQuota: value === "Summer Vacation" ? 27 : 21
+                    paidLeaveQuota: value === "Summer Vacation" ? 27 : 21,
                   });
                 }}
                 disabled={!!editingVacation}
@@ -1493,9 +1469,7 @@ export default function HeadClerkDashboardPage() {
                 <p className="text-xs text-muted-foreground">
                   Total days: {calculateTotalDays(vacationForm.startDate, vacationForm.endDate)} days
                   {calculateTotalDays(vacationForm.startDate, vacationForm.endDate) !== 40 && (
-                    <span className="text-red-500 block mt-1">
-                      ⚠️ Must be exactly 40 days
-                    </span>
+                    <span className="text-red-500 block mt-1">⚠️ Must be exactly 40 days</span>
                   )}
                 </p>
               </div>

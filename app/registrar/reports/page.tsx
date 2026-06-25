@@ -1,3 +1,4 @@
+// app/registrar/reports/page.tsx
 "use client";
 
 import React from "react";
@@ -27,6 +28,9 @@ import {
 } from "recharts";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
+import { YearEndReport } from "@/components/registrar/YearEndReport";
+
+// ============ TYPES ============
 
 interface MonthlyReportData {
   summary: {
@@ -131,6 +135,8 @@ interface ExportDataItem {
   [key: string]: string | number;
 }
 
+// ============ CONSTANTS ============
+
 const LEAVE_TYPE_COLORS: Record<string, string> = {
   CL: "#6366F1",
   EL: "#10B981",
@@ -140,26 +146,28 @@ const LEAVE_TYPE_COLORS: Record<string, string> = {
   OD: "#EC4899",
 };
 
+// ============ COMPONENT ============
+
 export default function RegistrarReportsPage() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("monthly");
-  
+
   // Report states
   const [monthlyData, setMonthlyData] = useState<MonthlyReportData | null>(null);
   const [annualData, setAnnualData] = useState<AnnualReportData | null>(null);
   const [utilizationData, setUtilizationData] = useState<UtilizationData | null>(null);
   const [leaveTypeData, setLeaveTypeData] = useState<LeaveTypeStatsData | null>(null);
   const [overrideData, setOverrideData] = useState<OverrideData | null>(null);
-  
+
   // Filters
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString());
   const [selectedAcademicYear, setSelectedAcademicYear] = useState("");
   const [overrideStartDate, setOverrideStartDate] = useState("");
   const [overrideEndDate, setOverrideEndDate] = useState("");
-  
+
   // Generate academic year options
   const currentYear = new Date().getFullYear();
   const academicYears = [
@@ -168,7 +176,8 @@ export default function RegistrarReportsPage() {
     `${currentYear + 1}-${currentYear + 2}`,
   ];
 
-  // Auth check
+  // ============ AUTH CHECK ============
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
@@ -178,26 +187,28 @@ export default function RegistrarReportsPage() {
     }
   }, [user, authLoading, router]);
 
-  // Set default academic year - using useMemo to avoid setState in effect
-  // Set default academic year
-const hasSetAcademicYear = React.useRef(false);
-useEffect(() => {
-  if (!hasSetAcademicYear.current) {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    let defaultYear = "";
-    if (currentMonth >= 5) {
-      defaultYear = `${currentYear}-${currentYear + 1}`;
-    } else {
-      defaultYear = `${currentYear - 1}-${currentYear}`;
+  // ============ SET DEFAULT ACADEMIC YEAR ============
+
+  const hasSetAcademicYear = React.useRef(false);
+  useEffect(() => {
+    if (!hasSetAcademicYear.current) {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      let defaultYear = "";
+      if (currentMonth >= 5) {
+        defaultYear = `${currentYear}-${currentYear + 1}`;
+      } else {
+        defaultYear = `${currentYear - 1}-${currentYear}`;
+      }
+      setTimeout(() => {
+        setSelectedAcademicYear(defaultYear);
+      }, 0);
+      hasSetAcademicYear.current = true;
     }
-    setTimeout(() => {
-      setSelectedAcademicYear(defaultYear);
-    }, 0);
-    hasSetAcademicYear.current = true;
-  }
-}, [currentYear]);
-  // Fetch monthly report
+  }, [currentYear]);
+
+  // ============ FETCH FUNCTIONS ============
+
   const fetchMonthlyReport = useCallback(async () => {
     setLoading(true);
     try {
@@ -205,14 +216,14 @@ useEffect(() => {
         year: selectedYear,
         month: selectedMonth,
       });
-      
+
       const response = await fetch(`/api/registrar/reports/monthly?${params.toString()}`);
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch monthly report");
       }
-      
+
       setMonthlyData(data);
     } catch (error) {
       console.error("Error fetching monthly report:", error);
@@ -222,21 +233,20 @@ useEffect(() => {
     }
   }, [selectedYear, selectedMonth]);
 
-  // Fetch annual report
   const fetchAnnualReport = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         academicYear: selectedAcademicYear,
       });
-      
+
       const response = await fetch(`/api/registrar/reports/annual?${params.toString()}`);
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch annual report");
       }
-      
+
       setAnnualData(data);
     } catch (error) {
       console.error("Error fetching annual report:", error);
@@ -246,21 +256,20 @@ useEffect(() => {
     }
   }, [selectedAcademicYear]);
 
-  // Fetch utilization report
   const fetchUtilizationReport = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         academicYear: selectedAcademicYear,
       });
-      
+
       const response = await fetch(`/api/registrar/reports/utilization?${params.toString()}`);
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch utilization report");
       }
-      
+
       setUtilizationData(data);
     } catch (error) {
       console.error("Error fetching utilization report:", error);
@@ -270,21 +279,20 @@ useEffect(() => {
     }
   }, [selectedAcademicYear]);
 
-  // Fetch leave type statistics
   const fetchLeaveTypeStats = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         academicYear: selectedAcademicYear,
       });
-      
+
       const response = await fetch(`/api/registrar/reports/leave-types?${params.toString()}`);
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch leave type statistics");
       }
-      
+
       setLeaveTypeData(data);
     } catch (error) {
       console.error("Error fetching leave type stats:", error);
@@ -294,21 +302,20 @@ useEffect(() => {
     }
   }, [selectedAcademicYear]);
 
-  // Fetch override report
   const fetchOverrideReport = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (overrideStartDate) params.append("startDate", overrideStartDate);
       if (overrideEndDate) params.append("endDate", overrideEndDate);
-      
+
       const response = await fetch(`/api/registrar/reports/overrides?${params.toString()}`);
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch override report");
       }
-      
+
       setOverrideData(data);
     } catch (error) {
       console.error("Error fetching override report:", error);
@@ -318,7 +325,8 @@ useEffect(() => {
     }
   }, [overrideStartDate, overrideEndDate]);
 
-  // Load data when tab changes - using a separate effect that doesn't call setState directly
+  // ============ LOAD DATA ON TAB CHANGE ============
+
   useEffect(() => {
     const loadData = async () => {
       if (activeTab === "monthly") {
@@ -334,15 +342,23 @@ useEffect(() => {
       }
     };
     loadData();
-  }, [activeTab, fetchMonthlyReport, fetchAnnualReport, fetchUtilizationReport, fetchLeaveTypeStats, fetchOverrideReport]);
+  }, [
+    activeTab,
+    fetchMonthlyReport,
+    fetchAnnualReport,
+    fetchUtilizationReport,
+    fetchLeaveTypeStats,
+    fetchOverrideReport,
+  ]);
 
-  // Export to CSV helper
+  // ============ EXPORT FUNCTIONS ============
+
   const exportToCSV = (data: ExportDataItem[], filename: string, headers: string[]) => {
     const csvRows = [headers.join(",")];
     for (const row of data) {
-      const values = headers.map(h => {
+      const values = headers.map((h) => {
         const value = row[h];
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+        if (typeof value === "string" && (value.includes(",") || value.includes('"'))) {
           return `"${value.replace(/"/g, '""')}"`;
         }
         return value !== undefined && value !== null ? String(value) : "";
@@ -361,6 +377,8 @@ useEffect(() => {
     window.URL.revokeObjectURL(url);
     toast.success("Report exported successfully");
   };
+
+  // ============ RENDER ============
 
   if (authLoading || loading) {
     return (
@@ -390,9 +408,10 @@ useEffect(() => {
           <TabsTrigger value="utilization">Department Utilization</TabsTrigger>
           <TabsTrigger value="leave-types">Leave Type Statistics</TabsTrigger>
           <TabsTrigger value="overrides">Override Tracking</TabsTrigger>
+          <TabsTrigger value="year-end">Year-End Report</TabsTrigger>
         </TabsList>
 
-        {/* Monthly Report Tab */}
+        {/* MONTHLY REPORT TAB */}
         <TabsContent value="monthly">
           <div className="space-y-6">
             {/* Filters */}
@@ -406,8 +425,10 @@ useEffect(() => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {[2023, 2024, 2025, 2026].map(y => (
-                          <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                        {[2023, 2024, 2025, 2026].map((y) => (
+                          <SelectItem key={y} value={y.toString()}>
+                            {y}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -447,25 +468,33 @@ useEffect(() => {
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Approved</p>
-                      <p className="text-2xl font-bold text-green-600">{monthlyData.summary.approved}</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        {monthlyData.summary.approved}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Rejected</p>
-                      <p className="text-2xl font-bold text-red-600">{monthlyData.summary.rejected}</p>
+                      <p className="text-2xl font-bold text-red-600">
+                        {monthlyData.summary.rejected}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Pending</p>
-                      <p className="text-2xl font-bold text-yellow-600">{monthlyData.summary.pending}</p>
+                      <p className="text-2xl font-bold text-yellow-600">
+                        {monthlyData.summary.pending}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Approval Rate</p>
-                      <p className="text-2xl font-bold text-primary">{monthlyData.summary.approvalRate}%</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {monthlyData.summary.approvalRate}%
+                      </p>
                     </CardContent>
                   </Card>
                 </div>
@@ -481,13 +510,40 @@ useEffect(() => {
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={monthlyData.dailyBreakdown}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fontSize: 12 }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                          />
                           <YAxis />
                           <Tooltip />
                           <Legend />
-                          <Area type="monotone" dataKey="total" stroke="#6366F1" fill="#6366F1" fillOpacity={0.3} name="Total" />
-                          <Area type="monotone" dataKey="approved" stroke="#10B981" fill="#10B981" fillOpacity={0.3} name="Approved" />
-                          <Area type="monotone" dataKey="rejected" stroke="#EF4444" fill="#EF4444" fillOpacity={0.3} name="Rejected" />
+                          <Area
+                            type="monotone"
+                            dataKey="total"
+                            stroke="#6366F1"
+                            fill="#6366F1"
+                            fillOpacity={0.3}
+                            name="Total"
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="approved"
+                            stroke="#10B981"
+                            fill="#10B981"
+                            fillOpacity={0.3}
+                            name="Approved"
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="rejected"
+                            stroke="#EF4444"
+                            fill="#EF4444"
+                            fillOpacity={0.3}
+                            name="Rejected"
+                          />
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
@@ -506,11 +562,13 @@ useEffect(() => {
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
-                              data={Object.entries(monthlyData.leaveTypeBreakdown).map(([type, data]) => ({
-                                name: type,
-                                value: data.count,
-                                color: LEAVE_TYPE_COLORS[type] || "#6B7280",
-                              }))}
+                              data={Object.entries(monthlyData.leaveTypeBreakdown).map(
+                                ([type, data]) => ({
+                                  name: type,
+                                  value: data.count,
+                                  color: LEAVE_TYPE_COLORS[type] || "#6B7280",
+                                })
+                              )}
                               dataKey="value"
                               nameKey="name"
                               cx="50%"
@@ -518,9 +576,14 @@ useEffect(() => {
                               outerRadius={80}
                               label
                             >
-                              {Object.entries(monthlyData.leaveTypeBreakdown).map(([type], idx) => (
-                                <Cell key={`cell-${idx}`} fill={LEAVE_TYPE_COLORS[type] || "#6B7280"} />
-                              ))}
+                              {Object.entries(monthlyData.leaveTypeBreakdown).map(
+                                ([type]) => (
+                                  <Cell
+                                    key={type}
+                                    fill={LEAVE_TYPE_COLORS[type] || "#6B7280"}
+                                  />
+                                )
+                              )}
                             </Pie>
                             <Tooltip />
                             <Legend />
@@ -537,13 +600,15 @@ useEffect(() => {
                             </tr>
                           </thead>
                           <tbody>
-                            {Object.entries(monthlyData.leaveTypeBreakdown).map(([type, data]) => (
-                              <tr key={type} className="border-b">
-                                <td className="py-2">{type}</td>
-                                <td className="text-right py-2">{data.count}</td>
-                                <td className="text-right py-2">{data.totalDays}</td>
-                              </tr>
-                            ))}
+                            {Object.entries(monthlyData.leaveTypeBreakdown).map(
+                              ([type, data]) => (
+                                <tr key={type} className="border-b">
+                                  <td className="py-2">{type}</td>
+                                  <td className="text-right py-2">{data.count}</td>
+                                  <td className="text-right py-2">{data.totalDays}</td>
+                                </tr>
+                              )
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -555,13 +620,19 @@ useEffect(() => {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      const exportData: ExportDataItem[] = monthlyData.dailyBreakdown.map(d => ({
-                        date: d.date,
-                        total: d.total,
-                        approved: d.approved,
-                        rejected: d.rejected,
-                      }));
-                      exportToCSV(exportData, `monthly_report_${monthlyData.summary.year}_${monthlyData.summary.month}`, ["date", "total", "approved", "rejected"]);
+                      const exportData: ExportDataItem[] = monthlyData.dailyBreakdown.map(
+                        (d) => ({
+                          date: d.date,
+                          total: d.total,
+                          approved: d.approved,
+                          rejected: d.rejected,
+                        })
+                      );
+                      exportToCSV(
+                        exportData,
+                        `monthly_report_${monthlyData.summary.year}_${monthlyData.summary.month}`,
+                        ["date", "total", "approved", "rejected"]
+                      );
                     }}
                   >
                     <Download className="h-4 w-4 mr-2" />
@@ -573,12 +644,12 @@ useEffect(() => {
           </div>
         </TabsContent>
 
-        {/* Annual Report Tab */}
+        {/* ANNUAL REPORT TAB */}
         <TabsContent value="annual">
           <div className="space-y-6">
             <Card>
               <CardContent className="pt-6">
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <Label>Academic Year</Label>
                     <Select value={selectedAcademicYear} onValueChange={setSelectedAcademicYear}>
@@ -586,8 +657,10 @@ useEffect(() => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {academicYears.map(y => (
-                          <SelectItem key={y} value={y}>{y}</SelectItem>
+                        {academicYears.map((y) => (
+                          <SelectItem key={y} value={y}>
+                            {y}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -611,13 +684,17 @@ useEffect(() => {
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Approved</p>
-                      <p className="text-2xl font-bold text-green-600">{annualData.summary.totalApproved}</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        {annualData.summary.totalApproved}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Rejected</p>
-                      <p className="text-2xl font-bold text-red-600">{annualData.summary.totalRejected}</p>
+                      <p className="text-2xl font-bold text-red-600">
+                        {annualData.summary.totalRejected}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
@@ -629,7 +706,9 @@ useEffect(() => {
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Approval Rate</p>
-                      <p className="text-2xl font-bold text-primary">{annualData.summary.approvalRate}%</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {annualData.summary.approvalRate}%
+                      </p>
                     </CardContent>
                   </Card>
                 </div>
@@ -644,7 +723,13 @@ useEffect(() => {
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={annualData.monthlyBreakdown}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
+                          <XAxis
+                            dataKey="month"
+                            tick={{ fontSize: 12 }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                          />
                           <YAxis />
                           <Tooltip />
                           <Legend />
@@ -661,13 +746,19 @@ useEffect(() => {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      const exportData: ExportDataItem[] = annualData.monthlyBreakdown.map(m => ({
-                        month: m.month,
-                        total: m.total,
-                        approved: m.approved,
-                        rejected: m.rejected,
-                      }));
-                      exportToCSV(exportData, `annual_report_${annualData.academicYear}`, ["month", "total", "approved", "rejected"]);
+                      const exportData: ExportDataItem[] = annualData.monthlyBreakdown.map(
+                        (m) => ({
+                          month: m.month,
+                          total: m.total,
+                          approved: m.approved,
+                          rejected: m.rejected,
+                        })
+                      );
+                      exportToCSV(
+                        exportData,
+                        `annual_report_${annualData.academicYear}`,
+                        ["month", "total", "approved", "rejected"]
+                      );
                     }}
                   >
                     <Download className="h-4 w-4 mr-2" />
@@ -679,7 +770,7 @@ useEffect(() => {
           </div>
         </TabsContent>
 
-        {/* Department Utilization Tab */}
+        {/* UTILIZATION TAB */}
         <TabsContent value="utilization">
           <div className="space-y-6">
             <Card>
@@ -692,8 +783,10 @@ useEffect(() => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {academicYears.map(y => (
-                          <SelectItem key={y} value={y}>{y}</SelectItem>
+                        {academicYears.map((y) => (
+                          <SelectItem key={y} value={y}>
+                            {y}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -711,31 +804,41 @@ useEffect(() => {
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Total Departments</p>
-                      <p className="text-2xl font-bold">{utilizationData.summary.totalDepartments}</p>
+                      <p className="text-2xl font-bold">
+                        {utilizationData.summary.totalDepartments}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Total Employees</p>
-                      <p className="text-2xl font-bold">{utilizationData.summary.totalEmployees}</p>
+                      <p className="text-2xl font-bold">
+                        {utilizationData.summary.totalEmployees}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Allocated Leaves</p>
-                      <p className="text-2xl font-bold">{utilizationData.summary.totalAllocated}</p>
+                      <p className="text-2xl font-bold">
+                        {utilizationData.summary.totalAllocated}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Used Leaves</p>
-                      <p className="text-2xl font-bold text-orange-600">{utilizationData.summary.totalUsed}</p>
+                      <p className="text-2xl font-bold text-orange-600">
+                        {utilizationData.summary.totalUsed}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Utilization</p>
-                      <p className="text-2xl font-bold text-primary">{utilizationData.summary.overallUtilization}%</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {utilizationData.summary.overallUtilization}%
+                      </p>
                     </CardContent>
                   </Card>
                 </div>
@@ -755,7 +858,16 @@ useEffect(() => {
                           <Tooltip formatter={(value) => `${value}%`} />
                           <Bar dataKey="utilizationPercent" fill="#6366F1" name="Utilization %">
                             {utilizationData.departments.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.utilizationPercent > 80 ? "#EF4444" : entry.utilizationPercent > 50 ? "#F59E0B" : "#10B981"} />
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={
+                                  entry.utilizationPercent > 80
+                                    ? "#EF4444"
+                                    : entry.utilizationPercent > 50
+                                    ? "#F59E0B"
+                                    : "#10B981"
+                                }
+                              />
                             ))}
                           </Bar>
                         </BarChart>
@@ -768,15 +880,28 @@ useEffect(() => {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      const exportData: ExportDataItem[] = utilizationData.departments.map(d => ({
-                        departmentName: d.departmentName,
-                        employeeCount: d.employeeCount,
-                        allocatedLeaves: d.allocatedLeaves,
-                        usedLeaves: d.usedLeaves,
-                        remainingLeaves: d.remainingLeaves,
-                        utilizationPercent: d.utilizationPercent,
-                      }));
-                      exportToCSV(exportData, `utilization_${utilizationData.academicYear}`, ["departmentName", "employeeCount", "allocatedLeaves", "usedLeaves", "remainingLeaves", "utilizationPercent"]);
+                      const exportData: ExportDataItem[] = utilizationData.departments.map(
+                        (d) => ({
+                          departmentName: d.departmentName,
+                          employeeCount: d.employeeCount,
+                          allocatedLeaves: d.allocatedLeaves,
+                          usedLeaves: d.usedLeaves,
+                          remainingLeaves: d.remainingLeaves,
+                          utilizationPercent: d.utilizationPercent,
+                        })
+                      );
+                      exportToCSV(
+                        exportData,
+                        `utilization_${utilizationData.academicYear}`,
+                        [
+                          "departmentName",
+                          "employeeCount",
+                          "allocatedLeaves",
+                          "usedLeaves",
+                          "remainingLeaves",
+                          "utilizationPercent",
+                        ]
+                      );
                     }}
                   >
                     <Download className="h-4 w-4 mr-2" />
@@ -788,7 +913,7 @@ useEffect(() => {
           </div>
         </TabsContent>
 
-        {/* Leave Type Statistics Tab */}
+        {/* LEAVE TYPE STATISTICS TAB */}
         <TabsContent value="leave-types">
           <div className="space-y-6">
             <Card>
@@ -801,8 +926,10 @@ useEffect(() => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {academicYears.map(y => (
-                          <SelectItem key={y} value={y}>{y}</SelectItem>
+                        {academicYears.map((y) => (
+                          <SelectItem key={y} value={y}>
+                            {y}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -832,7 +959,9 @@ useEffect(() => {
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Avg Days/Request</p>
-                      <p className="text-2xl font-bold">{leaveTypeData.summary.averageDaysPerRequest}</p>
+                      <p className="text-2xl font-bold">
+                        {leaveTypeData.summary.averageDaysPerRequest}
+                      </p>
                     </CardContent>
                   </Card>
                 </div>
@@ -894,14 +1023,26 @@ useEffect(() => {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      const exportData: ExportDataItem[] = leaveTypeData.leaveTypeStats.map(stat => ({
-                        leaveName: stat.leaveName,
-                        requestCount: stat.requestCount,
-                        totalDays: stat.totalDays,
-                        averageDaysPerRequest: stat.averageDaysPerRequest,
-                        percentageOfTotal: stat.percentageOfTotal,
-                      }));
-                      exportToCSV(exportData, `leave_type_stats_${leaveTypeData.academicYear}`, ["leaveName", "requestCount", "totalDays", "averageDaysPerRequest", "percentageOfTotal"]);
+                      const exportData: ExportDataItem[] = leaveTypeData.leaveTypeStats.map(
+                        (stat) => ({
+                          leaveName: stat.leaveName,
+                          requestCount: stat.requestCount,
+                          totalDays: stat.totalDays,
+                          averageDaysPerRequest: stat.averageDaysPerRequest,
+                          percentageOfTotal: stat.percentageOfTotal,
+                        })
+                      );
+                      exportToCSV(
+                        exportData,
+                        `leave_type_stats_${leaveTypeData.academicYear}`,
+                        [
+                          "leaveName",
+                          "requestCount",
+                          "totalDays",
+                          "averageDaysPerRequest",
+                          "percentageOfTotal",
+                        ]
+                      );
                     }}
                   >
                     <Download className="h-4 w-4 mr-2" />
@@ -913,7 +1054,7 @@ useEffect(() => {
           </div>
         </TabsContent>
 
-        {/* Override Tracking Tab */}
+        {/* OVERRIDE TRACKING TAB */}
         <TabsContent value="overrides">
           <div className="space-y-6">
             <Card>
@@ -921,11 +1062,19 @@ useEffect(() => {
                 <div className="grid gap-4 md:grid-cols-3">
                   <div>
                     <Label>Start Date</Label>
-                    <Input type="date" value={overrideStartDate} onChange={(e) => setOverrideStartDate(e.target.value)} />
+                    <Input
+                      type="date"
+                      value={overrideStartDate}
+                      onChange={(e) => setOverrideStartDate(e.target.value)}
+                    />
                   </div>
                   <div>
                     <Label>End Date</Label>
-                    <Input type="date" value={overrideEndDate} onChange={(e) => setOverrideEndDate(e.target.value)} />
+                    <Input
+                      type="date"
+                      value={overrideEndDate}
+                      onChange={(e) => setOverrideEndDate(e.target.value)}
+                    />
                   </div>
                   <div className="flex items-end">
                     <Button onClick={fetchOverrideReport}>Generate Report</Button>
@@ -940,19 +1089,25 @@ useEffect(() => {
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Total Overrides</p>
-                      <p className="text-2xl font-bold text-orange-600">{overrideData.summary.totalOverrides}</p>
+                      <p className="text-2xl font-bold text-orange-600">
+                        {overrideData.summary.totalOverrides}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Departments Affected</p>
-                      <p className="text-2xl font-bold">{overrideData.summary.uniqueDepartments}</p>
+                      <p className="text-2xl font-bold">
+                        {overrideData.summary.uniqueDepartments}
+                      </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="pt-6">
                       <p className="text-sm text-muted-foreground">Unique Reasons</p>
-                      <p className="text-2xl font-bold">{overrideData.summary.uniqueReasons}</p>
+                      <p className="text-2xl font-bold">
+                        {overrideData.summary.uniqueReasons}
+                      </p>
                     </CardContent>
                   </Card>
                 </div>
@@ -1001,7 +1156,9 @@ useEffect(() => {
                               <td className="p-3">{override.leaveType}</td>
                               <td className="p-3">{override.originalApprover}</td>
                               <td className="p-3">{override.overriddenBy}</td>
-                              <td className="p-3 max-w-xs truncate">{override.overrideReason || "-"}</td>
+                              <td className="p-3 max-w-xs truncate">
+                                {override.overrideReason || "-"}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1014,15 +1171,28 @@ useEffect(() => {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      const exportData: ExportDataItem[] = overrideData.overrides.map(o => ({
-                        applicantName: o.applicantName,
-                        departmentName: o.departmentName,
-                        leaveType: o.leaveType,
-                        originalApprover: o.originalApprover,
-                        overriddenBy: o.overriddenBy,
-                        overrideReason: o.overrideReason || "",
-                      }));
-                      exportToCSV(exportData, "override_report", ["applicantName", "departmentName", "leaveType", "originalApprover", "overriddenBy", "overrideReason"]);
+                      const exportData: ExportDataItem[] = overrideData.overrides.map(
+                        (o) => ({
+                          applicantName: o.applicantName,
+                          departmentName: o.departmentName,
+                          leaveType: o.leaveType,
+                          originalApprover: o.originalApprover,
+                          overriddenBy: o.overriddenBy,
+                          overrideReason: o.overrideReason || "",
+                        })
+                      );
+                      exportToCSV(
+                        exportData,
+                        "override_report",
+                        [
+                          "applicantName",
+                          "departmentName",
+                          "leaveType",
+                          "originalApprover",
+                          "overriddenBy",
+                          "overrideReason",
+                        ]
+                      );
                     }}
                   >
                     <Download className="h-4 w-4 mr-2" />
@@ -1032,6 +1202,11 @@ useEffect(() => {
               </>
             )}
           </div>
+        </TabsContent>
+
+        {/* YEAR-END REPORT TAB */}
+        <TabsContent value="year-end">
+          <YearEndReport />
         </TabsContent>
       </Tabs>
     </div>

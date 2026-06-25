@@ -26,7 +26,7 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useRoleStore } from "@/store/roleStore";
 import { RoleBadge } from "./RoleBadge";
-import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+//import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 // Role configurations for mobile
 const roleConfigs: Record<string, { label: string; icon: React.ReactNode; href: string; description: string }> = {
