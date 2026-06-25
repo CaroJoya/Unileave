@@ -1,4 +1,4 @@
-// components/auth/LoginForm.tsx - Icon only inside input, default hidden
+// components/auth/LoginForm.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { useState, useEffect } from "react";
@@ -18,12 +18,11 @@ export function LoginForm() {
   const { login } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // Default: hidden
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasSuperAdmin, setHasSuperAdmin] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(true);
 
-  // Check for super admin existence on mount
   useEffect(() => {
     async function checkSuperAdmin() {
       try {
@@ -37,7 +36,6 @@ export function LoginForm() {
         setChecking(false);
       }
     }
-    
     checkSuperAdmin();
   }, []);
 
@@ -47,24 +45,47 @@ export function LoginForm() {
 
     try {
       const success = await login(email, password);
+      
       if (success) {
-        const { userRoles, user } = useAuthStore.getState();
+        // ✅ Get fresh state after login
+        const state = useAuthStore.getState();
+        const userRoles = state.userRoles || [];
+        const user = state.user;
         
-        if (user?.status === "deleted") {
+        // ✅ Small delay to ensure state is fully updated
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // ✅ Get state again after delay
+        const refreshedState = useAuthStore.getState();
+        const finalRoles = refreshedState.userRoles || [];
+        const finalUser = refreshedState.user;
+        
+        console.log("🔍 Final user roles:", finalRoles);
+        
+        if (finalUser?.status === "deleted") {
           toast.error("Account is deactivated. Please restore your account.");
           setLoading(false);
           return;
         }
         
-        if (userRoles.includes("super_admin")) {
+        // ✅ Check if user has any roles
+        if (finalRoles.length === 0) {
+          console.error("❌ No roles found for user!");
+          toast.error("Account has no roles assigned. Please contact admin.");
+          setLoading(false);
+          return;
+        }
+        
+        // ✅ Redirect based on role
+        if (finalRoles.includes("super_admin")) {
           router.push("/super-admin/dashboard");
-        } else if (userRoles.includes("head_clerk")) {
+        } else if (finalRoles.includes("head_clerk")) {
           router.push("/headclerk/dashboard");
-        } else if (userRoles.includes("principal")) {
+        } else if (finalRoles.includes("principal")) {
           router.push("/principal/dashboard");
-        } else if (userRoles.includes("registrar")) {
+        } else if (finalRoles.includes("registrar")) {
           router.push("/registrar/dashboard");
-        } else if (userRoles.includes("hod")) {
+        } else if (finalRoles.includes("hod")) {
           router.push("/hod/dashboard");
         } else {
           router.push("/dashboard");
@@ -78,7 +99,6 @@ export function LoginForm() {
     }
   };
 
-  // Show loading state while checking
   if (checking) {
     return (
       <Card className="w-full max-w-md">
