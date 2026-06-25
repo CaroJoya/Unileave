@@ -1,10 +1,10 @@
-// components/layout/MobileNav.tsx - Updated with role switcher
+// components/layout/MobileNav.tsx - Fixed version
 "use client";
 
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import {
   Menu,
@@ -26,6 +26,7 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useRoleStore } from "@/store/roleStore";
 import { RoleBadge } from "./RoleBadge";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 // Role configurations for mobile
 const roleConfigs: Record<string, { label: string; icon: React.ReactNode; href: string; description: string }> = {
@@ -140,11 +141,19 @@ export function MobileNav() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden">
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-[300px] sm:w-[350px] overflow-y-auto">
+        {/* ✅ FIX: Add SheetTitle for accessibility */}
+        <SheetTitle className="sr-only">
+          Navigation Menu
+        </SheetTitle>
+        <SheetDescription className="sr-only">
+          Navigate through the application and switch between roles
+        </SheetDescription>
+        
         <div className="flex flex-col h-full">
           {/* User Info */}
           <div className="border-b pb-4 mb-4">
@@ -184,6 +193,7 @@ export function MobileNav() {
                       setOpen(false);
                       router.push(role.href);
                     }}
+                    aria-label={`Switch to ${role.label} role`}
                   >
                     {role.icon}
                     <span>{role.label}</span>
@@ -240,6 +250,7 @@ export function MobileNav() {
             <button
               onClick={handleLogout}
               className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+              aria-label="Logout"
             >
               <LogOut className="h-4 w-4" />
               <span>Logout</span>
