@@ -1,6 +1,7 @@
+// app/registrar/all-leaves/page.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -90,7 +91,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   Cancelled: { label: "Cancelled", color: "bg-gray-100 text-gray-800" },
 };
 
-export default function RegistrarAllLeavesPage() {
+function RegistrarAllLeavesContent() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -136,21 +137,19 @@ export default function RegistrarAllLeavesPage() {
     }
   }, [user, authLoading, router]);
 
-  // Check URL params for initial tab - using a ref to avoid ESLint warning
   // Check URL params for initial tab
-const hasSetInitialTab = React.useRef(false);
-useEffect(() => {
-  if (!hasSetInitialTab.current) {
-    const viewParam = searchParams.get("view");
-    if (viewParam === "all") {
-      // Use setTimeout to avoid ESLint set-state-in-effect warning
-      setTimeout(() => {
-        setActiveTab("all");
-      }, 0);
-      hasSetInitialTab.current = true;
+  const hasSetInitialTab = React.useRef(false);
+  useEffect(() => {
+    if (!hasSetInitialTab.current) {
+      const viewParam = searchParams.get("view");
+      if (viewParam === "all") {
+        setTimeout(() => {
+          setActiveTab("all");
+        }, 0);
+        hasSetInitialTab.current = true;
+      }
     }
-  }
-}, [searchParams]);
+  }, [searchParams]);
 
   const fetchRequests = useCallback(async () => {
     setLoading(true);
@@ -210,9 +209,7 @@ useEffect(() => {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
-      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to approve";
@@ -248,9 +245,7 @@ useEffect(() => {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
-      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to reject";
@@ -286,9 +281,7 @@ useEffect(() => {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
-      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to send remarks";
@@ -354,7 +347,6 @@ useEffect(() => {
     toast.success("Exported successfully");
   };
 
-  // Check if user can take actions (only on pending tab)
   const canTakeAction = activeTab === "pending";
 
   if (authLoading || loading) {
@@ -753,5 +745,18 @@ useEffect(() => {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// Main export with Suspense
+export default function RegistrarAllLeavesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+      </div>
+    }>
+      <RegistrarAllLeavesContent />
+    </Suspense>
   );
 }
