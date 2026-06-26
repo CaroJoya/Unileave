@@ -1,23 +1,28 @@
-// app/api/registrar/overwork/route.ts - COMPLETE NEW FILE
+// app/api/registrar/comp-off/route.ts - COMPLETE NEW FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
-interface OverworkEntry {
+interface CompOffCredit {
   id: string;
   userId: string;
   userName: string;
-  userRole: string;
-  departmentId: string;
-  hours: number;
-  workDate: string;
+  creditedDays: number;
+  usedDays: number;
+  earnedDate: string;
   reason: string;
+  expiryDate: string;
   status: string;
 }
 
 interface User {
   uid: string;
+  name: string;
+  email: string;
   roles: string[];
+  departmentId: string;
+  status: string;
+  isEmployed: boolean;
   collegeId: string;
 }
 
@@ -54,26 +59,32 @@ export async function GET() {
     const collegeId = registrarData.collegeId;
 
     const usersSnapshot = await rtdb.ref("users").once("value");
-    const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
+    const users = usersSnapshot.val() as Record<string, User> | null || {};
     
     // Get ALL users in college
-    const collegeUserIds = Object.entries(allUsers)
+    const collegeUserIds = Object.entries(users)
       .filter(([, user]) => user.collegeId === collegeId)
       .map(([uid]) => uid);
 
-    const overworkSnapshot = await rtdb.ref("overworkEntries").once("value");
-    const allEntries = overworkSnapshot.val() as Record<string, OverworkEntry> | null || {};
+    const creditsSnapshot = await rtdb.ref("compOffCredits").once("value");
+    const allCredits = creditsSnapshot.val() as Record<string, CompOffCredit> | null || {};
 
-    const pendingEntries = Object.values(allEntries)
-      .filter(entry => 
-        collegeUserIds.includes(entry.userId) && 
-        entry.status === "pending"
-      )
-      .sort((a, b) => new Date(b.workDate).getTime() - new Date(a.workDate).getTime());
+    const credits: (CompOffCredit & { userName: string })[] = [];
 
-    return NextResponse.json({ entries: pendingEntries });
+    for (const [id, credit] of Object.entries(allCredits)) {
+      if (collegeUserIds.includes(credit.userId) && credit.status === "pending_approval") {
+        const user = users[credit.userId];
+        credits.push({
+          ...credit,
+          id,
+          userName: user?.name || "Unknown",
+        });
+      }
+    }
+
+    return NextResponse.json({ credits });
   } catch (error) {
-    console.error("Error fetching overwork entries:", error);
-    return NextResponse.json({ error: "Failed to fetch overwork entries" }, { status: 500 });
+    console.error("Error fetching comp-off credits:", error);
+    return NextResponse.json({ error: "Failed to fetch comp-off credits" }, { status: 500 });
   }
 }

@@ -108,7 +108,7 @@ export async function GET() {
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
-    // ✅ FIXED: Get ALL users in college, not just office_staff and head_clerk
+    // ✅ FIXED: Get ALL users in college
     const collegeUserIds = Object.entries(allUsers)
       .filter(([, user]) => user.collegeId === collegeId && user.status === "active")
       .map(([uid]) => uid);
