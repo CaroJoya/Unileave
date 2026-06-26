@@ -1,4 +1,4 @@
-// app/api/super-admin/users/route.ts - FIXED WITH PROPER FILTERING
+// app/api/super-admin/users/route.ts - FIXED WITH POST HANDLER
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -38,7 +38,6 @@ export async function GET(request: Request) {
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
-    // ✅ Get the current admin's data to know their college
     const adminSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const adminData = adminSnapshot.val() as User | null;
     
@@ -46,7 +45,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    // ✅ THIS IS THE KEY - Get the admin's collegeId
     const adminCollegeId = adminData.collegeId;
     
     if (!adminCollegeId) {
@@ -67,10 +65,8 @@ export async function GET(request: Request) {
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, User> | null || {};
 
-    // ✅ CRITICAL FIX: Only show users from the SAME college
     let usersList = Object.entries(users)
       .filter(([, user]) => {
-        // ✅ This is the fix - filter by collegeId
         return user.collegeId === adminCollegeId;
       })
       .map(([uid, user]) => ({
@@ -86,7 +82,6 @@ export async function GET(request: Request) {
         collegeId: user.collegeId,
       }));
 
-    // Apply additional filters
     if (search) {
       usersList = usersList.filter(user => 
         user.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -112,5 +107,161 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Error fetching users:", error);
     return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
+  }
+}
+
+// ✅ ADD THIS POST HANDLER - The missing part!
+export async function POST(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get("session")?.value;
+
+    if (!sessionCookie) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
+    if (!auth || !rtdb) {
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
+    const decodedToken = await auth.verifySessionCookie(sessionCookie);
+    
+    const adminSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
+    const adminData = adminSnapshot.val() as User | null;
+    
+    if (!adminData?.roles?.includes("super_admin")) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { name, email, phoneNumber, password, departmentId, roles } = body;
+
+    // Validate required fields
+    if (!name || !email || !password || !departmentId || !roles || roles.length === 0) {
+      return NextResponse.json(
+        { error: "Missing required fields: name, email, password, departmentId, roles" },
+        { status: 400 }
+      );
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: "Password must be at least 6 characters" },
+        { status: 400 }
+      );
+    }
+
+    // Get the admin's college
+    const adminCollegeId = adminData.collegeId;
+    if (!adminCollegeId) {
+      return NextResponse.json({ error: "Admin has no college assigned" }, { status: 400 });
+    }
+
+    // Get college name
+    const collegeSnapshot = await rtdb.ref(`colleges/${adminCollegeId}`).once("value");
+    const college = collegeSnapshot.val() as { name: string } | null;
+
+    // Get department name
+    const deptSnapshot = await rtdb.ref(`departments/${departmentId}`).once("value");
+    const department = deptSnapshot.val() as { name: string } | null;
+    
+    if (!department) {
+      return NextResponse.json({ error: "Department not found" }, { status: 404 });
+    }
+
+    // Create Firebase Auth user
+    let userRecord;
+    try {
+      userRecord = await auth.createUser({
+        email,
+        password,
+        displayName: name,
+      });
+    } catch (authError: unknown) {
+      const error = authError as { code?: string; message?: string };
+      console.error("Auth creation error:", error);
+      if (error.code === "auth/email-already-exists") {
+        return NextResponse.json(
+          { error: "Email already exists" },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        { error: "Failed to create user: " + error.message },
+        { status: 500 }
+      );
+    }
+
+    // Save user to RTDB
+    const userData = {
+      uid: userRecord.uid,
+      name,
+      email,
+      phoneNumber: phoneNumber || "",
+      roles: roles,
+      departmentId: departmentId,
+      departmentName: department.name,
+      collegeId: adminCollegeId,
+      collegeName: college?.name || "",
+      status: "active",
+      isEmployed: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await rtdb.ref(`users/${userRecord.uid}`).set(userData);
+    } catch (rtdbError) {
+      console.error("RTDB save error:", rtdbError);
+      // Clean up: delete auth user
+      try {
+        await auth.deleteUser(userRecord.uid);
+      } catch {
+        // Ignore cleanup errors
+      }
+      return NextResponse.json(
+        { error: "Failed to save user data" },
+        { status: 500 }
+      );
+    }
+
+    // Log the action
+    const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    await rtdb.ref(`auditLogs/${auditLogId}`).set({
+      id: auditLogId,
+      userId: decodedToken.uid,
+      userName: adminData.name || "Super Admin",
+      userRole: "super_admin",
+      action: "USER_CREATED",
+      module: "users",
+      targetId: userRecord.uid,
+      details: JSON.stringify({
+        name,
+        email,
+        roles,
+        departmentName: department.name,
+      }),
+      createdAt: new Date().toISOString(),
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "User created successfully",
+      uid: userRecord.uid,
+      user: userData,
+    });
+  } catch (error) {
+    console.error("Error creating user:", error);
+    return NextResponse.json(
+      { error: "Failed to create user" },
+      { status: 500 }
+    );
   }
 }
