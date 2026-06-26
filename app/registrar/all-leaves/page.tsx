@@ -1,4 +1,4 @@
-// app/registrar/all-leaves/page.tsx
+// app/registrar/all-leaves/page.tsx - COMPLETE FIXED FILE
 "use client";
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
@@ -91,6 +91,20 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   Cancelled: { label: "Cancelled", color: "bg-gray-100 text-gray-800" },
 };
 
+// ✅ MAIN COMPONENT WRAPPED WITH SUSPENSE
+export default function RegistrarAllLeavesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+      </div>
+    }>
+      <RegistrarAllLeavesContent />
+    </Suspense>
+  );
+}
+
+// ✅ ACTUAL CONTENT COMPONENT
 function RegistrarAllLeavesContent() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
@@ -141,7 +155,7 @@ function RegistrarAllLeavesContent() {
   const hasSetInitialTab = React.useRef(false);
   useEffect(() => {
     if (!hasSetInitialTab.current) {
-      const viewParam = searchParams.get("view");
+      const viewParam = searchParams?.get("view");
       if (viewParam === "all") {
         setTimeout(() => {
           setActiveTab("all");
@@ -151,7 +165,6 @@ function RegistrarAllLeavesContent() {
     }
   }, [searchParams]);
 
-  // ✅ FIXED: Improved fetchRequests with better error handling
   const fetchRequests = useCallback(async () => {
     setLoading(true);
     try {
@@ -167,38 +180,35 @@ function RegistrarAllLeavesContent() {
       if (filters.endDate) params.append("endDate", filters.endDate);
 
       const response = await fetch(`/api/registrar/leaves?${params.toString()}`);
-      const data = await response.json();
-
+      
+      // ✅ BETTER ERROR HANDLING
       if (!response.ok) {
-        // Throw error with detailed message from the API
-        throw new Error(data.error || `Failed to fetch requests (Status: ${response.status})`);
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || `Failed to fetch requests (Status: ${response.status})`);
       }
-
+      
+      const data = await response.json();
+      
+      // ✅ SAFE DATA ACCESS
       setRequests(data.requests || []);
       setDepartments(data.departments || []);
     } catch (error) {
       console.error("Error fetching requests:", error);
-      // Show a user-friendly error message
       toast.error(error instanceof Error ? error.message : "Failed to fetch requests");
-      // Set requests to empty array to show the empty state
       setRequests([]);
+      setDepartments([]);
     } finally {
       setLoading(false);
     }
   }, [activeTab, filters]);
 
-  // ✅ FIXED: Load data when user is authenticated and is a registrar
   useEffect(() => {
-    // Ensure the user is a registrar before fetching
-    if (user?.roles?.includes("registrar")) {
-      // Use an IIFE to handle the async fetch without making the effect callback async directly
-      const loadData = async () => {
-        await fetchRequests();
-      };
-      loadData();
-    }
-  }, [user, fetchRequests]);
-
+  if (user?.roles?.includes("registrar")) {
+    (async () => {
+      await fetchRequests();
+    })();
+  }
+}, [user, fetchRequests]);
   const handleApprove = async (requestId: string) => {
     setActionLoading(true);
     try {
@@ -215,10 +225,7 @@ function RegistrarAllLeavesContent() {
       toast.success("Leave request approved");
       setShowDetails(false);
       setSelectedRequest(null);
-      
-      // Refresh the list to show updated status
       await fetchRequests();
-      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to approve";
@@ -253,10 +260,7 @@ function RegistrarAllLeavesContent() {
       setRejectModal({ open: false, requestId: null, reason: "" });
       setShowDetails(false);
       setSelectedRequest(null);
-      
-      // Refresh the list to show updated status
       await fetchRequests();
-      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to reject";
@@ -291,10 +295,7 @@ function RegistrarAllLeavesContent() {
       setRemarksModal({ open: false, requestId: null, remarks: "" });
       setShowDetails(false);
       setSelectedRequest(null);
-      
-      // Refresh the list to show updated status
       await fetchRequests();
-      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to send remarks";
@@ -404,12 +405,12 @@ function RegistrarAllLeavesContent() {
               <div className="grid gap-4 md:grid-cols-4">
                 <div>
                   <Label>Department</Label>
-                  <Select value={filters.departmentId} onValueChange={(v) => setFilters({ ...filters, departmentId: v })}>
+                  <Select value={filters.departmentId || "all"} onValueChange={(v) => setFilters({ ...filters, departmentId: v === "all" ? "" : v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="All departments" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All departments</SelectItem>
+                      <SelectItem value="all">All departments</SelectItem>
                       {departments.map((dept) => (
                         <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
                       ))}
@@ -418,12 +419,12 @@ function RegistrarAllLeavesContent() {
                 </div>
                 <div>
                   <Label>Role</Label>
-                  <Select value={filters.role} onValueChange={(v) => setFilters({ ...filters, role: v })}>
+                  <Select value={filters.role || "all"} onValueChange={(v) => setFilters({ ...filters, role: v === "all" ? "" : v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="All roles" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All roles</SelectItem>
+                      <SelectItem value="all">All roles</SelectItem>
                       <SelectItem value="office_staff">Office Staff</SelectItem>
                       <SelectItem value="head_clerk">Head Clerk</SelectItem>
                       <SelectItem value="faculty">Faculty</SelectItem>
@@ -433,12 +434,12 @@ function RegistrarAllLeavesContent() {
                 </div>
                 <div>
                   <Label>Leave Type</Label>
-                  <Select value={filters.leaveType} onValueChange={(v) => setFilters({ ...filters, leaveType: v })}>
+                  <Select value={filters.leaveType || "all"} onValueChange={(v) => setFilters({ ...filters, leaveType: v === "all" ? "" : v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="All types" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All types</SelectItem>
+                      <SelectItem value="all">All types</SelectItem>
                       {Object.entries(LEAVE_TYPE_LABELS).map(([code, name]) => (
                         <SelectItem key={code} value={code}>{name}</SelectItem>
                       ))}
@@ -463,12 +464,12 @@ function RegistrarAllLeavesContent() {
                 <div className="grid gap-4 md:grid-cols-3 mt-4">
                   <div>
                     <Label>Status</Label>
-                    <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
+                    <Select value={filters.status || "all"} onValueChange={(v) => setFilters({ ...filters, status: v === "all" ? "" : v })}>
                       <SelectTrigger>
                         <SelectValue placeholder="All status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All status</SelectItem>
+                        <SelectItem value="all">All status</SelectItem>
                         <SelectItem value="Pending_HOD">Pending HOD</SelectItem>
                         <SelectItem value="Pending_Registrar">Pending Registrar</SelectItem>
                         <SelectItem value="Pending_Principal">Pending Principal</SelectItem>
@@ -592,7 +593,6 @@ function RegistrarAllLeavesContent() {
           </DialogHeader>
           {selectedRequest && (
             <div className="space-y-6">
-              {/* Basic Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Employee</Label>
@@ -632,7 +632,6 @@ function RegistrarAllLeavesContent() {
                 </div>
               </div>
 
-              {/* Reason */}
               <div>
                 <Label className="text-muted-foreground flex items-center gap-2">
                   <FileText className="h-4 w-4" />
@@ -641,7 +640,6 @@ function RegistrarAllLeavesContent() {
                 <p className="mt-1 p-3 bg-gray-50 rounded-lg">{selectedRequest.reason}</p>
               </div>
 
-              {/* Revision History */}
               {selectedRequest.revisionHistory && selectedRequest.revisionHistory.length > 0 && (
                 <div>
                   <Label className="text-muted-foreground flex items-center gap-2">
@@ -662,7 +660,6 @@ function RegistrarAllLeavesContent() {
                 </div>
               )}
 
-              {/* Attachment */}
               {selectedRequest.attachmentUrl && (
                 <div>
                   <Label className="text-muted-foreground">Attachment</Label>
@@ -769,18 +766,5 @@ function RegistrarAllLeavesContent() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-// Main export with Suspense
-export default function RegistrarAllLeavesPage() {
-  return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-      </div>
-    }>
-      <RegistrarAllLeavesContent />
-    </Suspense>
   );
 }
