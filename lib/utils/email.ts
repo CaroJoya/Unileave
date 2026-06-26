@@ -8,7 +8,6 @@ const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASSWORD;
 const SMTP_FROM_EMAIL = process.env.SMTP_FROM_EMAIL || "noreply@unileave.edu";
 const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || "UniLeave";
-//const FRONTEND_URL = process.env.NEXT_PUBLIC_APP_URL || "unileave.vercel.app";
 
 let transporter: nodemailer.Transporter | null = null;
 let mailEnabled = false;
@@ -293,7 +292,32 @@ export function getCompOffApprovedEmail(
   `;
 }
 
-// 7️⃣ OVERWORK APPROVED → Applicant
+// 7️⃣ COMP-OFF REJECTED → Applicant ✨ NEW
+export function getCompOffRejectedEmail(applicantName: string): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#EF4444,#DC2626);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">❌ Comp-Off Rejected</h1>
+    </div>
+    <div style="padding:30px;">
+      <p>Dear ${applicantName},</p>
+      <p>Your compensatory off request has been <strong style="color:#EF4444;">rejected</strong>.</p>
+      <p style="font-size:14px;color:#6b7280;">Please contact your HOD for more information.</p>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+// 8️⃣ OVERWORK APPROVED → Applicant
 export function getOverworkApprovedEmail(
   applicantName: string,
   hours: number,
@@ -319,6 +343,102 @@ export function getOverworkApprovedEmail(
       ` : `
         <p style="font-size:14px;color:#6b7280;">Keep tracking your overwork hours!</p>
       `}
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+// 9️⃣ OVERWORK REJECTED → Applicant ✨ NEW
+export function getOverworkRejectedEmail(applicantName: string, hours: number): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#EF4444,#DC2626);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">❌ Overwork Rejected</h1>
+    </div>
+    <div style="padding:30px;">
+      <p>Dear ${applicantName},</p>
+      <p>Your overwork entry of <strong>${hours} hours</strong> has been <strong style="color:#EF4444;">rejected</strong>.</p>
+      <p style="font-size:14px;color:#6b7280;">Please contact your HOD for more information.</p>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+// 🔟 VACATION APPROVED → Applicant ✨ NEW
+export function getVacationApprovedEmail(
+  applicantName: string,
+  startDate: string,
+  endDate: string,
+  totalDays: number,
+  paidDays: number,
+  unpaidDays: number,
+  statusPageUrl: string
+): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#10B981,#059669);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">🌴 Vacation Approved</h1>
+      <p style="margin:8px 0 0;opacity:0.9;">Enjoy your vacation!</p>
+    </div>
+    <div style="padding:30px;">
+      <p>Dear ${applicantName},</p>
+      <p>Your vacation request has been <strong style="color:#10B981;">approved</strong>.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:8px 0;"><strong>Dates:</strong></td><td>${new Date(startDate).toLocaleDateString()} → ${new Date(endDate).toLocaleDateString()}</td></tr>
+        <tr><td style="padding:8px 0;"><strong>Total Days:</strong></td><td>${totalDays} day(s)</td></tr>
+        <tr><td style="padding:8px 0;"><strong>Paid Days:</strong></td><td>${paidDays} day(s)</td></tr>
+        <tr><td style="padding:8px 0;"><strong>Unpaid Days:</strong></td><td>${unpaidDays} day(s)</td></tr>
+      </table>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${statusPageUrl}" style="display:inline-block;background:#10B981;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">View Status →</a>
+      </div>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+// 1️⃣1️⃣ VACATION REJECTED → Applicant ✨ NEW
+export function getVacationRejectedEmail(applicantName: string, reason: string): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#EF4444,#DC2626);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">❌ Vacation Rejected</h1>
+    </div>
+    <div style="padding:30px;">
+      <p>Dear ${applicantName},</p>
+      <p>Your vacation request has been <strong style="color:#EF4444;">rejected</strong>.</p>
+      <div style="background-color:#FEE2E2;padding:16px;border-radius:8px;margin:16px 0;">
+        <strong>Rejection Reason:</strong>
+        <p style="margin:8px 0 0;">${reason || "No reason provided"}</p>
+      </div>
+      <p style="font-size:14px;color:#6b7280;">You can submit a new request if needed.</p>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
       UniLeave • University Leave Management System
