@@ -15,9 +15,13 @@ import {
   Users,
   CheckCircle,
   Ban,
-  ChevronRight
+  ChevronRight,
+  LayoutDashboard,
+  FileText,
+  Building2
 } from "lucide-react";
 import Link from "next/link";
+import { RoleNavbar } from "@/components/layout/RoleNavbar";
 
 interface DashboardData {
   pendingLeaves: number;
@@ -72,6 +76,39 @@ function RegistrarDashboardContent() {
       fetchDashboardData();
     }
   }, [user, fetchDashboardData]);
+
+  const navItems = [
+    { 
+      label: "Dashboard", 
+      href: "/registrar/dashboard", 
+      icon: <LayoutDashboard className="h-4 w-4" /> 
+    },
+    { 
+      label: "All Leaves", 
+      href: "/registrar/all-leaves", 
+      icon: <FileText className="h-4 w-4" /> 
+    },
+    { 
+      label: "Comp Off", 
+      href: "/registrar/comp-off", 
+      icon: <Award className="h-4 w-4" /> 
+    },
+    { 
+      label: "Overwork", 
+      href: "/registrar/overwork", 
+      icon: <Clock className="h-4 w-4" /> 
+    },
+    { 
+      label: "Vacation", 
+      href: "/registrar/vacation", 
+      icon: <Umbrella className="h-4 w-4" /> 
+    },
+    { 
+      label: "Reports", 
+      href: "/registrar/reports", 
+      icon: <Building2 className="h-4 w-4" /> 
+    },
+  ];
 
   if (authLoading || loading) {
     return (
@@ -139,14 +176,14 @@ function RegistrarDashboardContent() {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Registrar Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Manage office staff leave requests and approvals
-        </p>
-      </div>
+      <RoleNavbar
+        role="registrar"
+        navItems={navItems}
+        greeting={`Welcome back, ${user?.name || "Registrar"}! 👋`}
+        subtitle="Manage office staff leave requests and approvals"
+      />
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mt-6">
         {dashboardCards.map((card) => (
           <Link key={card.title} href={card.href}>
             <Card className="hover:shadow-lg transition-shadow cursor-pointer">

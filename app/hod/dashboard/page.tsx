@@ -13,9 +13,11 @@ import {
   Clock, 
   Umbrella,
   Users,
-  ChevronRight
+  ChevronRight,
+  LayoutDashboard
 } from "lucide-react";
 import Link from "next/link";
+import { RoleNavbar } from "@/components/layout/RoleNavbar";
 
 interface DashboardData {
   pendingLeaves: number;
@@ -69,6 +71,34 @@ function HODDashboardContent() {
     }
   }, [user, fetchDashboardData]);
 
+  const navItems = [
+    { 
+      label: "Dashboard", 
+      href: "/hod/dashboard", 
+      icon: <LayoutDashboard className="h-4 w-4" /> 
+    },
+    { 
+      label: "Faculty Requests", 
+      href: "/hod/faculty-requests", 
+      icon: <Users className="h-4 w-4" /> 
+    },
+    { 
+      label: "Comp Off", 
+      href: "/hod/comp-off", 
+      icon: <Award className="h-4 w-4" /> 
+    },
+    { 
+      label: "Overwork", 
+      href: "/hod/overwork", 
+      icon: <Clock className="h-4 w-4" /> 
+    },
+    { 
+      label: "Vacation", 
+      href: "/hod/vacation", 
+      icon: <Umbrella className="h-4 w-4" /> 
+    },
+  ];
+
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -121,14 +151,14 @@ function HODDashboardContent() {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">HOD Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Department: {user.departmentName}
-        </p>
-      </div>
+      <RoleNavbar
+        role="hod"
+        navItems={navItems}
+        greeting={`Welcome back, ${user?.name || "HOD"}! 👋`}
+        subtitle={`Department: ${user?.departmentName || "Not assigned"}`}
+      />
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5 mt-6">
         {dashboardCards.map((card) => (
           <Link key={card.title} href={card.href}>
             <Card className="hover:shadow-lg transition-shadow cursor-pointer">

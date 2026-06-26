@@ -11,17 +11,31 @@ import { SystemTools } from "@/components/super-admin/SystemTools";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { RoleNavbar } from "@/components/layout/RoleNavbar";
+import { Building2, Users, Database } from "lucide-react";
 
 interface Department {
   id: string;
   name: string;
 }
 
+// Get initial tab from URL hash
+const getInitialTab = (): string => {
+  if (typeof window !== 'undefined') {
+    const hash = window.location.hash.replace('#', '');
+    if (hash && ['college', 'departments', 'users', 'system'].includes(hash)) {
+      return hash;
+    }
+  }
+  return "college";
+};
+
 function SuperAdminDashboardContent() {
   const { user, isLoading } = useAuthStore();
   const router = useRouter();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoadingDepartments, setIsLoadingDepartments] = useState(true);
+  const [activeTab, setActiveTab] = useState(getInitialTab);
   const initialLoadDone = useRef(false);
 
   useEffect(() => {
@@ -102,6 +116,39 @@ function SuperAdminDashboardContent() {
     }
   }, []);
 
+  const navItems = [
+    { 
+      label: "College Profile", 
+      href: "/super-admin/dashboard", 
+      icon: <Building2 className="h-4 w-4" />,
+      tab: "college"
+    },
+    { 
+      label: "Departments", 
+      href: "/super-admin/dashboard", 
+      icon: <Building2 className="h-4 w-4" />,
+      tab: "departments"
+    },
+    { 
+      label: "Users", 
+      href: "/super-admin/dashboard", 
+      icon: <Users className="h-4 w-4" />,
+      tab: "users"
+    },
+    { 
+      label: "System", 
+      href: "/super-admin/dashboard", 
+      icon: <Database className="h-4 w-4" />,
+      tab: "system"
+    },
+  ];
+
+  // Handle tab change with hash
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    window.location.hash = tab;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -121,17 +168,14 @@ function SuperAdminDashboardContent() {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Super Admin Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Managing: {user.collegeName || "College"}
-        </p>
-        <p className="text-sm text-muted-foreground mt-1">
-          College ID: {user.collegeId || "Not set"}
-        </p>
-      </div>
+      <RoleNavbar
+        role="super_admin"
+        navItems={navItems}
+        greeting={`Welcome back, ${user?.name || "Super Admin"}! 👋`}
+        subtitle={`Managing: ${user?.collegeName || "College"} • College ID: ${user?.collegeId || "Not set"}`}
+      />
 
-      <Tabs defaultValue="college" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6 mt-6">
         <TabsList>
           <TabsTrigger value="college">College Profile</TabsTrigger>
           <TabsTrigger value="departments">Departments</TabsTrigger>

@@ -4,6 +4,7 @@
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { Role } from "@/types/roles";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useRoleStore } from "@/store/roleStore";
@@ -27,9 +28,10 @@ import {
   ChevronRight,
   CheckCircle,
   XCircle,
+  LayoutDashboard
 } from "lucide-react";
+import { RoleNavbar } from "@/components/layout/RoleNavbar";
 
-// Types
 interface LeaveBalance {
   allocated: number;
   used: number;
@@ -84,7 +86,6 @@ function DashboardContent() {
     }
 
     if (!authLoading && user) {
-      // If user has multiple roles but no role selected, redirect to role selection
       const staffRoles = ["faculty", "lab_assistant", "office_staff"];
       const adminRoles = ["super_admin", "head_clerk", "hod", "registrar", "principal"];
       const hasStaff = userRoles.some((r) => staffRoles.includes(r));
@@ -95,7 +96,6 @@ function DashboardContent() {
         return;
       }
 
-      // If user has ONLY admin roles (no staff roles), redirect to admin dashboard
       if (!hasStaff && hasAdmin) {
         if (userRoles.includes("super_admin")) {
           router.push("/super-admin/dashboard");
@@ -121,18 +121,15 @@ function DashboardContent() {
     }
   }, [user, userRoles, authLoading, router, currentRole]);
 
-  // Fetch staff dashboard data
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch balances
       const balanceRes = await fetch("/api/leave/balances");
       let balanceData = { balances: {} };
       if (balanceRes.ok) {
         balanceData = await balanceRes.json();
       }
 
-      // Fetch leave requests
       let requestsData = { requests: [] };
       try {
         const requestsRes = await fetch("/api/leave/my-requests");
@@ -143,7 +140,6 @@ function DashboardContent() {
         console.warn("Error fetching requests");
       }
 
-      // Fetch overwork summary
       let overworkData = {
         summary: {
           totalApprovedHours: 0,
@@ -228,7 +224,6 @@ function DashboardContent() {
     }
   }, []);
 
-  // Fetch data when user is available
   useEffect(() => {
     let isMounted = true;
 
@@ -245,7 +240,6 @@ function DashboardContent() {
     };
   }, [user, fetchDashboardData]);
 
-  // Show loading while checking auth
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -266,26 +260,54 @@ function DashboardContent() {
     return "Staff";
   };
 
+  const navItems = [
+    { 
+      label: "Dashboard", 
+      href: "/dashboard", 
+      icon: <LayoutDashboard className="h-4 w-4" /> 
+    },
+    { 
+      label: "Request Leave", 
+      href: "/request-leave", 
+      icon: <FilePlus2 className="h-4 w-4" /> 
+    },
+    { 
+      label: "My Status", 
+      href: "/status", 
+      icon: <ListChecks className="h-4 w-4" /> 
+    },
+    { 
+      label: "My Stats", 
+      href: "/stats", 
+      icon: <BarChart3 className="h-4 w-4" /> 
+    },
+    { 
+      label: "Vacation", 
+      href: "/vacation", 
+      icon: <Umbrella className="h-4 w-4" /> 
+    },
+    { 
+      label: "Comp Off", 
+      href: "/comp-off", 
+      icon: <Award className="h-4 w-4" /> 
+    },
+    { 
+      label: "Overwork", 
+      href: "/overwork", 
+      icon: <Clock className="h-4 w-4" /> 
+    },
+  ];
+
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <div className="flex flex-wrap justify-between items-start gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Welcome back, {user.name}!
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              {user.departmentName} • {getRoleLabel()}
-            </p>
-          </div>
-          <Button onClick={() => router.push("/request-leave")}>
-            <FilePlus2 className="h-4 w-4 mr-2" />
-            Request Leave
-          </Button>
-        </div>
-      </div>
+      <RoleNavbar
+        role={userRoles[0] as Role || "faculty"}
+        navItems={navItems}
+        greeting={`Welcome back, ${user.name}! 👋`}
+        subtitle={`${user.departmentName} • ${getRoleLabel()}`}
+      />
 
-      <div className="grid gap-4 md:grid-cols-4 mb-8">
+      <div className="grid gap-4 md:grid-cols-4 mb-8 mt-6">
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">

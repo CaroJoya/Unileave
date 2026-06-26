@@ -35,10 +35,11 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Plus, Sun, Snowflake } from "lucide-react";
+import { Pencil, Plus, Sun, Snowflake, LayoutGrid, CalendarDays, Clock, Award, Users } from "lucide-react";
 import { AttendanceCalendar } from "@/components/headclerk/AttendanceCalendar";
 import { FacultyList } from "@/components/headclerk/FacultyList";
 import { YearReset } from "@/components/headclerk/YearReset";
+import { RoleNavbar } from "@/components/layout/RoleNavbar";
 import type { Department, StaffUser } from "@/types/attendance";
 
 // ============ TYPES ============
@@ -112,9 +113,22 @@ const defaultAllocations: Record<RoleKey, { CL: number; EL: number; ML: number; 
   head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
 };
 
+// Get initial tab from URL hash - FIXED: No useEffect needed
+const getInitialHeadClerkTab = (): string => {
+  if (typeof window !== 'undefined') {
+    const hash = window.location.hash.replace('#', '');
+    const validTabs = ['leave-types', 'leave-policies', 'year-reset', 'overwork', 'vacation', 'attendance', 'faculty'];
+    if (hash && validTabs.includes(hash)) {
+      return hash;
+    }
+  }
+  return "leave-types";
+};
+
 function HeadClerkDashboardContent() {
   const { user, isLoading } = useAuthStore();
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState(getInitialHeadClerkTab);
 
   // Leave Types State
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
@@ -169,6 +183,12 @@ function HeadClerkDashboardContent() {
   const [departmentsList, setDepartmentsList] = useState<Department[]>([]);
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
   const [attendanceKey, setAttendanceKey] = useState(0);
+
+  // Handle tab change with hash
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    window.location.hash = tab;
+  };
 
   // ========== LEAVE TYPES FUNCTIONS ==========
   const fetchLeaveTypes = useCallback(async () => {
@@ -566,6 +586,52 @@ function HeadClerkDashboardContent() {
     }
   }, [user, fetchLeaveTypes, fetchPolicies, fetchOverworkConfig, fetchVacations, fetchAttendanceData]);
 
+  // Nav items for Head Clerk
+  const navItems = [
+    { 
+      label: "Leave Types", 
+      href: "/headclerk/dashboard", 
+      icon: <LayoutGrid className="h-4 w-4" />,
+      tab: "leave-types"
+    },
+    { 
+      label: "Leave Policies", 
+      href: "/headclerk/dashboard", 
+      icon: <CalendarDays className="h-4 w-4" />,
+      tab: "leave-policies"
+    },
+    { 
+      label: "Year Reset", 
+      href: "/headclerk/dashboard", 
+      icon: <Clock className="h-4 w-4" />,
+      tab: "year-reset"
+    },
+    { 
+      label: "Overwork Config", 
+      href: "/headclerk/dashboard", 
+      icon: <Award className="h-4 w-4" />,
+      tab: "overwork"
+    },
+    { 
+      label: "Vacation Periods", 
+      href: "/headclerk/dashboard", 
+      icon: <Sun className="h-4 w-4" />,
+      tab: "vacation"
+    },
+    { 
+      label: "Attendance", 
+      href: "/headclerk/dashboard", 
+      icon: <Users className="h-4 w-4" />,
+      tab: "attendance"
+    },
+    { 
+      label: "Faculty List", 
+      href: "/headclerk/dashboard", 
+      icon: <Users className="h-4 w-4" />,
+      tab: "faculty"
+    },
+  ];
+
   // ========== RENDER ==========
   if (isLoading || loading) {
     return (
@@ -581,14 +647,14 @@ function HeadClerkDashboardContent() {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Head Clerk Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Manage leave types, policies, overwork configuration, vacation periods, attendance, and year reset
-        </p>
-      </div>
+      <RoleNavbar
+        role="head_clerk"
+        navItems={navItems}
+        greeting={`Welcome back, ${user?.name || "Head Clerk"}! 👋`}
+        subtitle="Manage leave types, policies, overwork configuration, vacation periods, attendance, and year reset"
+      />
 
-      <Tabs defaultValue="leave-types" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6 mt-6">
         <TabsList className="flex flex-wrap">
           <TabsTrigger value="leave-types">Leave Types</TabsTrigger>
           <TabsTrigger value="leave-policies">Leave Policies</TabsTrigger>

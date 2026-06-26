@@ -13,9 +13,11 @@ import {
   Award, 
   Umbrella,
   AlertTriangle,
-  ChevronRight
+  ChevronRight,
+  LayoutDashboard,
 } from "lucide-react";
 import Link from "next/link";
+import { RoleNavbar } from "@/components/layout/RoleNavbar";
 
 interface DashboardData {
   pendingApprovals: number;
@@ -69,6 +71,39 @@ function PrincipalDashboardContent() {
     }
   }, [user, fetchDashboardData]);
 
+  const navItems = [
+    { 
+      label: "Dashboard", 
+      href: "/principal/dashboard", 
+      icon: <LayoutDashboard className="h-4 w-4" /> 
+    },
+    { 
+      label: "Direct Approvals", 
+      href: "/principal/direct-approvals", 
+      icon: <CalendarDays className="h-4 w-4" /> 
+    },
+    { 
+      label: "Override Eligible", 
+      href: "/principal/override-eligible", 
+      icon: <AlertTriangle className="h-4 w-4" /> 
+    },
+    { 
+      label: "Comp Off", 
+      href: "/principal/comp-off", 
+      icon: <Award className="h-4 w-4" /> 
+    },
+    { 
+      label: "Overwork", 
+      href: "/principal/overwork", 
+      icon: <Clock className="h-4 w-4" /> 
+    },
+    { 
+      label: "Vacation", 
+      href: "/principal/vacation", 
+      icon: <Umbrella className="h-4 w-4" /> 
+    },
+  ];
+
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -121,14 +156,14 @@ function PrincipalDashboardContent() {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Principal Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          College: {user.collegeName}
-        </p>
-      </div>
+      <RoleNavbar
+        role="principal"
+        navItems={navItems}
+        greeting={`Welcome back, ${user?.name || "Principal"}! 👋`}
+        subtitle={`College: ${user?.collegeName || "Not assigned"}`}
+      />
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5 mt-6">
         {dashboardCards.map((card) => (
           <Link key={card.title} href={card.href}>
             <Card className="hover:shadow-lg transition-shadow cursor-pointer">
