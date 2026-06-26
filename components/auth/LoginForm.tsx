@@ -47,10 +47,13 @@ export function LoginForm() {
       const success = await login(email, password);
       
       if (success) {
-        // ✅ Get fresh state after login
-        const state = useAuthStore.getState();
-        const finalRoles = state.userRoles || [];
-        const finalUser = state.user;
+        // Wait a moment for Zustand to update
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Get the updated state
+        const finalState = useAuthStore.getState();
+        const finalRoles = finalState.userRoles || [];
+        const finalUser = finalState.user;
         
         console.log("🔍 Final user roles:", finalRoles);
         
@@ -60,7 +63,6 @@ export function LoginForm() {
           return;
         }
         
-        // ✅ Check if user has any roles
         if (finalRoles.length === 0) {
           console.error("❌ No roles found for user!");
           toast.error("Account has no roles assigned. Please contact admin.");
@@ -68,7 +70,7 @@ export function LoginForm() {
           return;
         }
         
-        // ✅ Redirect based on role
+        // Redirect based on role
         if (finalRoles.includes("super_admin")) {
           router.push("/super-admin/dashboard");
         } else if (finalRoles.includes("head_clerk")) {
@@ -108,7 +110,7 @@ export function LoginForm() {
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Welcome to UniLeave</CardTitle>
         <CardDescription>
-          Sign in to your account to continue
+          Sign in to your account or register a new college
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -167,14 +169,15 @@ export function LoginForm() {
           </div>
         </div>
 
-        {hasSuperAdmin === false && <SuperAdminRegistration />}
-
-        {hasSuperAdmin === true && (
-          <div className="text-center text-sm text-muted-foreground">
-            <p>No self-registration available</p>
-            <p className="text-xs mt-1">Contact college admin for access</p>
-          </div>
-        )}
+        {/* ✅ ALWAYS SHOW THE REGISTRATION BUTTON */}
+        <SuperAdminRegistration />
+        
+        {/* Optional info text */}
+        <p className="text-xs text-muted-foreground text-center mt-4">
+          {hasSuperAdmin 
+            ? "Register a new college or sign in to an existing account" 
+            : "Be the first to set up your college"}
+        </p>
       </CardContent>
       <CardFooter className="flex justify-center">
         <Link href="/forgot-password" className="text-sm text-primary hover:underline">

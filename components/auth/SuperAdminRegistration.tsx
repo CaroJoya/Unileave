@@ -1,3 +1,4 @@
+// components/auth/SuperAdminRegistration.tsx
 "use client";
 
 import { useState } from "react";
@@ -54,18 +55,36 @@ export function SuperAdminRegistration() {
       return;
     }
 
+    if (!formData.collegeName.trim()) {
+      toast.error("College name is required");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // ✅ Check if college already exists before submitting
+      const checkResponse = await fetch(
+        `/api/auth/check-super-admin?collegeName=${encodeURIComponent(formData.collegeName.trim())}`
+      );
+      const checkData = await checkResponse.json();
+      
+      if (checkData.collegeExists) {
+        toast.error(`College "${formData.collegeName.trim()}" already exists. Please use a different name or contact the existing admin.`);
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Register the new college
       const response = await fetch("/api/auth/register-super-admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          phoneNumber: formData.phoneNumber,
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          phoneNumber: formData.phoneNumber.trim(),
           password: formData.password,
-          collegeName: formData.collegeName,
+          collegeName: formData.collegeName.trim(),
         }),
       });
 
@@ -75,9 +94,23 @@ export function SuperAdminRegistration() {
         throw new Error(data.error || "Registration failed");
       }
 
-      toast.success("Super Admin registered successfully! Please login.");
+      toast.success(`College "${formData.collegeName.trim()}" registered successfully! Please login.`);
       setOpen(false);
-      router.push("/login");
+      
+      // Reset form
+      setFormData({
+        name: "",
+        email: "",
+        phoneNumber: "",
+        password: "",
+        confirmPassword: "",
+        collegeName: "",
+      });
+      
+      // Redirect to login with success message
+      setTimeout(() => {
+        router.push("/login");
+      }, 1000);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Registration failed";
       toast.error(errorMessage);
@@ -90,14 +123,14 @@ export function SuperAdminRegistration() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button className="w-full bg-primary hover:bg-primary/90">
-          Register as Super Admin
+          Register New College
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Register as Super Admin</DialogTitle>
+          <DialogTitle>Register a New College</DialogTitle>
           <DialogDescription>
-            First-time setup. Create your colleges Super Admin account.
+            Create a new Super Admin account for your college.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -132,6 +165,19 @@ export function SuperAdminRegistration() {
             />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="collegeName">College Name *</Label>
+            <Input
+              id="collegeName"
+              placeholder="e.g., School of Engineering"
+              value={formData.collegeName}
+              onChange={handleChange}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              This name must be unique. It will be used to identify your college.
+            </p>
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="password">Password *</Label>
             <Input
               id="password"
@@ -153,18 +199,8 @@ export function SuperAdminRegistration() {
               required
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="collegeName">College Name *</Label>
-            <Input
-              id="collegeName"
-              placeholder="e.g., School of Engineering"
-              value={formData.collegeName}
-              onChange={handleChange}
-              required
-            />
-          </div>
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Registering..." : "Register Super Admin"}
+            {loading ? "Registering..." : "Register College"}
           </Button>
         </form>
       </DialogContent>
