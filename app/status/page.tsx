@@ -121,11 +121,17 @@ export default function StatusPage() {
     }
   }, [user, authLoading, router]);
 
-  // Fetch leave requests
+  // Fetch leave requests - FIXED with no-cache
   const fetchRequests = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/leave/my-requests");
+      const response = await fetch("/api/leave/my-requests", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       const data = await response.json();
       if (response.ok) {
         setRequests(data.requests || []);

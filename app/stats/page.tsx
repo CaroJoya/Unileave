@@ -139,19 +139,23 @@ export default function StatsPage() {
     }
   }, [user, authLoading, router]);
 
-  // Fetch data
+  // Fetch data - FIXED with no-cache
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch leave requests
-      const requestsRes = await fetch("/api/leave/my-requests");
+      // Fetch leave requests with no-cache
+      const requestsRes = await fetch("/api/leave/my-requests", {
+        cache: 'no-store'
+      });
       const requestsData = await requestsRes.json();
       if (requestsRes.ok) {
         setRequests(requestsData.requests || []);
       }
 
-      // Fetch balances
-      const balancesRes = await fetch("/api/leave/balances");
+      // Fetch balances with no-cache
+      const balancesRes = await fetch("/api/leave/balances", {
+        cache: 'no-store'
+      });
       const balancesData = await balancesRes.json();
       if (balancesRes.ok) {
         setBalances(balancesData.balances || {});
@@ -164,12 +168,14 @@ export default function StatsPage() {
       // If HOD or Registrar, fetch department stats
       if (isHodOrRegistrar) {
         try {
-          const deptRes = await fetch("/api/stats/department");
+          const deptRes = await fetch("/api/stats/department", {
+            cache: 'no-store'
+          });
           const deptData = await deptRes.json();
-          if (deptRes.ok) {
-            setDepartmentData(deptData.departments || []);
+          if (deptRes.ok && deptData.departments) {
+            setDepartmentData(deptData.departments);
           } else {
-            // Use mock data as fallback
+            // Fallback mock data if API fails
             setDepartmentData([
               { department: "Computer Science", leaves: 45, pending: 8 },
               { department: "Electronics", leaves: 32, pending: 5 },
