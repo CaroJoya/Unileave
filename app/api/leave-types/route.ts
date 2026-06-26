@@ -1,7 +1,6 @@
-// app/api/leave-types/route.ts - COMPLETE FIXED FILE
+// app/api/leave-types/route.ts - FIXED (Public endpoint)
 import { NextResponse } from "next/server";
-import { getRTDB, getAuth } from "@/lib/firebase/admin";
-import { cookies } from "next/headers";
+import { getRTDB } from "@/lib/firebase/admin";
 
 interface LeaveType {
   id: string;
@@ -23,25 +22,15 @@ interface LeaveType {
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get("session")?.value;
-
-    if (!sessionCookie) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    const auth = getAuth();
     const rtdb = getRTDB();
 
-    if (!auth || !rtdb) {
+    if (!rtdb) {
       console.error('Firebase Admin not initialized');
       return NextResponse.json(
         { error: 'Server configuration error' },
         { status: 500 }
       );
     }
-
-    await auth.verifySessionCookie(sessionCookie);
 
     const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
     const leaveTypesData = leaveTypesSnapshot.val() as Record<string, Omit<LeaveType, 'id'>> | null || {};
