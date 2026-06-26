@@ -1,4 +1,4 @@
-// app/api/registrar/vacation/route.ts - FIXED
+// app/api/registrar/vacation/route.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -70,18 +70,16 @@ export async function GET() {
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, User> | null || {};
     
-    const staffUserIds = Object.entries(users)
-      .filter(([, user]) => 
-        user.collegeId === collegeId && 
-        (user.roles?.includes("office_staff") || user.roles?.includes("head_clerk"))
-      )
+    // ✅ FIXED: Get ALL users in college
+    const collegeUserIds = Object.entries(users)
+      .filter(([, user]) => user.collegeId === collegeId)
       .map(([uid]) => uid);
 
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
     const vacationRequests = Object.values(allRequests).filter(req => 
-      staffUserIds.includes(req.applicantId) &&
+      collegeUserIds.includes(req.applicantId) &&
       req.status === "Pending_Registrar" &&
       req.leaveType === "VL"
     );

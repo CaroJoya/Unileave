@@ -1,4 +1,4 @@
-// app/api/registrar/reports/annual/route.ts - FIXED
+// app/api/registrar/reports/annual/route.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -87,6 +87,7 @@ export async function GET(request: Request) {
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
+    // ✅ FIXED: Get ALL users in college
     const collegeUsers = Object.entries(allUsers)
       .filter(([, user]) => {
         if (user.collegeId !== collegeId) return false;

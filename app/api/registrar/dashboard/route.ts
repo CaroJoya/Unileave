@@ -1,4 +1,4 @@
-// app/api/registrar/dashboard/route.ts - FIXED
+// app/api/registrar/dashboard/route.ts - COMPLETE FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -108,19 +108,16 @@ export async function GET() {
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, User> | null || {};
     
-    const staffUserIds = Object.entries(allUsers)
-      .filter(([, user]) => 
-        user.collegeId === collegeId && 
-        (user.roles?.includes("office_staff") || user.roles?.includes("head_clerk")) &&
-        user.status === "active"
-      )
+    // ✅ FIXED: Get ALL users in college, not just office_staff and head_clerk
+    const collegeUserIds = Object.entries(allUsers)
+      .filter(([, user]) => user.collegeId === collegeId && user.status === "active")
       .map(([uid]) => uid);
 
     const leaveSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allLeaveRequests = leaveSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
     const pendingLeaves = Object.values(allLeaveRequests).filter(req => 
-      staffUserIds.includes(req.applicantId) && 
+      collegeUserIds.includes(req.applicantId) && 
       req.status === "Pending_Registrar"
     );
 
@@ -128,7 +125,7 @@ export async function GET() {
     const allCompOff = compOffSnapshot.val() as Record<string, CompOffCredit> | null || {};
 
     const pendingCompOff = Object.values(allCompOff).filter(credit => 
-      staffUserIds.includes(credit.userId) && 
+      collegeUserIds.includes(credit.userId) && 
       credit.status === "pending_approval"
     );
 
@@ -136,17 +133,17 @@ export async function GET() {
     const allOverwork = overworkSnapshot.val() as Record<string, OverworkEntry> | null || {};
 
     const pendingOverwork = Object.values(allOverwork).filter(entry => 
-      staffUserIds.includes(entry.userId) && 
+      collegeUserIds.includes(entry.userId) && 
       entry.status === "pending"
     );
 
     const pendingVacation = Object.values(allLeaveRequests).filter(req => 
-      staffUserIds.includes(req.applicantId) && 
+      collegeUserIds.includes(req.applicantId) && 
       req.status === "Pending_Registrar" &&
       req.leaveType === "VL"
     );
 
-    const officeStaffCount = staffUserIds.length;
+    const staffCount = collegeUserIds.length;
 
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
@@ -155,13 +152,11 @@ export async function GET() {
     let rejectedThisMonth = 0;
 
     for (const req of Object.values(allLeaveRequests)) {
-      if (staffUserIds.includes(req.applicantId)) {
+      if (collegeUserIds.includes(req.applicantId)) {
         const reqDate = new Date(req.createdAt);
         if (reqDate.getMonth() === currentMonth && reqDate.getFullYear() === currentYear) {
           if (req.status === "Approved") approvedThisMonth++;
-          if (req.status === "Rejected_Registrar" || req.status === "Rejected_HOD" || req.status === "Rejected_Principal") {
-            rejectedThisMonth++;
-          }
+          if (req.status.includes("Rejected")) rejectedThisMonth++;
         }
       }
     }
@@ -171,7 +166,7 @@ export async function GET() {
       pendingCompOff: pendingCompOff.length,
       pendingOverwork: pendingOverwork.length,
       pendingVacation: pendingVacation.length,
-      officeStaffCount,
+      staffCount,
       approvedThisMonth,
       rejectedThisMonth,
     });
