@@ -151,6 +151,7 @@ function RegistrarAllLeavesContent() {
     }
   }, [searchParams]);
 
+  // ✅ FIXED: Improved fetchRequests with better error handling
   const fetchRequests = useCallback(async () => {
     setLoading(true);
     try {
@@ -169,22 +170,28 @@ function RegistrarAllLeavesContent() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch requests");
+        // Throw error with detailed message from the API
+        throw new Error(data.error || `Failed to fetch requests (Status: ${response.status})`);
       }
 
       setRequests(data.requests || []);
       setDepartments(data.departments || []);
     } catch (error) {
       console.error("Error fetching requests:", error);
-      toast.error("Failed to fetch requests");
+      // Show a user-friendly error message
+      toast.error(error instanceof Error ? error.message : "Failed to fetch requests");
+      // Set requests to empty array to show the empty state
+      setRequests([]);
     } finally {
       setLoading(false);
     }
   }, [activeTab, filters]);
 
-  // Load data when user is authenticated
+  // ✅ FIXED: Load data when user is authenticated and is a registrar
   useEffect(() => {
+    // Ensure the user is a registrar before fetching
     if (user?.roles?.includes("registrar")) {
+      // Use an IIFE to handle the async fetch without making the effect callback async directly
       const loadData = async () => {
         await fetchRequests();
       };
@@ -209,7 +216,9 @@ function RegistrarAllLeavesContent() {
       setShowDetails(false);
       setSelectedRequest(null);
       
+      // Refresh the list to show updated status
       await fetchRequests();
+      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to approve";
@@ -245,7 +254,9 @@ function RegistrarAllLeavesContent() {
       setShowDetails(false);
       setSelectedRequest(null);
       
+      // Refresh the list to show updated status
       await fetchRequests();
+      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to reject";
@@ -281,7 +292,9 @@ function RegistrarAllLeavesContent() {
       setShowDetails(false);
       setSelectedRequest(null);
       
+      // Refresh the list to show updated status
       await fetchRequests();
+      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to send remarks";
@@ -495,7 +508,18 @@ function RegistrarAllLeavesContent() {
             <CardContent className="pt-6">
               {requests.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
-                  No leave requests found.
+                  {loading ? (
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                      <p>Loading leave requests...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                      <p>No leave requests found.</p>
+                      <p className="text-sm mt-1">Try adjusting your filters.</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="border rounded-lg overflow-x-auto">

@@ -1,4 +1,4 @@
-// app/api/registrar/leaves/route.ts - COMPLETE FIXED FILE WITH PAGINATION
+// app/api/registrar/leaves/route.ts
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
