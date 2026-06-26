@@ -186,6 +186,10 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
       setShowAssignHODDialog(null);
       setSelectedHODId("");
       await fetchDepartments();
+      
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to assign HOD";
       toast.error(errorMessage);
@@ -198,7 +202,10 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
       return;
     }
 
+    console.log("📝 Assigning Registrar to Department:", departmentId, "Registrar ID:", selectedRegistrarId);
+
     try {
+      // ✅ FIXED: Use the correct API endpoint with department ID in the path
       const response = await fetch(`/api/super-admin/departments/${departmentId}/assign-registrar`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -215,6 +222,10 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
       setShowAssignRegistrarDialog(null);
       setSelectedRegistrarId("");
       await fetchDepartments();
+      
+      if (onRefresh) {
+        onRefresh();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to assign Registrar";
       toast.error(errorMessage);
