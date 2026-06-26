@@ -1,3 +1,4 @@
+// components/super-admin/DepartmentManager.tsx - COMPLETE FIXED
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -38,7 +39,7 @@ interface Department {
   isActive: boolean;
 }
 
-interface HODCandidate {
+interface Candidate {
   uid: string;
   name: string;
   email: string;
@@ -52,13 +53,16 @@ interface DepartmentManagerProps {
 
 export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [hodCandidates, setHodCandidates] = useState<HODCandidate[]>([]);
+  const [hodCandidates, setHodCandidates] = useState<Candidate[]>([]);
+  const [registrarCandidates, setRegistrarCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [deptName, setDeptName] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showAssignHODDialog, setShowAssignHODDialog] = useState<string | null>(null);
+  const [showAssignRegistrarDialog, setShowAssignRegistrarDialog] = useState<string | null>(null);
   const [selectedHODId, setSelectedHODId] = useState("");
+  const [selectedRegistrarId, setSelectedRegistrarId] = useState("");
 
   const fetchDepartments = useCallback(async () => {
     try {
@@ -78,23 +82,28 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
     }
   }, []);
 
-  const fetchHodCandidates = useCallback(async () => {
+  const fetchCandidates = useCallback(async () => {
     try {
-      const response = await fetch("/api/super-admin/departments/hod-candidates");
-      const data = await response.json();
-      setHodCandidates(data.candidates || []);
+      // Fetch HOD candidates
+      const hodResponse = await fetch("/api/super-admin/departments/hod-candidates");
+      const hodData = await hodResponse.json();
+      setHodCandidates(hodData.candidates || []);
+
+      // Fetch Registrar candidates (users with registrar role)
+      const registrarResponse = await fetch("/api/super-admin/users?role=registrar");
+      const registrarData = await registrarResponse.json();
+      setRegistrarCandidates(registrarData.users || []);
     } catch (error) {
-      console.error("Failed to fetch HOD candidates:", error);
+      console.error("Failed to fetch candidates:", error);
     }
   }, []);
 
-  // ✅ FIXED: Use an async function inside useEffect
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([fetchDepartments(), fetchHodCandidates()]);
+      await Promise.all([fetchDepartments(), fetchCandidates()]);
     };
     loadData();
-  }, [fetchDepartments, fetchHodCandidates]);
+  }, [fetchDepartments, fetchCandidates]);
 
   const handleCreateDepartment = async () => {
     if (!deptName.trim()) {
@@ -120,7 +129,6 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
       setShowCreateDialog(false);
       await fetchDepartments();
       
-      // ✅ Call parent refresh if provided
       if (onRefresh) {
         onRefresh();
       }
@@ -146,7 +154,6 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
       await fetchDepartments();
       setShowDeleteConfirm(null);
       
-      // ✅ Call parent refresh if provided
       if (onRefresh) {
         onRefresh();
       }
@@ -185,13 +192,45 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
     }
   };
 
+  const handleAssignRegistrar = async (departmentId: string) => {
+    if (!selectedRegistrarId) {
+      toast.error("Please select a Registrar");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/super-admin/departments/${departmentId}/assign-registrar`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ registrarId: selectedRegistrarId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to assign Registrar");
+      }
+
+      toast.success("Registrar assigned successfully");
+      setShowAssignRegistrarDialog(null);
+      setSelectedRegistrarId("");
+      await fetchDepartments();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to assign Registrar";
+      toast.error(errorMessage);
+    }
+  };
+
+  // Check if a department is Office
+  const isOffice = (name: string) => name.toLowerCase() === "office";
+
   return (
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
           <div>
             <CardTitle>Departments</CardTitle>
-            <CardDescription>Manage departments and HOD assignments</CardDescription>
+            <CardDescription>Manage departments and assignments</CardDescription>
           </div>
           <Button onClick={() => setShowCreateDialog(true)}>+ New Department</Button>
         </div>
@@ -209,7 +248,7 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Department Name</TableHead>
-                  <TableHead>HOD</TableHead>
+                  <TableHead>Managed By</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -219,10 +258,16 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
                   <TableRow key={dept.id}>
                     <TableCell className="font-medium">{dept.name}</TableCell>
                     <TableCell>
-                      {dept.hodName ? (
-                        <span className="text-sm">{dept.hodName}</span>
+                      {isOffice(dept.name) ? (
+                        dept.hodName ? (
+                          <span className="text-sm text-blue-600">Registrar: {dept.hodName}</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">No Registrar assigned</span>
+                        )
+                      ) : dept.hodName ? (
+                        <span className="text-sm">HOD: {dept.hodName}</span>
                       ) : (
-                        <span className="text-sm text-muted-foreground">Not assigned</span>
+                        <span className="text-sm text-muted-foreground">No HOD assigned</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -238,16 +283,29 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setShowAssignHODDialog(dept.id);
-                            setSelectedHODId(dept.hodId || "");
-                          }}
-                        >
-                          Assign HOD
-                        </Button>
+                        {isOffice(dept.name) ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setShowAssignRegistrarDialog(dept.id);
+                              setSelectedRegistrarId(dept.hodId || "");
+                            }}
+                          >
+                            Assign Registrar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setShowAssignHODDialog(dept.id);
+                              setSelectedHODId(dept.hodId || "");
+                            }}
+                          >
+                            Assign HOD
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="destructive"
@@ -322,6 +380,47 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
               Cancel
             </Button>
             <Button onClick={() => showAssignHODDialog && handleAssignHOD(showAssignHODDialog)}>
+              Assign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Registrar Dialog */}
+      <Dialog open={!!showAssignRegistrarDialog} onOpenChange={() => setShowAssignRegistrarDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Registrar</DialogTitle>
+            <DialogDescription>Select a user with Registrar role to manage the Office department.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="registrar">Select Registrar</Label>
+              <Select value={selectedRegistrarId} onValueChange={setSelectedRegistrarId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a Registrar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {registrarCandidates.map((candidate) => (
+                    <SelectItem key={candidate.uid} value={candidate.uid}>
+                      {candidate.name} ({candidate.email})
+                    </SelectItem>
+                  ))}
+                  {registrarCandidates.length === 0 && (
+                    <SelectItem value="no-registrar" disabled>
+                      No Registrar users found. Create one first.
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAssignRegistrarDialog(null)}>
+              Cancel
+            </Button>
+            <Button onClick={() => showAssignRegistrarDialog && handleAssignRegistrar(showAssignRegistrarDialog)}>
               Assign
             </Button>
           </DialogFooter>
