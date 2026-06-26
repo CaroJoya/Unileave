@@ -1,7 +1,7 @@
 // app/status/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -111,20 +111,29 @@ export default function StatusPage() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancellingRequest, setCancellingRequest] = useState<LeaveRequest | null>(null);
 
+  const hasFetched = useRef(false);
+  const isMounted = useRef(true);
+
   // Auth check
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
+      return;
     }
     if (!authLoading && user && user.roles?.includes("principal")) {
       router.push("/principal/dashboard");
+      return;
     }
   }, [user, authLoading, router]);
 
-  // Fetch leave requests - FIXED with no-cache
+  // Fetch leave requests
   const fetchRequests = useCallback(async () => {
+    if (!user) return;
+    
     setLoading(true);
     try {
+      console.log("📋 Fetching leave requests...");
+      
       const response = await fetch("/api/leave/my-requests", {
         cache: 'no-store',
         headers: {
@@ -132,38 +141,40 @@ export default function StatusPage() {
           'Pragma': 'no-cache'
         }
       });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch requests: ${response.status}`);
+      }
+      
       const data = await response.json();
-      if (response.ok) {
-        setRequests(data.requests || []);
-      } else {
-        toast.error(data.error || "Failed to fetch leave requests");
-      }
+      setRequests(data.requests || []);
+      console.log(`✅ Loaded ${data.requests?.length || 0} leave requests`);
     } catch (error) {
-      console.error("Error fetching requests:", error);
-      toast.error("Failed to fetch leave requests");
+      console.error("❌ Error fetching requests:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to fetch leave requests");
+      setRequests([]);
     } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch data when user is available
-  useEffect(() => {
-    let isMounted = true;
-    
-    const loadData = async () => {
-      if (user && !user.roles?.includes("principal") && isMounted) {
-        await fetchRequests();
+      if (isMounted.current) {
+        setLoading(false);
       }
-    };
+    }
+  }, [user]);
+
+  // Fetch data once when user is available
+  useEffect(() => {
+    if (!user || user.roles?.includes("principal")) return;
     
-    loadData();
+    if (!hasFetched.current) {
+      hasFetched.current = true;
+      fetchRequests();
+    }
     
     return () => {
-      isMounted = false;
+      isMounted.current = false;
     };
   }, [user, fetchRequests]);
 
-  // Apply filters using useMemo instead of useEffect
+  // Apply filters using useMemo
   const filteredRequests = useMemo(() => {
     let filtered = [...requests];
     
@@ -215,21 +226,15 @@ export default function StatusPage() {
         method: "PUT",
       });
       
-      const data = await response.json();
-      
       if (!response.ok) {
-        throw new Error(data.error || "Failed to cancel request");
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || "Failed to cancel request");
       }
       
       toast.success("Leave request cancelled successfully");
       setCancelDialogOpen(false);
       setCancellingRequest(null);
-      
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
-      
-      // Extra toast to confirm refresh
-      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to cancel";
       toast.error(errorMessage);
@@ -268,10 +273,9 @@ export default function StatusPage() {
         }),
       });
       
-      const data = await response.json();
-      
       if (!response.ok) {
-        throw new Error(data.error || "Failed to update request");
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || "Failed to update request");
       }
       
       const successMessage = editingRequest.status === "Pending_Revision"
@@ -281,11 +285,7 @@ export default function StatusPage() {
       toast.success(successMessage);
       setEditDialogOpen(false);
       setEditingRequest(null);
-      
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
-      
-      toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update";
       toast.error(errorMessage);
@@ -371,10 +371,14 @@ export default function StatusPage() {
 
   const counts = getCounts();
 
+  // Show loading state
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading your leave requests...</p>
+        </div>
       </div>
     );
   }

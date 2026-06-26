@@ -1,7 +1,7 @@
 // app/stats/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -128,38 +128,53 @@ export default function StatsPage() {
   const [leaveTypeFilter, setLeaveTypeFilter] = useState("");
   const [departmentData, setDepartmentData] = useState<DepartmentData[]>([]);
   const [showDepartmentComparison, setShowDepartmentComparison] = useState(false);
+  
+  const hasFetched = useRef(false);
+  const isMounted = useRef(true);
 
   // Auth check
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
+      return;
     }
     if (!authLoading && user && user.roles?.includes("principal")) {
       router.push("/principal/dashboard");
+      return;
     }
   }, [user, authLoading, router]);
 
-  // Fetch data - FIXED with no-cache
+  // Fetch data
   const fetchData = useCallback(async () => {
+    if (!user) return;
+    
     setLoading(true);
     try {
-      // Fetch leave requests with no-cache
+      console.log("📊 Fetching stats data...");
+      
+      // Fetch leave requests
       const requestsRes = await fetch("/api/leave/my-requests", {
         cache: 'no-store'
       });
-      const requestsData = await requestsRes.json();
-      if (requestsRes.ok) {
-        setRequests(requestsData.requests || []);
+      
+      if (!requestsRes.ok) {
+        throw new Error(`Failed to fetch requests: ${requestsRes.status}`);
       }
-
-      // Fetch balances with no-cache
+      
+      const requestsData = await requestsRes.json();
+      setRequests(requestsData.requests || []);
+      
+      // Fetch balances
       const balancesRes = await fetch("/api/leave/balances", {
         cache: 'no-store'
       });
-      const balancesData = await balancesRes.json();
-      if (balancesRes.ok) {
-        setBalances(balancesData.balances || {});
+      
+      if (!balancesRes.ok) {
+        throw new Error(`Failed to fetch balances: ${balancesRes.status}`);
       }
+      
+      const balancesData = await balancesRes.json();
+      setBalances(balancesData.balances || {});
 
       // Check if user is HOD or Registrar for department comparison
       const isHodOrRegistrar = user?.roles?.some((r) => r === "hod" || r === "registrar") || false;
@@ -171,20 +186,14 @@ export default function StatsPage() {
           const deptRes = await fetch("/api/stats/department", {
             cache: 'no-store'
           });
-          const deptData = await deptRes.json();
-          if (deptRes.ok && deptData.departments) {
-            setDepartmentData(deptData.departments);
-          } else {
-            // Fallback mock data if API fails
-            setDepartmentData([
-              { department: "Computer Science", leaves: 45, pending: 8 },
-              { department: "Electronics", leaves: 32, pending: 5 },
-              { department: "Mechanical", leaves: 28, pending: 6 },
-              { department: "Civil", leaves: 35, pending: 4 },
-            ]);
+          
+          if (deptRes.ok) {
+            const deptData = await deptRes.json();
+            setDepartmentData(deptData.departments || []);
           }
-        } catch {
-          // Use mock data as fallback
+        } catch (deptError) {
+          console.warn("Could not fetch department stats:", deptError);
+          // Fallback mock data
           setDepartmentData([
             { department: "Computer Science", leaves: 45, pending: 8 },
             { department: "Electronics", leaves: 32, pending: 5 },
@@ -193,28 +202,29 @@ export default function StatsPage() {
           ]);
         }
       }
+      
+      console.log("✅ Stats data loaded successfully");
     } catch (error) {
-      console.error("Error fetching stats:", error);
-      toast.error("Failed to fetch stats data");
+      console.error("❌ Error fetching stats:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to fetch stats data");
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   }, [user]);
 
-  // Fetch data when user is available
+  // Fetch data once when user is available
   useEffect(() => {
-    let isMounted = true;
+    if (!user || user.roles?.includes("principal")) return;
     
-    const loadData = async () => {
-      if (user && !user.roles?.includes("principal") && isMounted) {
-        await fetchData();
-      }
-    };
-    
-    loadData();
+    if (!hasFetched.current) {
+      hasFetched.current = true;
+      fetchData();
+    }
     
     return () => {
-      isMounted = false;
+      isMounted.current = false;
     };
   }, [user, fetchData]);
 
@@ -317,10 +327,14 @@ export default function StatsPage() {
     return `${((value / total) * 100).toFixed(0)}%`;
   };
 
+  // Show loading state
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading your stats...</p>
+        </div>
       </div>
     );
   }
@@ -337,7 +351,7 @@ export default function StatsPage() {
           <p className="text-muted-foreground mt-2">Track your leave patterns and usage</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={exportToCSV} disabled={monthlyData.length === 0}>
+          <Button variant="outline" size="sm" onClick={exportToCSV} disabled={monthlyData.length === 0 || monthlyData.every(m => m.leaves === 0)}>
             <Download className="h-4 w-4 mr-2" />
             Export CSV
           </Button>
@@ -478,58 +492,66 @@ export default function StatsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-5">
-            {Object.entries(balances).map(([type, balance]) => {
-              const usedPercent = balance.allocated > 0 
-                ? ((balance.used / balance.allocated) * 100) 
-                : 0;
-              const isLow = balance.available < balance.allocated * 0.2;
-              
-              return (
-                <div key={type} className="text-center p-4 bg-gray-50 rounded-lg">
-                  <p className="font-semibold">{LEAVE_TYPE_LABELS[type] || type}</p>
-                  <p className="text-2xl font-bold text-primary mt-2">
-                    {balance.available.toFixed(1)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">available</p>
-                  <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
-                    <div 
-                      className={cn(
-                        "h-1.5 rounded-full",
-                        isLow ? "bg-red-500" : "bg-primary"
+          {Object.keys(balances).length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No balance data available
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-5">
+                {Object.entries(balances).map(([type, balance]) => {
+                  const usedPercent = balance.allocated > 0 
+                    ? ((balance.used / balance.allocated) * 100) 
+                    : 0;
+                  const isLow = balance.available < balance.allocated * 0.2;
+                  
+                  return (
+                    <div key={type} className="text-center p-4 bg-gray-50 rounded-lg">
+                      <p className="font-semibold">{LEAVE_TYPE_LABELS[type] || type}</p>
+                      <p className="text-2xl font-bold text-primary mt-2">
+                        {balance.available.toFixed(1)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">available</p>
+                      <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
+                        <div 
+                          className={cn(
+                            "h-1.5 rounded-full",
+                            isLow ? "bg-red-500" : "bg-primary"
+                          )}
+                          style={{ width: `${Math.min(usedPercent, 100)}%` }} 
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {balance.used.toFixed(1)} / {balance.allocated.toFixed(1)} used
+                      </p>
+                      {balance.pending > 0 && (
+                        <p className="text-xs text-amber-600 mt-0.5">
+                          {balance.pending} pending
+                        </p>
                       )}
-                      style={{ width: `${Math.min(usedPercent, 100)}%` }} 
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-6 flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-muted-foreground">Overall Utilization</p>
+                  <p className="text-lg font-bold text-primary">{utilization.toFixed(1)}%</p>
+                </div>
+                <div className="flex-1 ml-4">
+                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary rounded-full transition-all"
+                      style={{ width: `${Math.min(utilization, 100)}%` }}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {balance.used.toFixed(1)} / {balance.allocated.toFixed(1)} used
-                  </p>
-                  {balance.pending > 0 && (
-                    <p className="text-xs text-amber-600 mt-0.5">
-                      {balance.pending} pending
-                    </p>
-                  )}
                 </div>
-              );
-            })}
-          </div>
-          <div className="mt-6 flex justify-between items-center">
-            <div>
-              <p className="text-sm text-muted-foreground">Overall Utilization</p>
-              <p className="text-lg font-bold text-primary">{utilization.toFixed(1)}%</p>
-            </div>
-            <div className="flex-1 ml-4">
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${Math.min(utilization, 100)}%` }}
-                />
+                <div className="ml-4 text-sm text-muted-foreground">
+                  {totalUsed.toFixed(1)} / {totalAllocated.toFixed(1)} days
+                </div>
               </div>
-            </div>
-            <div className="ml-4 text-sm text-muted-foreground">
-              {totalUsed.toFixed(1)} / {totalAllocated.toFixed(1)} days
-            </div>
-          </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -551,25 +573,31 @@ export default function StatsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Area 
-                      type="monotone" 
-                      dataKey="leaves" 
-                      stroke="#6366F1" 
-                      fill="#6366F1" 
-                      fillOpacity={0.3}
-                      name="Leave Days"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              {monthlyData.every(m => m.leaves === 0) ? (
+                <div className="h-80 flex items-center justify-center text-muted-foreground">
+                  No leave data available for {yearFilter}
+                </div>
+              ) : (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={monthlyData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Area 
+                        type="monotone" 
+                        dataKey="leaves" 
+                        stroke="#6366F1" 
+                        fill="#6366F1" 
+                        fillOpacity={0.3}
+                        name="Leave Days"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
