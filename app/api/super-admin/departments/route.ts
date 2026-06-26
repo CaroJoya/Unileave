@@ -1,4 +1,4 @@
-// app/api/super-admin/departments/route.ts - COMPLETE FIXED FILE
+// app/api/super-admin/departments/route.ts - FIXED
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -63,19 +63,26 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
+    // ✅ Use the logged-in user's collegeId
     const collegeId = searchParams.get("collegeId") || userData.collegeId;
 
-    console.log("Fetching departments for college:", collegeId);
+    if (!collegeId) {
+      console.error("❌ No collegeId found for user!");
+      return NextResponse.json({ 
+        error: "No college assigned to this admin" 
+      }, { status: 400 });
+    }
+
+    console.log(`🔍 Fetching departments for college: ${collegeId}`);
 
     const departmentsSnapshot = await rtdb.ref("departments").once("value");
     const departments = departmentsSnapshot.val() as Record<string, DepartmentData> | null || {};
 
+    // ✅ CRITICAL FIX: Only show departments from the SAME college
     const departmentsList = Object.entries(departments)
       .filter(([, data]) => {
-        if (data.collegeId) {
-          return data.collegeId === collegeId;
-        }
-        return true;
+        // ✅ This is the fix - filter by collegeId
+        return data.collegeId === collegeId;
       })
       .map(([id, data]) => ({
         id,
@@ -90,7 +97,7 @@ export async function GET(request: Request) {
         updatedAt: data.updatedAt || "",
       }));
 
-    console.log(`Found ${departmentsList.length} departments`);
+    console.log(`✅ Found ${departmentsList.length} departments for college ${collegeId}`);
 
     return NextResponse.json({ departments: departmentsList });
   } catch (error) {
@@ -135,10 +142,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Department name is required" }, { status: 400 });
     }
 
+    // ✅ Get college ID from the admin's data
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
+      return NextResponse.json({ 
+        error: "User has no college assigned" 
+      }, { status: 400 });
     }
 
     const collegeSnapshot = await rtdb.ref(`colleges/${collegeId}`).once("value");
@@ -148,7 +158,7 @@ export async function POST(request: Request) {
     const departmentData: DepartmentData = {
       id: deptId,
       name,
-      collegeId: collegeId,
+      collegeId: collegeId, // ✅ CRITICAL: Set collegeId
       collegeName: college?.name || "",
       hodId: null,
       hodName: null,
