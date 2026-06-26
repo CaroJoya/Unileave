@@ -75,8 +75,10 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
   EL: "Earned Leave",
   ML: "Medical Leave",
   CO: "Compensatory Off",
-  VL: "Vacation Leave",
   OD: "On Duty",
+  MAT: "Maternity Leave",
+  PAT: "Paternity Leave",
+  SPL: "Special Leave",
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {

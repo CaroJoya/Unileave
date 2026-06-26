@@ -83,7 +83,10 @@ function RequestDetailsDrawer({
       EL: "Earned Leave",
       ML: "Medical Leave",
       CO: "Compensatory Off",
-      VL: "Vacation Leave",
+      OD: "On Duty",
+      MAT: "Maternity Leave",
+      PAT: "Paternity Leave",
+      SPL: "Special Leave",
     };
     return labels[type] || type;
   };
@@ -436,7 +439,7 @@ useEffect(() => {
                     <TableRow key={request.id}>
                       <TableCell className="font-medium">{request.applicantName}</TableCell>
                       <TableCell className="capitalize">{request.applicantRoles?.[0] || "Staff"}</TableCell>
-                      <TableCell>{request.leaveType}</TableCell>
+                      <TableCell>{getLeaveTypeLabel(request.leaveType)}</TableCell>
                       <TableCell>{new Date(request.startDate).toLocaleDateString()}</TableCell>
                       <TableCell>{new Date(request.endDate).toLocaleDateString()}</TableCell>
                       <TableCell>{request.totalDays}</TableCell>
