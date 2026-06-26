@@ -1,4 +1,4 @@
-// app/api/leave/request/route.ts - FIXED
+// app/api/leave/request/route.ts
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -361,6 +361,7 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     });
 
+    // ✅ SEND EMAIL TO APPROVER - FIXED
     const approverSnapshot = await rtdb.ref(`users/${approverUserId}`).once("value");
     const approverData = approverSnapshot.val() as { email: string; name: string } | null;
 
@@ -374,11 +375,13 @@ export async function POST(request: Request) {
         reason || "No reason provided",
         dashboardUrl
       );
-      await sendEmail({
-        to: approverData.email,
-        subject: `New Leave Request: ${leaveType} from ${userData.name}`,
-        html: emailHtml,
-      });
+      
+      // ✅ FIXED: sendEmail expects 3 args
+      sendEmail(
+        approverData.email,
+        `New Leave Request: ${leaveType} from ${userData.name}`,
+        emailHtml
+      ).catch(err => console.error("❌ Failed to send new leave email:", err));
     }
 
     return NextResponse.json({

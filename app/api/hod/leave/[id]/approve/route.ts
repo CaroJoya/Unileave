@@ -1,4 +1,4 @@
-// app/api/hod/leave/[id]/approve/route.ts - FIXED
+// app/api/hod/leave/[id]/approve/route.ts
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -131,24 +131,28 @@ export async function POST(
       },
     });
 
+    // ✅ SEND EMAIL TO APPLICANT - FIXED
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as User | null;
 
     if (applicantData?.email) {
       const statusPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/status`;
-      await sendEmail({
-        to: applicantData.email,
-        subject: `Leave Request Approved - ${leaveRequest.leaveType}`,
-        html: getLeaveApprovedEmail(
-          leaveRequest.applicantName,
-          leaveRequest.leaveType,
-          leaveRequest.startDate,
-          leaveRequest.endDate,
-          leaveRequest.totalDays,
-          hodData.name,
-          statusPageUrl
-        ),
-      });
+      const emailHtml = getLeaveApprovedEmail(
+        leaveRequest.applicantName,
+        leaveRequest.leaveType,
+        leaveRequest.startDate,
+        leaveRequest.endDate,
+        leaveRequest.totalDays,
+        hodData.name,
+        statusPageUrl
+      );
+      
+      // ✅ FIXED: sendEmail expects 3 args
+      sendEmail(
+        applicantData.email,
+        `Leave Request Approved - ${leaveRequest.leaveType}`,
+        emailHtml
+      ).catch(err => console.error("❌ Failed to send approval email:", err));
     }
 
     return NextResponse.json({ success: true });

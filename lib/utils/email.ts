@@ -1,72 +1,120 @@
 // lib/utils/email.ts
 import nodemailer from "nodemailer";
 
-export interface EmailPayload {
-  to: string;
-  subject: string;
-  html: string;
+// ========== SMTP CONFIGURATION ==========
+const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASSWORD;
+const SMTP_FROM_EMAIL = process.env.SMTP_FROM_EMAIL || "noreply@unileave.edu";
+const SMTP_FROM_NAME = process.env.SMTP_FROM_NAME || "UniLeave";
+//const FRONTEND_URL = process.env.NEXT_PUBLIC_APP_URL || "unileave.vercel.app";
+
+let transporter: nodemailer.Transporter | null = null;
+let mailEnabled = false;
+
+// ========== INITIALIZE SMTP ==========
+if (SMTP_USER && SMTP_PASS && SMTP_USER !== "your-email@gmail.com") {
+  try {
+    transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+    
+    transporter.verify((error) => {
+      if (error) {
+        console.error("❌ SMTP Verification Failed:", error.message);
+        mailEnabled = false;
+      } else {
+        console.log("✅ SMTP configured successfully");
+        mailEnabled = true;
+      }
+    });
+  } catch (err) {
+    console.error("❌ Failed to initialize SMTP:", err);
+    mailEnabled = false;
+  }
+} else {
+  console.warn("⚠️ SMTP not configured. Emails will be logged only.");
 }
 
-// Create reusable transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: process.env.SMTP_SECURE === "true",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
+// ========== CORE SEND FUNCTION ==========
+export async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+  if (!mailEnabled || !transporter) {
+    console.log("📝 [EMAIL-LOG] To:", to);
+    console.log("📝 [EMAIL-LOG] Subject:", subject);
+    console.log("📝 [EMAIL-LOG] ⚠️ Email not sent - SMTP not configured");
+    return false;
+  }
 
-export async function sendEmail({ to, subject, html }: EmailPayload) {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
-    console.warn("⚠️ SMTP configuration is incomplete. Skipping email send.");
-    return;
+  if (!to || !to.includes("@")) {
+    console.error("❌ Invalid recipient email:", to);
+    return false;
   }
 
   try {
-    await transporter.sendMail({
-      from: `"UniLeave" <${process.env.SMTP_FROM_EMAIL || "noreply@unileave.edu"}>`,
+    const info = await transporter.sendMail({
+      from: `"${SMTP_FROM_NAME}" <${SMTP_FROM_EMAIL}>`,
       to,
       subject,
       html,
     });
-    console.log(`✅ Email sent to ${to}`);
+    console.log(`✅ Email sent to ${to}: ${info.messageId}`);
+    return true;
   } catch (error) {
-    console.error("❌ Email transmission failed:", error);
+    console.error(`❌ Send failed to ${to}:`, error);
+    return false;
   }
 }
 
-// ========== LEAVE REQUEST EMAILS ==========
+// ========== EMAIL TEMPLATES ==========
 
+// 1️⃣ NEW LEAVE REQUEST → Approver (HOD/Registrar/Principal)
 export function getLeaveSubmittedEmail(
-  applicantName: string, 
-  leaveType: string, 
-  startDate: string, 
-  endDate: string, 
-  reason: string, 
-  approverDashboardUrl: string
+  applicantName: string,
+  leaveType: string,
+  startDate: string,
+  endDate: string,
+  reason: string,
+  dashboardUrl: string
 ): string {
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #6366F1;">New Leave Request</h2>
-      <p><strong>${applicantName}</strong> has submitted a leave request for your approval.</p>
-      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-        <tr><td style="padding: 8px 0;"><strong>Leave Type:</strong></td>
-        <td>${leaveType}</td>
-      </tr>
-      <tr><td style="padding: 8px 0;"><strong>Dates:</strong></td>
-        <td>${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}</td>
-      </tr>
-      <tr><td style="padding: 8px 0;"><strong>Reason:</strong></td>
-        <td>${reason}</td>
-      </tr>
-      </table>
-      <a href="${approverDashboardUrl}" style="display: inline-block; background-color: #6366F1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">Review Request</a>
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#6366F1,#4f46e5);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">📋 New Leave Request</h1>
+      <p style="margin:8px 0 0;opacity:0.9;">UniLeave - University Leave Management</p>
     </div>
+    <div style="padding:30px;">
+      <p><strong>Requester:</strong> ${applicantName}</p>
+      <p><strong>Leave Type:</strong> ${leaveType}</p>
+      <p><strong>Period:</strong> ${new Date(startDate).toLocaleDateString()} → ${new Date(endDate).toLocaleDateString()}</p>
+      <p><strong>Reason:</strong> ${reason || "No reason provided"}</p>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${dashboardUrl}" style="display:inline-block;background:#6366F1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">Review Request →</a>
+      </div>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
   `;
 }
 
+// 2️⃣ LEAVE APPROVED → Applicant
 export function getLeaveApprovedEmail(
   applicantName: string,
   leaveType: string,
@@ -77,23 +125,37 @@ export function getLeaveApprovedEmail(
   statusPageUrl: string
 ): string {
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #10B981;">Leave Request Approved</h2>
-      <p>Dear ${applicantName},</p>
-      <p>Your <strong>${leaveType}</strong> leave request has been <strong style="color: green;">approved</strong> by ${approverName}.</p>
-      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-        <tr><td style="padding: 8px 0;"><strong>Dates:</strong></td>
-        <td>${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}</td>
-      </tr>
-      <tr><td style="padding: 8px 0;"><strong>Total Days:</strong></td>
-        <td>${totalDays} day(s)</td>
-      </tr>
-      </table>
-      <a href="${statusPageUrl}" style="display: inline-block; background-color: #10B981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">View Status</a>
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#10B981,#059669);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">✅ Leave Approved</h1>
+      <p style="margin:8px 0 0;opacity:0.9;">Approved by ${approverName}</p>
     </div>
+    <div style="padding:30px;">
+      <p>Dear ${applicantName},</p>
+      <p>Your <strong>${leaveType}</strong> leave request has been <strong style="color:#10B981;">approved</strong>.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:8px 0;"><strong>Dates:</strong></td><td>${new Date(startDate).toLocaleDateString()} → ${new Date(endDate).toLocaleDateString()}</td></tr>
+        <tr><td style="padding:8px 0;"><strong>Total Days:</strong></td><td>${totalDays} day(s)</td></tr>
+        <tr><td style="padding:8px 0;"><strong>Approved By:</strong></td><td>${approverName}</td></tr>
+      </table>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${statusPageUrl}" style="display:inline-block;background:#10B981;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">View Status →</a>
+      </div>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
   `;
 }
 
+// 3️⃣ LEAVE REJECTED → Applicant
 export function getLeaveRejectedEmail(
   applicantName: string,
   leaveType: string,
@@ -103,174 +165,166 @@ export function getLeaveRejectedEmail(
   approverName: string
 ): string {
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #EF4444;">Leave Request Rejected</h2>
-      <p>Dear ${applicantName},</p>
-      <p>Your <strong>${leaveType}</strong> leave request has been <strong style="color: red;">rejected</strong> by ${approverName}.</p>
-      <div style="background-color: #FEE2E2; padding: 12px; border-radius: 6px; margin: 16px 0;">
-        <strong>Rejection Reason:</strong>
-        <p>${reason}</p>
-      </div>
-      <p>You can submit a new request if needed.</p>
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#EF4444,#DC2626);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">❌ Leave Rejected</h1>
+      <p style="margin:8px 0 0;opacity:0.9;">Rejected by ${approverName}</p>
     </div>
+    <div style="padding:30px;">
+      <p>Dear ${applicantName},</p>
+      <p>Your <strong>${leaveType}</strong> leave request has been <strong style="color:#EF4444;">rejected</strong>.</p>
+      <div style="background-color:#FEE2E2;padding:16px;border-radius:8px;margin:16px 0;">
+        <strong>Rejection Reason:</strong>
+        <p style="margin:8px 0 0;">${reason || "No reason provided"}</p>
+      </div>
+      <p style="font-size:14px;color:#6b7280;">You can submit a new request if needed.</p>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
   `;
 }
 
+// 4️⃣ REVISION REMARKS → Applicant
 export function getRevisionEmail(
-  applicantName: string, 
-  remarkText: string, 
+  applicantName: string,
+  remarkText: string,
   statusPageUrl: string
 ): string {
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #F59E0B;">Revision Required</h2>
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#F59E0B,#D97706);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">✏️ Revision Required</h1>
+      <p style="margin:8px 0 0;opacity:0.9;">Your leave request needs revision</p>
+    </div>
+    <div style="padding:30px;">
       <p>Dear ${applicantName},</p>
-      <p>Your leave request requires revision. The approver has sent the following remarks:</p>
-      <div style="background-color: #FEF3C7; padding: 12px; border-radius: 6px; margin: 16px 0;">
+      <p>Your leave request needs revision. The approver has sent the following remarks:</p>
+      <div style="background-color:#FEF3C7;padding:16px;border-radius:8px;margin:16px 0;">
         <em>${remarkText}</em>
       </div>
-      <a href="${statusPageUrl}" style="display: inline-block; background-color: #6366F1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">View & Edit Request</a>
+      <p style="font-size:14px;color:#6b7280;">Please edit your request and resubmit for approval.</p>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${statusPageUrl}" style="display:inline-block;background:#F59E0B;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">View & Edit →</a>
+      </div>
     </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
   `;
 }
 
+// 5️⃣ RESUBMITTED → Approver
 export function getResubmittedEmail(
-  applicantName: string, 
+  applicantName: string,
   statusPageUrl: string
 ): string {
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #6366F1;">Leave Request Resubmitted</h2>
-      <p><strong>${applicantName}</strong> has resubmitted their leave request for your approval.</p>
-      <a href="${statusPageUrl}" style="display: inline-block; background-color: #6366F1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">Review Request</a>
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#6366F1,#4f46e5);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">🔄 Request Resubmitted</h1>
+      <p style="margin:8px 0 0;opacity:0.9;">${applicantName} has resubmitted their request</p>
     </div>
+    <div style="padding:30px;">
+      <p>Dear Approver,</p>
+      <p><strong>${applicantName}</strong> has resubmitted their leave request after revision.</p>
+      <p style="font-size:14px;color:#6b7280;">Please review the updated request.</p>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${statusPageUrl}" style="display:inline-block;background:#6366F1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">Review Request →</a>
+      </div>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
   `;
 }
 
-// ========== COMP-OFF EMAILS ==========
-
+// 6️⃣ COMP-OFF APPROVED → Applicant
 export function getCompOffApprovedEmail(
   applicantName: string,
   creditedDays: number,
   expiryDate: string
 ): string {
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #10B981;">Comp-Off Credit Approved</h2>
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#10B981,#059669);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">🎯 Comp-Off Approved</h1>
+    </div>
+    <div style="padding:30px;">
       <p>Dear ${applicantName},</p>
-      <p>Your compensatory off request has been <strong style="color: green;">approved</strong>.</p>
-      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-        <tr><td style="padding: 8px 0;"><strong>Credited Days:</strong></td>
-        <td>${creditedDays} day(s)</td>
-      </tr>
-      <tr><td style="padding: 8px 0;"><strong>Expiry Date:</strong></td>
-        <td>${new Date(expiryDate).toLocaleDateString()}</td>
-      </tr>
+      <p>Your compensatory off request has been <strong style="color:#10B981;">approved</strong>.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:8px 0;"><strong>Credited Days:</strong></td><td>${creditedDays} day(s)</td></tr>
+        <tr><td style="padding:8px 0;"><strong>Expiry Date:</strong></td><td>${new Date(expiryDate).toLocaleDateString()}</td></tr>
       </table>
-      <p>You can now apply for comp-off leave from your dashboard.</p>
+      <p style="font-size:14px;color:#6b7280;">You can now apply for comp-off leave from your dashboard.</p>
     </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
   `;
 }
 
-export function getCompOffRejectedEmail(
-  applicantName: string
-): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #EF4444;">Comp-Off Request Rejected</h2>
-      <p>Dear ${applicantName},</p>
-      <p>Your compensatory off request has been <strong style="color: red;">rejected</strong>.</p>
-      <p>Please contact your HOD for more information.</p>
-    </div>
-  `;
-}
-
-// ========== OVERWORK EMAILS ==========
-
+// 7️⃣ OVERWORK APPROVED → Applicant
 export function getOverworkApprovedEmail(
   applicantName: string,
   hours: number,
   earnedLeaveDays: number
 ): string {
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #10B981;">Overwork Hours Approved</h2>
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#F59E0B,#D97706);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">⏰ Overwork Approved</h1>
+    </div>
+    <div style="padding:30px;">
       <p>Dear ${applicantName},</p>
-      <p>Your overwork entry of <strong>${hours} hours</strong> has been <strong style="color: green;">approved</strong>.</p>
+      <p>Your overwork entry of <strong>${hours} hours</strong> has been <strong style="color:#F59E0B;">approved</strong>.</p>
       ${earnedLeaveDays > 0 ? `
-        <div style="background-color: #D1FAE5; padding: 12px; border-radius: 6px; margin: 16px 0;">
-          <strong>🎉 You earned ${earnedLeaveDays} comp-off day(s)!</strong>
-          <p>The credits have been added to your comp-off balance.</p>
+        <div style="background-color:#D1FAE5;padding:16px;border-radius:8px;margin:16px 0;">
+          <strong style="color:#065F46;">🎉 You earned ${earnedLeaveDays} comp-off day(s)!</strong>
+          <p style="margin:8px 0 0;">The credits have been added to your comp-off balance.</p>
         </div>
       ` : `
-        <p>You need ${5 - (hours % 5)} more hours to earn a comp-off day.</p>
+        <p style="font-size:14px;color:#6b7280;">Keep tracking your overwork hours!</p>
       `}
     </div>
-  `;
-}
-
-export function getOverworkRejectedEmail(
-  applicantName: string,
-  hours: number
-): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #EF4444;">Overwork Request Rejected</h2>
-      <p>Dear ${applicantName},</p>
-      <p>Your overwork entry of <strong>${hours} hours</strong> has been <strong style="color: red;">rejected</strong>.</p>
-      <p>Please contact your HOD for more information.</p>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
     </div>
-  `;
-}
-
-// ========== VACATION EMAILS ==========
-
-export function getVacationApprovedEmail(
-  applicantName: string,
-  startDate: string,
-  endDate: string,
-  totalDays: number,
-  paidDays: number,
-  unpaidDays: number,
-  statusPageUrl: string
-): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #10B981;">Vacation Request Approved</h2>
-      <p>Dear ${applicantName},</p>
-      <p>Your vacation request has been <strong style="color: green;">approved</strong> by HOD.</p>
-      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-        <tr><td style="padding: 8px 0;"><strong>Dates:</strong></td>
-        <td>${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}</td>
-      </tr>
-      <tr><td style="padding: 8px 0;"><strong>Total Days:</strong></td>
-        <td>${totalDays} day(s)</td>
-      </tr>
-      <tr><td style="padding: 8px 0;"><strong>Paid Days:</strong></td>
-        <td>${paidDays} day(s)</td>
-      </tr>
-      <tr><td style="padding: 8px 0;"><strong>Unpaid Days:</strong></td>
-        <td>${unpaidDays} day(s)</td>
-      </tr>
-      </table>
-      <a href="${statusPageUrl}" style="display: inline-block; background-color: #10B981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">View Status</a>
-    </div>
-  `;
-}
-
-export function getVacationRejectedEmail(
-  applicantName: string,
-  reason: string
-): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #EF4444;">Vacation Request Rejected</h2>
-      <p>Dear ${applicantName},</p>
-      <p>Your vacation request has been <strong style="color: red;">rejected</strong> by HOD.</p>
-      <div style="background-color: #FEE2E2; padding: 12px; border-radius: 6px; margin: 16px 0;">
-        <strong>Rejection Reason:</strong>
-        <p>${reason}</p>
-      </div>
-    </div>
+  </div>
+</body>
+</html>
   `;
 }

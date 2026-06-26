@@ -1,4 +1,4 @@
-// app/api/leave/request/[id]/edit/route.ts - FIXED
+// app/api/leave/request/[id]/edit/route.ts
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -400,6 +400,7 @@ export async function PUT(
       actionAt: new Date().toISOString(),
     });
 
+    // ✅ SEND RESUBMISSION EMAIL TO APPROVER - FIXED
     if (existingRequest.status === "Pending_Revision") {
       const userRoles = existingRequest.applicantRoles as Role[];
       const route = determineApprover(userRoles, leaveTypeCode);
@@ -416,11 +417,17 @@ export async function PUT(
 
         if (approverData?.email) {
           const statusPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/status`;
-          await sendEmail({
-            to: approverData.email,
-            subject: `Resubmitted: Leave Request from ${userData.name}`,
-            html: getResubmittedEmail(userData.name, statusPageUrl),
-          });
+          const emailHtml = getResubmittedEmail(
+            userData.name,
+            statusPageUrl
+          );
+          
+          // ✅ FIXED: sendEmail expects 3 args
+          sendEmail(
+            approverData.email,
+            `Resubmitted: Leave Request from ${userData.name}`,
+            emailHtml
+          ).catch(err => console.error("❌ Failed to send resubmission email:", err));
         }
       }
     }

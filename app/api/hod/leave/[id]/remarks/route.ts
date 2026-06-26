@@ -1,8 +1,8 @@
-// app/api/hod/leave/[id]/remarks/route.ts - FIXED
+// app/api/hod/leave/[id]/remarks/route.ts
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
-import { sendEmail } from "@/lib/utils/email";
+import { sendEmail, getRevisionEmail } from "@/lib/utils/email";
 
 interface LeaveRequest {
   id: string;
@@ -127,26 +127,24 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
+    // ✅ SEND REVISION EMAIL TO APPLICANT - FIXED
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as User | null;
 
     if (applicantData?.email) {
       const statusPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/status`;
-      await sendEmail({
-        to: applicantData.email,
-        subject: `Leave Request Needs Revision - ${leaveRequest.leaveType}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #F59E0B;">Revision Required</h2>
-            <p>Dear ${leaveRequest.applicantName},</p>
-            <p>Your ${leaveRequest.leaveType} leave request requires revision. The approver has sent the following remarks:</p>
-            <div style="background-color: #FEF3C7; padding: 12px; border-radius: 6px; margin: 16px 0;">
-              <em>${remarks}</em>
-            </div>
-            <a href="${statusPageUrl}" style="display: inline-block; background-color: #6366F1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">View & Edit Request</a>
-          </div>
-        `,
-      });
+      const emailHtml = getRevisionEmail(
+        leaveRequest.applicantName,
+        remarks,
+        statusPageUrl
+      );
+      
+      // ✅ FIXED: sendEmail expects 3 args
+      sendEmail(
+        applicantData.email,
+        `Leave Request Needs Revision - ${leaveRequest.leaveType}`,
+        emailHtml
+      ).catch(err => console.error("❌ Failed to send revision email:", err));
     }
 
     return NextResponse.json({ success: true });

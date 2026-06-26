@@ -1,4 +1,4 @@
-// components/auth/LoginForm.tsx - COMPLETE FIXED FILE
+// components/auth/LoginForm.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -49,16 +49,8 @@ export function LoginForm() {
       if (success) {
         // ✅ Get fresh state after login
         const state = useAuthStore.getState();
-        const userRoles = state.userRoles || [];
-        const user = state.user;
-        
-        // ✅ Small delay to ensure state is fully updated
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        // ✅ Get state again after delay
-        const refreshedState = useAuthStore.getState();
-        const finalRoles = refreshedState.userRoles || [];
-        const finalUser = refreshedState.user;
+        const finalRoles = state.userRoles || [];
+        const finalUser = state.user;
         
         console.log("🔍 Final user roles:", finalRoles);
         

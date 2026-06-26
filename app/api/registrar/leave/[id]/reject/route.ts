@@ -1,4 +1,4 @@
-// app/api/registrar/leave/[id]/reject/route.ts - FIXED
+// app/api/registrar/leave/[id]/reject/route.ts
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -175,22 +175,26 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
+    // ✅ SEND REJECTION EMAIL TO APPLICANT (Office Staff) - FIXED
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as User | null;
 
     if (applicantData?.email) {
-      await sendEmail({
-        to: applicantData.email,
-        subject: `Leave Request Rejected - ${leaveRequest.leaveType}`,
-        html: getLeaveRejectedEmail(
-          leaveRequest.applicantName,
-          leaveRequest.leaveType,
-          leaveRequest.startDate,
-          leaveRequest.endDate,
-          reason,
-          registrarData.name
-        ),
-      });
+      const emailHtml = getLeaveRejectedEmail(
+        leaveRequest.applicantName,
+        leaveRequest.leaveType,
+        leaveRequest.startDate,
+        leaveRequest.endDate,
+        reason,
+        registrarData.name
+      );
+      
+      // ✅ FIXED: sendEmail expects 3 args
+      sendEmail(
+        applicantData.email,
+        `Leave Request Rejected - ${leaveRequest.leaveType}`,
+        emailHtml
+      ).catch(err => console.error("❌ Failed to send rejection email:", err));
     }
 
     return NextResponse.json({ success: true });
