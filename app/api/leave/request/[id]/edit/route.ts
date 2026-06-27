@@ -537,20 +537,22 @@ try {
     try {
       console.log("🔄 Updating leave request...");
       
-      const updateData = {
-        leaveType: finalLeaveType as LeaveType,
-        startDate: new Date(finalStartDate).toISOString(),
-        endDate: new Date(finalEndDate).toISOString(),
-        totalDays: finalTotalDays,
-        isHalfDay: finalIsHalfDay,
-        halfDaySession: finalHalfDaySession,
-        reason: finalReason || "",
-        alternateFacultyName: finalAlternateFacultyName ? finalAlternateFacultyName.trim() : existingRequest.alternateFacultyName,
-        attachmentUrl: finalAttachmentUrl,
-        status: newStatus,
-        revisionCount: newRevisionCount,
-        updatedAt: new Date().toISOString(),
-      };
+      // In the edit route, around line 430-450
+const updateData = {
+  leaveType: finalLeaveType as LeaveType,
+  startDate: new Date(finalStartDate).toISOString(),
+  endDate: new Date(finalEndDate).toISOString(),
+  totalDays: finalTotalDays,
+  isHalfDay: finalIsHalfDay,
+  halfDaySession: finalHalfDaySession,
+  reason: finalReason || "",
+  alternateFacultyName: finalAlternateFacultyName ? finalAlternateFacultyName.trim() : existingRequest.alternateFacultyName,
+  // ✅ FIX: Ensure attachmentUrl is never undefined
+  attachmentUrl: finalAttachmentUrl !== undefined && finalAttachmentUrl !== null ? finalAttachmentUrl : null,
+  status: newStatus,
+  revisionCount: newRevisionCount,
+  updatedAt: new Date().toISOString(),
+};
 
       console.log("📊 Update data:", JSON.stringify(updateData, null, 2));
       

@@ -297,82 +297,96 @@ export default function StatusPage() {
     }
   };
 
-  // ============ EDIT HANDLER ============
-  const handleEditRequest = async () => {
-    if (!editingRequest) return;
+// ============ EDIT HANDLER - FIXED ============
+const handleEditRequest = async () => {
+  if (!editingRequest) return;
+  
+  setEditLoading(true);
+  try {
+    // Calculate total days
+    let totalDays = editingRequest.totalDays;
     
-    setEditLoading(true);
-    try {
-      // Calculate total days
-      let totalDays = editingRequest.totalDays;
-      
-      if (editForm.isHalfDay) {
-        totalDays = 0.5;
-      } else if (editForm.startDate && editForm.endDate) {
-        const start = new Date(editForm.startDate);
-        const end = new Date(editForm.endDate);
-        const diffTime = Math.abs(end.getTime() - start.getTime());
-        totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-      }
-      
-      // Get the leave type code from the selected ID
-      const selectedLeaveType = leaveTypes.find(t => t.id === editForm.leaveType);
-      const leaveTypeCode = selectedLeaveType?.leaveCode || editingRequest.leaveType;
-      
-      // ✅ CRITICAL FIX: Ensure dates are always valid strings in YYYY-MM-DD format
-      const getValidDate = (dateStr: string | undefined): string => {
-        if (!dateStr) return new Date().toISOString().split("T")[0];
-        // If it's a full ISO string, extract just the date part
-        if (dateStr.includes("T")) {
-          return dateStr.split("T")[0];
-        }
-        return dateStr;
-      };
-      
-      const requestBody = {
-        leaveType: leaveTypeCode,
-        startDate: getValidDate(editForm.startDate || editingRequest.startDate),
-        endDate: getValidDate(editForm.endDate || editingRequest.endDate),
-        totalDays,
-        isHalfDay: editForm.isHalfDay,
-        halfDaySession: editForm.isHalfDay ? editForm.halfDaySession : null,
-        reason: editForm.reason || editingRequest.reason,
-        alternateFacultyName: editForm.alternateFacultyName || editingRequest.alternateFacultyName,
-        attachmentUrl: editForm.attachmentUrl !== undefined ? editForm.attachmentUrl : editingRequest.attachmentUrl,
-      };
-      
-      console.log("📝 Submitting edit:", requestBody);
-      
-      const response = await fetch(`/api/leave/request/${editingRequest.id}/edit`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.error || "Failed to update request");
-      }
-      
-      await response.json();
-      
-      const successMessage = editingRequest.status === "Pending_Revision"
-        ? "Leave request resubmitted successfully!"
-        : "Leave request updated successfully!";
-      
-      toast.success(successMessage);
-      setEditDialogOpen(false);
-      setEditingRequest(null);
-      await fetchRequests();
-      await fetchLeaveTypesAndBalances();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to update";
-      toast.error(errorMessage);
-    } finally {
-      setEditLoading(false);
+    if (editForm.isHalfDay) {
+      totalDays = 0.5;
+    } else if (editForm.startDate && editForm.endDate) {
+      const start = new Date(editForm.startDate);
+      const end = new Date(editForm.endDate);
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     }
-  };
-
+    
+    // Get the leave type code from the selected ID
+    const selectedLeaveType = leaveTypes.find(t => t.id === editForm.leaveType);
+    const leaveTypeCode = selectedLeaveType?.leaveCode || editingRequest.leaveType;
+    
+    // ✅ CRITICAL FIX: Ensure dates are always valid strings in YYYY-MM-DD format
+    const getValidDate = (dateStr: string | undefined): string => {
+      if (!dateStr) return new Date().toISOString().split("T")[0];
+      if (dateStr.includes("T")) {
+        return dateStr.split("T")[0];
+      }
+      return dateStr;
+    };
+    
+    // ✅ CRITICAL FIX: Handle attachmentUrl - convert undefined to null
+    let attachmentUrl = editForm.attachmentUrl;
+    if (attachmentUrl === undefined) {
+      attachmentUrl = null;
+    }
+    if (attachmentUrl === "") {
+      attachmentUrl = null;
+    }
+    if (editingRequest.attachmentUrl && attachmentUrl === null) {
+      // User removed the attachment
+      attachmentUrl = null;
+    }
+    if (!attachmentUrl && editingRequest.attachmentUrl) {
+      attachmentUrl = editingRequest.attachmentUrl;
+    }
+    
+    const requestBody = {
+      leaveType: leaveTypeCode,
+      startDate: getValidDate(editForm.startDate || editingRequest.startDate),
+      endDate: getValidDate(editForm.endDate || editingRequest.endDate),
+      totalDays,
+      isHalfDay: editForm.isHalfDay,
+      halfDaySession: editForm.isHalfDay ? editForm.halfDaySession : null,
+      reason: editForm.reason || editingRequest.reason,
+      alternateFacultyName: editForm.alternateFacultyName || editingRequest.alternateFacultyName,
+      attachmentUrl: attachmentUrl, // ✅ Now always null or string, never undefined
+    };
+    
+    console.log("📝 Submitting edit:", requestBody);
+    
+    const response = await fetch(`/api/leave/request/${editingRequest.id}/edit`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+      throw new Error(errorData.error || "Failed to update request");
+    }
+    
+    await response.json();
+    
+    const successMessage = editingRequest.status === "Pending_Revision"
+      ? "Leave request resubmitted successfully!"
+      : "Leave request updated successfully!";
+    
+    toast.success(successMessage);
+    setEditDialogOpen(false);
+    setEditingRequest(null);
+    await fetchRequests();
+    await fetchLeaveTypesAndBalances();
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to update";
+    toast.error(errorMessage);
+  } finally {
+    setEditLoading(false);
+  }
+};
   // ============ OPEN EDIT DIALOG ============
   const openEditDialog = (request: LeaveRequest) => {
     // Get the leave type ID from the leave code
