@@ -28,6 +28,9 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Eye, Check, X, MessageSquare, RefreshCw } from "lucide-react";
 
+// ✅ Import from shared utility
+import { getLeaveTypeLabel } from "@/lib/constants/leave-types";
+
 interface LeaveRequest {
   id: string;
   applicantId: string;
@@ -76,20 +79,6 @@ function RequestDetailsDrawer({
   loading 
 }: DetailsDrawerProps) {
   if (!request) return null;
-
-  const getLeaveTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      CL: "Casual Leave",
-      EL: "Earned Leave",
-      ML: "Medical Leave",
-      CO: "Compensatory Off",
-      OD: "On Duty",
-      MAT: "Maternity Leave",
-      PAT: "Paternity Leave",
-      SPL: "Special Leave",
-    };
-    return labels[type] || type;
-  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -260,15 +249,14 @@ export default function FacultyRequestsPage() {
     }
   }, []);
 
-  // Replace the existing useEffect with:
-useEffect(() => {
-  if (user?.roles?.includes("hod")) {
-    const loadData = async () => {
-      await fetchRequests();
-    };
-    loadData();
-  }
-}, [user, fetchRequests]);
+  useEffect(() => {
+    if (user?.roles?.includes("hod")) {
+      const loadData = async () => {
+        await fetchRequests();
+      };
+      loadData();
+    }
+  }, [user, fetchRequests]);
 
   const handleApprove = async (requestId: string) => {
     setActionLoading(true);
@@ -287,9 +275,7 @@ useEffect(() => {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
-      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to approve";
@@ -325,9 +311,7 @@ useEffect(() => {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
-      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to reject";
@@ -363,9 +347,7 @@ useEffect(() => {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
-      
       toast.success("📋 Request list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to send remarks";
