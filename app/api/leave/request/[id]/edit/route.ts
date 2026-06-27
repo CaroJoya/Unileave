@@ -399,7 +399,7 @@ export async function PUT(
 
         if (balanceDoc && balanceDoc.balances) {
           // Remove from old leave type's pending
-          if (leaveTypeChanged && existingRequest.leaveType !== finalLeaveType) {
+          if (leaveTypeChanged) {
             const oldBalance = balanceDoc.balances[existingRequest.leaveType];
             if (oldBalance) {
               await balanceRef.update({
@@ -424,7 +424,7 @@ export async function PUT(
                 [`balances.${finalLeaveType}.available`]: (newBalance.available || 0) - finalTotalDays,
               });
             }
-          } else if (daysChanged && !leaveTypeChanged) {
+          } else if (daysChanged) {
             // Same leave type, adjust the difference
             const currentBalance = balanceDoc.balances[finalLeaveType];
             if (currentBalance) {
