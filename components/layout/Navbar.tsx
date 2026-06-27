@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, LayoutDashboard } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useRoleStore } from "@/store/roleStore";
 import { RoleBadge } from "./RoleBadge";
@@ -111,15 +111,12 @@ export default function Navbar() {
                 <DropdownMenuLabel>
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium">{user.name}</p>
-
                     <p className="text-xs text-muted-foreground truncate">
                       {user.email}
                     </p>
-
                     <div className="mt-1">
                       <RoleBadge roles={userRoles} />
                     </div>
-
                     {userRoles.length > 1 && (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {userRoles.map((role) => (
@@ -136,6 +133,15 @@ export default function Navbar() {
                 </DropdownMenuLabel>
 
                 <DropdownMenuSeparator />
+
+                {/* ✅ NEW: Dashboard link */}
+                <DropdownMenuItem
+                  onClick={() => router.push(dashboardUrl)}
+                  className="cursor-pointer"
+                >
+                  <LayoutDashboard className="mr-2 h-4 w-4" />
+                  Dashboard
+                </DropdownMenuItem>
 
                 <DropdownMenuItem
                   onClick={() => router.push("/profile")}

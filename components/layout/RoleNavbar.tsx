@@ -4,6 +4,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Role } from "@/types/roles";
+import { LayoutDashboard } from "lucide-react";
 
 interface NavItem {
   label: string;
@@ -39,6 +40,31 @@ export function RoleNavbar({ role, navItems, greeting, subtitle }: RoleNavbarPro
 
   const roleColor = getRoleColor(role);
 
+  // Determine the dashboard URL based on role
+  const getDashboardUrl = () => {
+    const dashboardMap: Record<Role, string> = {
+      super_admin: "/super-admin/dashboard",
+      head_clerk: "/headclerk/dashboard",
+      principal: "/principal/dashboard",
+      registrar: "/registrar/dashboard",
+      hod: "/hod/dashboard",
+      faculty: "/dashboard",
+      lab_assistant: "/dashboard",
+      office_staff: "/dashboard",
+    };
+    return dashboardMap[role] || "/dashboard";
+  };
+
+  // Create dashboard nav item
+  const dashboardNavItem: NavItem = {
+    label: "Dashboard",
+    href: getDashboardUrl(),
+    icon: <LayoutDashboard className="h-4 w-4" />,
+  };
+
+  // Combine dashboard with other nav items (remove duplicates)
+  const allNavItems = [dashboardNavItem, ...navItems.filter(item => item.href !== getDashboardUrl())];
+
   return (
     <div className="space-y-6">
       {/* Greeting Section */}
@@ -50,7 +76,7 @@ export function RoleNavbar({ role, navItems, greeting, subtitle }: RoleNavbarPro
       {/* Navigation Tabs */}
       <div className="border-b border-gray-200">
         <nav className="flex flex-wrap gap-1 -mb-px">
-          {navItems.map((item) => {
+          {allNavItems.map((item) => {
             const isActive = pathname === item.href || 
                             (item.href !== "/" && pathname?.startsWith(item.href));
             return (

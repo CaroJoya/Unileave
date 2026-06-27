@@ -26,7 +26,6 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useRoleStore } from "@/store/roleStore";
 import { RoleBadge } from "./RoleBadge";
-//import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 // Role configurations for mobile
 const roleConfigs: Record<string, { label: string; icon: React.ReactNode; href: string; description: string }> = {
@@ -146,10 +145,7 @@ export function MobileNav() {
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-[300px] sm:w-[350px] overflow-y-auto">
-        {/* ✅ FIX: Add SheetTitle for accessibility */}
-        <SheetTitle className="sr-only">
-          Navigation Menu
-        </SheetTitle>
+        <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
         <SheetDescription className="sr-only">
           Navigate through the application and switch between roles
         </SheetDescription>
@@ -213,10 +209,10 @@ export function MobileNav() {
               Menu
             </div>
             
-            {/* Dashboard */}
+            {/* Dashboard - ALWAYS FIRST */}
             <Link
               href={dashboardUrl}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
               onClick={() => setOpen(false)}
             >
               <LayoutDashboard className="h-4 w-4" />
