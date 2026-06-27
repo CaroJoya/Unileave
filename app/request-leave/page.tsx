@@ -1,4 +1,4 @@
-// app/request-leave/page.tsx - COMPLETE FIXED FILE
+// app/request-leave/page.tsx - COMPLETE FINAL VERSION
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -145,12 +145,9 @@ export default function RequestLeavePage() {
     }
   };
 
-  // ✅ Submit leave request - FIXED
   const handleSubmit = async () => {
-    // Clear previous errors
     toast.dismiss();
 
-    // ✅ Detailed validation with field-specific error messages
     if (!selectedLeaveType) {
       toast.error("Please select a leave type");
       return;
@@ -212,7 +209,6 @@ export default function RequestLeavePage() {
         }
       }
 
-      // ✅ Build request body with all required fields
       const requestBody = {
         leaveType: leaveTypeCode,
         startDate: startDate.toISOString(),
@@ -221,7 +217,7 @@ export default function RequestLeavePage() {
         isHalfDay,
         halfDaySession: isHalfDay ? halfDaySession : null,
         reason: reason || "",
-        alternateFacultyName: alternateFacultyName.trim(), // ✅ Ensure this is sent
+        alternateFacultyName: alternateFacultyName.trim(),
         attachmentUrl,
       };
 
@@ -236,7 +232,6 @@ export default function RequestLeavePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        // ✅ Handle field-specific errors
         if (data.field) {
           toast.error(`${data.field}: ${data.error}`);
         } else {
@@ -249,7 +244,6 @@ export default function RequestLeavePage() {
         `Leave request submitted successfully! Status: ${data.status || "Pending"}`
       );
 
-      // Reset form
       setSelectedLeaveType("");
       setSelectedLeaveTypeConfig(null);
       setStartDate(undefined);
@@ -337,7 +331,6 @@ export default function RequestLeavePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Leave Type Selection */}
           <div className="space-y-2">
             <Label htmlFor="leaveType">Leave Type *</Label>
             <Select value={selectedLeaveType} onValueChange={handleLeaveTypeChange}>
@@ -383,7 +376,6 @@ export default function RequestLeavePage() {
             )}
           </div>
 
-          {/* Date Selection */}
           <div className="space-y-2">
             <Label>Leave Duration *</Label>
             <div className="grid gap-4 md:grid-cols-2">
@@ -458,7 +450,6 @@ export default function RequestLeavePage() {
             )}
           </div>
 
-          {/* Half Day Toggle */}
           {selectedLeaveTypeConfig?.allowHalfDay && (
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
@@ -515,7 +506,6 @@ export default function RequestLeavePage() {
             </div>
           )}
 
-          {/* Reason */}
           <div className="space-y-2">
             <Label htmlFor="reason">Reason</Label>
             <Textarea
@@ -527,7 +517,6 @@ export default function RequestLeavePage() {
             />
           </div>
 
-          {/* ✅ Alternate Faculty Name - REQUIRED */}
           <div className="space-y-2">
             <Label htmlFor="alternateFaculty">
               Alternate Faculty Name *
@@ -547,7 +536,6 @@ export default function RequestLeavePage() {
             )}
           </div>
 
-          {/* Attachment */}
           {selectedLeaveTypeConfig?.requiresAttachment && (
             <div className="space-y-2">
               <Label htmlFor="attachment">
@@ -572,7 +560,6 @@ export default function RequestLeavePage() {
             </div>
           )}
 
-          {/* Submit Button */}
           <div className="flex gap-4 pt-4 border-t">
             <Button
               variant="outline"
@@ -597,7 +584,6 @@ export default function RequestLeavePage() {
             </Button>
           </div>
 
-          {/* Info Banner */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
               <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />

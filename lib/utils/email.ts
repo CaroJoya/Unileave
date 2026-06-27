@@ -1,4 +1,4 @@
-// lib/utils/email.ts - COMPLETE FIXED FILE
+// lib/utils/email.ts - COMPLETE FINAL VERSION
 import nodemailer from "nodemailer";
 
 // ========== SMTP CONFIGURATION ==========
@@ -57,12 +57,10 @@ export async function sendEmail(
 
   // Handle both calling conventions
   if (typeof toOrOptions === 'string') {
-    // Old style: sendEmail(to, subject, html)
     to = toOrOptions;
     finalSubject = subject || '';
     finalHtml = html || '';
   } else {
-    // Object style: sendEmail({ to, subject, html })
     to = toOrOptions.to;
     finalSubject = toOrOptions.subject;
     finalHtml = toOrOptions.html;
@@ -97,7 +95,6 @@ export async function sendEmail(
 
 // ========== EMAIL TEMPLATES ==========
 
-// 1️⃣ NEW LEAVE REQUEST → Approver (HOD/Registrar/Principal)
 export function getLeaveSubmittedEmail(
   applicantName: string,
   leaveType: string,
@@ -134,7 +131,6 @@ export function getLeaveSubmittedEmail(
   `;
 }
 
-// 2️⃣ LEAVE APPROVED → Applicant
 export function getLeaveApprovedEmail(
   applicantName: string,
   leaveType: string,
@@ -175,7 +171,6 @@ export function getLeaveApprovedEmail(
   `;
 }
 
-// 3️⃣ LEAVE REJECTED → Applicant
 export function getLeaveRejectedEmail(
   applicantName: string,
   leaveType: string,
@@ -212,7 +207,6 @@ export function getLeaveRejectedEmail(
   `;
 }
 
-// 4️⃣ REVISION REMARKS → Applicant
 export function getRevisionEmail(
   applicantName: string,
   remarkText: string,
@@ -248,7 +242,6 @@ export function getRevisionEmail(
   `;
 }
 
-// 5️⃣ RESUBMITTED → Approver
 export function getResubmittedEmail(
   applicantName: string,
   statusPageUrl: string
@@ -280,7 +273,6 @@ export function getResubmittedEmail(
   `;
 }
 
-// 6️⃣ COMP-OFF APPROVED → Applicant
 export function getCompOffApprovedEmail(
   applicantName: string,
   creditedDays: number,
@@ -313,7 +305,6 @@ export function getCompOffApprovedEmail(
   `;
 }
 
-// 7️⃣ COMP-OFF REJECTED → Applicant
 export function getCompOffRejectedEmail(applicantName: string): string {
   return `
 <!DOCTYPE html>
@@ -338,7 +329,6 @@ export function getCompOffRejectedEmail(applicantName: string): string {
   `;
 }
 
-// 8️⃣ OVERWORK APPROVED → Applicant
 export function getOverworkApprovedEmail(
   applicantName: string,
   hours: number,
@@ -374,7 +364,6 @@ export function getOverworkApprovedEmail(
   `;
 }
 
-// 9️⃣ OVERWORK REJECTED → Applicant
 export function getOverworkRejectedEmail(applicantName: string, hours: number): string {
   return `
 <!DOCTYPE html>
@@ -399,7 +388,6 @@ export function getOverworkRejectedEmail(applicantName: string, hours: number): 
   `;
 }
 
-// 🔟 VACATION APPROVED → Applicant
 export function getVacationApprovedEmail(
   applicantName: string,
   startDate: string,
@@ -441,7 +429,6 @@ export function getVacationApprovedEmail(
   `;
 }
 
-// 1️⃣1️⃣ VACATION REJECTED → Applicant
 export function getVacationRejectedEmail(applicantName: string, reason: string): string {
   return `
 <!DOCTYPE html>

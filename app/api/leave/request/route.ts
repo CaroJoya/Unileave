@@ -1,4 +1,4 @@
-// app/api/leave/request/route.ts - COMPLETE FIXED FILE
+// app/api/leave/request/route.ts - COMPLETE FINAL VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -185,7 +185,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ CRITICAL: Validate alternateFacultyName
     if (!alternateFacultyName || alternateFacultyName.trim() === "") {
       console.error("❌ Missing alternateFacultyName");
       return NextResponse.json(
@@ -398,7 +397,7 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // ✅ SEND EMAIL TO APPROVER - FIXED
+    // ✅ SEND EMAIL TO APPROVER
     const approverSnapshot = await rtdb.ref(`users/${approverUserId}`).once("value");
     const approverData = approverSnapshot.val() as { email: string; name: string } | null;
 
@@ -413,7 +412,6 @@ export async function POST(request: Request) {
         dashboardUrl
       );
       
-      // ✅ sendEmail supports both formats now
       const emailSent = await sendEmail(
         approverData.email,
         `New Leave Request: ${leaveType} from ${userData.name}`,

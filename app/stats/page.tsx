@@ -146,73 +146,76 @@ export default function StatsPage() {
 
   // Fetch data
   const fetchData = useCallback(async () => {
-    if (!user) return;
+  if (!user) return;
+  
+  setLoading(true);
+  try {
+    console.log("📊 Fetching stats data...");
     
-    setLoading(true);
-    try {
-      console.log("📊 Fetching stats data...");
-      
-      // Fetch leave requests
-      const requestsRes = await fetch("/api/leave/my-requests", {
-        cache: 'no-store'
-      });
-      
-      if (!requestsRes.ok) {
-        throw new Error(`Failed to fetch requests: ${requestsRes.status}`);
-      }
-      
-      const requestsData = await requestsRes.json();
-      setRequests(requestsData.requests || []);
-      
-      // Fetch balances
-      const balancesRes = await fetch("/api/leave/balances", {
-        cache: 'no-store'
-      });
-      
-      if (!balancesRes.ok) {
-        throw new Error(`Failed to fetch balances: ${balancesRes.status}`);
-      }
-      
-      const balancesData = await balancesRes.json();
-      setBalances(balancesData.balances || {});
+    // Fetch leave requests
+    const requestsRes = await fetch("/api/leave/my-requests", {
+      cache: 'no-store'
+    });
+    
+    if (!requestsRes.ok) {
+      const errorText = await requestsRes.text();
+      console.error("❌ Requests API Error:", errorText);
+      throw new Error(`Failed to fetch requests: ${requestsRes.status}`);
+    }
+    
+    const requestsData = await requestsRes.json();
+    console.log("✅ Requests data received:", requestsData);
+    setRequests(requestsData.requests || []);
+    
+    // Fetch balances
+    const balancesRes = await fetch("/api/leave/balances", {
+      cache: 'no-store'
+    });
+    
+    if (!balancesRes.ok) {
+      const errorText = await balancesRes.text();
+      console.error("❌ Balances API Error:", errorText);
+      throw new Error(`Failed to fetch balances: ${balancesRes.status}`);
+    }
+    
+    const balancesData = await balancesRes.json();
+    console.log("✅ Balances data received:", balancesData);
+    setBalances(balancesData.balances || {});
+    
+    // Check if user is HOD or Registrar for department comparison
+    const isHodOrRegistrar = user?.roles?.some((r) => r === "hod" || r === "registrar") || false;
+    setShowDepartmentComparison(isHodOrRegistrar);
 
-      // Check if user is HOD or Registrar for department comparison
-      const isHodOrRegistrar = user?.roles?.some((r) => r === "hod" || r === "registrar") || false;
-      setShowDepartmentComparison(isHodOrRegistrar);
-
-      // If HOD or Registrar, fetch department stats
-      if (isHodOrRegistrar) {
-        try {
-          const deptRes = await fetch("/api/stats/department", {
-            cache: 'no-store'
-          });
-          
-          if (deptRes.ok) {
-            const deptData = await deptRes.json();
-            setDepartmentData(deptData.departments || []);
-          }
-        } catch (deptError) {
-          console.warn("Could not fetch department stats:", deptError);
-          // Fallback mock data
-          setDepartmentData([
-            { department: "Computer Science", leaves: 45, pending: 8 },
-            { department: "Electronics", leaves: 32, pending: 5 },
-            { department: "Mechanical", leaves: 28, pending: 6 },
-            { department: "Civil", leaves: 35, pending: 4 },
-          ]);
+    // If HOD or Registrar, fetch department stats
+    if (isHodOrRegistrar) {
+      try {
+        const deptRes = await fetch("/api/stats/department", {
+          cache: 'no-store'
+        });
+        
+        if (deptRes.ok) {
+          const deptData = await deptRes.json();
+          setDepartmentData(deptData.departments || []);
         }
-      }
-      
-      console.log("✅ Stats data loaded successfully");
-    } catch (error) {
-      console.error("❌ Error fetching stats:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to fetch stats data");
-    } finally {
-      if (isMounted.current) {
-        setLoading(false);
+      } catch (deptError) {
+        console.warn("Could not fetch department stats:", deptError);
+        setDepartmentData([]);
       }
     }
-  }, [user]);
+    
+    console.log("✅ Stats data loaded successfully");
+  } catch (error) {
+    console.error("❌ Error fetching stats:", error);
+    toast.error(error instanceof Error ? error.message : "Failed to fetch stats data");
+    setRequests([]);
+    setBalances({});
+    setDepartmentData([]);
+  } finally {
+    if (isMounted.current) {
+      setLoading(false);
+    }
+  }
+}, [user]);
 
   // Fetch data once when user is available
   useEffect(() => {

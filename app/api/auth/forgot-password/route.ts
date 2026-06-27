@@ -1,9 +1,7 @@
-// app/api/auth/forgot-password/route.ts - FIXED
+// app/api/auth/forgot-password/route.ts - COMPLETE FINAL VERSION
 import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/utils/email";
 import { getAuth } from "@/lib/firebase/admin";
-
-const auth = getAuth();
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +14,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const auth = getAuth();
     if (!auth) {
       console.error("Firebase Admin Auth not initialized");
       return NextResponse.json(
@@ -38,7 +37,6 @@ export async function POST(request: Request) {
       throw authError;
     }
 
-    // ✅ FIXED: Use correct sendEmail format
     const emailHtml = getPasswordResetEmailTemplate(resetLink);
     await sendEmail(
       email,

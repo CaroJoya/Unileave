@@ -129,38 +129,42 @@ export default function StatusPage() {
   }, [user, authLoading, router]);
 
   // Fetch leave requests
-  const fetchRequests = useCallback(async () => {
-    if (!user) return;
+const fetchRequests = useCallback(async () => {
+  if (!user) return;
+  
+  setLoading(true);
+  try {
+    console.log("📋 Fetching leave requests...");
     
-    setLoading(true);
-    try {
-      console.log("📋 Fetching leave requests...");
-      
-      const response = await fetch("/api/leave/my-requests", {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch requests: ${response.status}`);
+    const response = await fetch("/api/leave/my-requests", {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
       }
-      
-      const data = await response.json();
-      setRequests(data.requests || []);
-      console.log(`✅ Loaded ${data.requests?.length || 0} leave requests`);
-    } catch (error) {
-      console.error("❌ Error fetching requests:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to fetch leave requests");
-      setRequests([]);
-    } finally {
-      if (isMounted.current) {
-        setLoading(false);
-      }
+    });
+    
+    // ✅ Better error handling
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ API Error Response:", errorText);
+      throw new Error(`Failed to fetch requests: ${response.status}`);
     }
-  }, [user]);
+    
+    const data = await response.json();
+    console.log("✅ Status data received:", data);
+    
+    setRequests(data.requests || []);
+  } catch (error) {
+    console.error("❌ Error fetching requests:", error);
+    toast.error(error instanceof Error ? error.message : "Failed to fetch leave requests");
+    setRequests([]);
+  } finally {
+    if (isMounted.current) {
+      setLoading(false);
+    }
+  }
+}, [user]);
 
   // Fetch data once when user is available
   useEffect(() => {
