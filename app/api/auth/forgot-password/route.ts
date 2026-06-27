@@ -1,10 +1,10 @@
-// app/api/auth/forgot-password/route.ts
+// app/api/auth/forgot-password/route.ts - FIXED
 import { NextResponse } from "next/server";
-//import { auth } from "@/lib/firebase/admin";
 import { sendEmail } from "@/lib/utils/email";
-import {  getAuth } from "@/lib/firebase/admin";
-//const rtdb = getRTDB();
+import { getAuth } from "@/lib/firebase/admin";
+
 const auth = getAuth();
+
 export async function POST(request: Request) {
   try {
     const { email } = await request.json();
@@ -16,7 +16,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ Check if auth is initialized
     if (!auth) {
       console.error("Firebase Admin Auth not initialized");
       return NextResponse.json(
@@ -25,14 +24,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate password reset link using Firebase Auth
     let resetLink: string;
     try {
       resetLink = await auth.generatePasswordResetLink(email);
     } catch (authError: unknown) {
       const error = authError as { code?: string };
       if (error.code === "auth/user-not-found") {
-        // Don't reveal that user doesn't exist for security
         return NextResponse.json({
           success: true,
           message: "If an account exists, a reset link will be sent",
@@ -41,12 +38,13 @@ export async function POST(request: Request) {
       throw authError;
     }
 
-    // ✅ Send email with the reset link
-    await sendEmail({
-      to: email,
-      subject: "Reset Your UniLeave Password",
-      html: getPasswordResetEmailTemplate(resetLink),
-    });
+    // ✅ FIXED: Use correct sendEmail format
+    const emailHtml = getPasswordResetEmailTemplate(resetLink);
+    await sendEmail(
+      email,
+      "Reset Your UniLeave Password",
+      emailHtml
+    );
 
     return NextResponse.json({
       success: true,

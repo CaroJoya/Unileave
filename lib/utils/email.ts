@@ -1,4 +1,4 @@
-// lib/utils/email.ts
+// lib/utils/email.ts - COMPLETE FIXED FILE
 import nodemailer from "nodemailer";
 
 // ========== SMTP CONFIGURATION ==========
@@ -45,11 +45,32 @@ if (SMTP_USER && SMTP_PASS && SMTP_USER !== "your-email@gmail.com") {
   console.warn("⚠️ SMTP not configured. Emails will be logged only.");
 }
 
-// ========== CORE SEND FUNCTION ==========
-export async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+// ========== CORE SEND FUNCTION - SUPPORTS BOTH FORMATS ==========
+export async function sendEmail(
+  toOrOptions: string | { to: string; subject: string; html: string },
+  subject?: string,
+  html?: string
+): Promise<boolean> {
+  let to: string;
+  let finalSubject: string;
+  let finalHtml: string;
+
+  // Handle both calling conventions
+  if (typeof toOrOptions === 'string') {
+    // Old style: sendEmail(to, subject, html)
+    to = toOrOptions;
+    finalSubject = subject || '';
+    finalHtml = html || '';
+  } else {
+    // Object style: sendEmail({ to, subject, html })
+    to = toOrOptions.to;
+    finalSubject = toOrOptions.subject;
+    finalHtml = toOrOptions.html;
+  }
+
   if (!mailEnabled || !transporter) {
     console.log("📝 [EMAIL-LOG] To:", to);
-    console.log("📝 [EMAIL-LOG] Subject:", subject);
+    console.log("📝 [EMAIL-LOG] Subject:", finalSubject);
     console.log("📝 [EMAIL-LOG] ⚠️ Email not sent - SMTP not configured");
     return false;
   }
@@ -63,8 +84,8 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     const info = await transporter.sendMail({
       from: `"${SMTP_FROM_NAME}" <${SMTP_FROM_EMAIL}>`,
       to,
-      subject,
-      html,
+      subject: finalSubject,
+      html: finalHtml,
     });
     console.log(`✅ Email sent to ${to}: ${info.messageId}`);
     return true;
@@ -292,7 +313,7 @@ export function getCompOffApprovedEmail(
   `;
 }
 
-// 7️⃣ COMP-OFF REJECTED → Applicant ✨ NEW
+// 7️⃣ COMP-OFF REJECTED → Applicant
 export function getCompOffRejectedEmail(applicantName: string): string {
   return `
 <!DOCTYPE html>
@@ -353,7 +374,7 @@ export function getOverworkApprovedEmail(
   `;
 }
 
-// 9️⃣ OVERWORK REJECTED → Applicant ✨ NEW
+// 9️⃣ OVERWORK REJECTED → Applicant
 export function getOverworkRejectedEmail(applicantName: string, hours: number): string {
   return `
 <!DOCTYPE html>
@@ -378,7 +399,7 @@ export function getOverworkRejectedEmail(applicantName: string, hours: number): 
   `;
 }
 
-// 🔟 VACATION APPROVED → Applicant ✨ NEW
+// 🔟 VACATION APPROVED → Applicant
 export function getVacationApprovedEmail(
   applicantName: string,
   startDate: string,
@@ -420,7 +441,7 @@ export function getVacationApprovedEmail(
   `;
 }
 
-// 1️⃣1️⃣ VACATION REJECTED → Applicant ✨ NEW
+// 1️⃣1️⃣ VACATION REJECTED → Applicant
 export function getVacationRejectedEmail(applicantName: string, reason: string): string {
   return `
 <!DOCTYPE html>

@@ -1,11 +1,13 @@
-// app/api/test-email/route.ts
+// app/api/test-email/route.ts - FIXED
 import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/utils/email";
 
 export async function GET() {
   try {
+    const testEmail = process.env.SMTP_USER || "test@example.com";
+    
     const result = await sendEmail(
-      process.env.SMTP_USER || "test@example.com",
+      testEmail,
       "✅ UniLeave SMTP Test",
       `
       <h1>SMTP Configuration Test</h1>
@@ -22,6 +24,12 @@ export async function GET() {
     return NextResponse.json({
       success: result,
       message: result ? "Test email sent!" : "Failed to send test email",
+      debug: {
+        smtpConfigured: !!process.env.SMTP_USER && !!process.env.SMTP_PASSWORD,
+        smtpHost: process.env.SMTP_HOST,
+        smtpPort: process.env.SMTP_PORT,
+        fromEmail: process.env.SMTP_FROM_EMAIL || "noreply@unileave.edu",
+      }
     });
   } catch (error) {
     return NextResponse.json(

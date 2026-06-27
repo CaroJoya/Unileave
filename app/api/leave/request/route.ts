@@ -1,4 +1,4 @@
-// app/api/leave/request/route.ts
+// app/api/leave/request/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -146,6 +146,8 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
+    console.log("📝 Leave Request Body:", JSON.stringify(body, null, 2));
+
     const {
       leaveType,
       startDate,
@@ -158,54 +160,79 @@ export async function POST(request: Request) {
       attachmentUrl,
     } = body;
 
-    if (!leaveType || !startDate || !totalDays) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
-
-    if (totalDays <= 0) {
-      return NextResponse.json({ error: "Total days must be greater than 0" }, { status: 400 });
-    }
-
-    if (!alternateFacultyName || alternateFacultyName.trim() === "") {
+    // ✅ DETAILED VALIDATION WITH FIELD NAMES
+    if (!leaveType) {
+      console.error("❌ Missing leaveType");
       return NextResponse.json(
-        { error: "Alternate faculty name is required" },
+        { error: "Leave type is required", field: "leaveType" },
+        { status: 400 }
+      );
+    }
+
+    if (!startDate) {
+      console.error("❌ Missing startDate");
+      return NextResponse.json(
+        { error: "Start date is required", field: "startDate" },
+        { status: 400 }
+      );
+    }
+
+    if (!totalDays || totalDays <= 0) {
+      console.error("❌ Invalid totalDays:", totalDays);
+      return NextResponse.json(
+        { error: "Total days must be greater than 0", field: "totalDays" },
+        { status: 400 }
+      );
+    }
+
+    // ✅ CRITICAL: Validate alternateFacultyName
+    if (!alternateFacultyName || alternateFacultyName.trim() === "") {
+      console.error("❌ Missing alternateFacultyName");
+      return NextResponse.json(
+        { error: "Alternate faculty name is required", field: "alternateFacultyName" },
         { status: 400 }
       );
     }
 
     if (alternateFacultyName.trim().length < 3) {
+      console.error("❌ alternateFacultyName too short:", alternateFacultyName);
       return NextResponse.json(
-        { error: "Alternate faculty name must be at least 3 characters" },
+        { error: "Alternate faculty name must be at least 3 characters", field: "alternateFacultyName" },
         { status: 400 }
       );
     }
 
     const leaveTypeConfig = await getLeaveTypeConfig(leaveType);
     if (!leaveTypeConfig) {
-      return NextResponse.json({ error: "Invalid leave type" }, { status: 400 });
+      console.error("❌ Invalid leave type:", leaveType);
+      return NextResponse.json(
+        { error: "Invalid leave type", field: "leaveType" },
+        { status: 400 }
+      );
     }
 
     if (isHalfDay && !leaveTypeConfig.allowHalfDay) {
       return NextResponse.json(
-        { error: "Half-day leave is not allowed for this leave type" },
+        { error: "Half-day leave is not allowed for this leave type", field: "isHalfDay" },
         { status: 400 }
       );
     }
 
     if (isHalfDay && !halfDaySession) {
       return NextResponse.json(
-        { error: "Half-day session is required" },
+        { error: "Half-day session is required", field: "halfDaySession" },
         { status: 400 }
       );
     }
 
     if (leaveTypeConfig.requiresAttachment && !attachmentUrl) {
       return NextResponse.json(
-        { error: "Attachment is required for this leave type" },
+        { error: "Attachment is required for this leave type", field: "attachmentUrl" },
         { status: 400 }
       );
     }
 
+    // Check for overlapping requests
     const existingRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const existingRequests = existingRequestsSnapshot.val() as Record<string, ExistingLeaveRequest> | null || {};
 
@@ -227,12 +254,14 @@ export async function POST(request: Request) {
     });
 
     if (hasOverlap) {
+      console.error("❌ Overlapping leave request detected");
       return NextResponse.json(
-        { error: "You have an overlapping leave request" },
+        { error: "You have an overlapping leave request", field: "overlap" },
         { status: 400 }
       );
     }
 
+    // Check balance
     if (leaveTypeConfig.deductsBalance) {
       const academicYear = getCurrentAcademicYear();
       const balanceKey = `${userId}_${academicYear}`;
@@ -241,7 +270,7 @@ export async function POST(request: Request) {
 
       if (!balanceDoc) {
         return NextResponse.json(
-          { error: "Leave balance not initialized" },
+          { error: "Leave balance not initialized", field: "balance" },
           { status: 400 }
         );
       }
@@ -251,12 +280,14 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error: `Insufficient ${leaveType} balance. Available: ${currentBalance}, Requested: ${totalDays}`,
+            field: "balance",
           },
           { status: 400 }
         );
       }
     }
 
+    // Determine approver
     const userRoles = userData.roles as Role[];
     const route = determineApprover(userRoles, leaveType);
     const approverRole = route.firstApproverRole;
@@ -267,8 +298,9 @@ export async function POST(request: Request) {
     );
 
     if (!approverUserId) {
+      console.error(`❌ No ${approverRole} found for college ${userData.collegeId}`);
       return NextResponse.json(
-        { error: `No ${approverRole} found to approve this request` },
+        { error: `No ${approverRole} found to approve this request`, field: "approver" },
         { status: 400 }
       );
     }
@@ -276,6 +308,7 @@ export async function POST(request: Request) {
     const status = getStatusForApprover(approverRole) as LeaveStatus;
     const requestId = `leave_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
+    // Update balance
     if (leaveTypeConfig.deductsBalance) {
       const academicYear = getCurrentAcademicYear();
       const balanceKey = `${userId}_${academicYear}`;
@@ -300,6 +333,7 @@ export async function POST(request: Request) {
       }
     }
 
+    // Create leave request
     const leaveRequest: LeaveRequest = {
       id: requestId,
       applicantId: userId,
@@ -329,7 +363,9 @@ export async function POST(request: Request) {
     };
 
     await rtdb.ref(`leaveRequests/${requestId}`).set(leaveRequest);
+    console.log(`✅ Leave request created: ${requestId}`);
 
+    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -344,6 +380,7 @@ export async function POST(request: Request) {
       actionAt: new Date().toISOString(),
     });
 
+    // Create notification for approver
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -376,12 +413,18 @@ export async function POST(request: Request) {
         dashboardUrl
       );
       
-      // ✅ FIXED: sendEmail expects 3 args
-      sendEmail(
+      // ✅ sendEmail supports both formats now
+      const emailSent = await sendEmail(
         approverData.email,
         `New Leave Request: ${leaveType} from ${userData.name}`,
         emailHtml
-      ).catch(err => console.error("❌ Failed to send new leave email:", err));
+      );
+      
+      if (emailSent) {
+        console.log(`✅ Email sent to approver: ${approverData.email}`);
+      } else {
+        console.log(`⚠️ Email not sent to approver: ${approverData.email} (SMTP not configured)`);
+      }
     }
 
     return NextResponse.json({
@@ -391,7 +434,7 @@ export async function POST(request: Request) {
       currentApprover: approverRole,
     });
   } catch (error) {
-    console.error("Error submitting leave request:", error);
+    console.error("❌ Error submitting leave request:", error);
     return NextResponse.json(
       { error: "Failed to submit leave request" },
       { status: 500 }

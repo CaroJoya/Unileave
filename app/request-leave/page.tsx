@@ -1,4 +1,4 @@
-// app/request-leave/page.tsx
+// app/request-leave/page.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -70,7 +70,6 @@ export default function RequestLeavePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch leave types - NOW USING PUBLIC ENDPOINT
       const typesResponse = await fetch("/api/leave-types");
       const typesData = await typesResponse.json();
       if (typesResponse.ok) {
@@ -82,7 +81,6 @@ export default function RequestLeavePage() {
         console.error("Failed to fetch leave types:", typesData.error);
       }
 
-      // Fetch balances
       const balanceResponse = await fetch("/api/leave/balances");
       const balanceData = await balanceResponse.json();
       if (balanceResponse.ok && balanceData.balances) {
@@ -96,7 +94,6 @@ export default function RequestLeavePage() {
     }
   }, []);
 
-  // Fetch data when user is available
   useEffect(() => {
     let isMounted = true;
     
@@ -113,9 +110,7 @@ export default function RequestLeavePage() {
     };
   }, [user, fetchData]);
 
-  // Calculate total days when dates change - using useMemo
   const calculatedTotalDays = useMemo(() => {
-    // If half-day is selected, always return 0.5
     if (isHalfDay) {
       return 0.5;
     }
@@ -129,35 +124,33 @@ export default function RequestLeavePage() {
     return 0;
   }, [startDate, endDate, isHalfDay]);
 
-  // Update totalDays when calculated value changes
   const [prevCalculatedDays, setPrevCalculatedDays] = useState(0);
   
-  // Only update totalDays if the calculated value actually changed
   if (calculatedTotalDays !== prevCalculatedDays) {
     setPrevCalculatedDays(calculatedTotalDays);
     setTotalDays(calculatedTotalDays);
   }
 
-  // Handle leave type selection
   const handleLeaveTypeChange = (value: string) => {
     setSelectedLeaveType(value);
     const config = leaveTypes.find((t) => t.id === value);
     setSelectedLeaveTypeConfig(config || null);
-    setIsHalfDay(false); // Reset half-day when changing type
-    // Clear end date when changing leave type
+    setIsHalfDay(false);
     setEndDate(undefined);
   };
 
-  // Handle file upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setAttachmentFile(e.target.files[0]);
     }
   };
 
-  // Submit leave request
+  // ✅ Submit leave request - FIXED
   const handleSubmit = async () => {
-    // Validation
+    // Clear previous errors
+    toast.dismiss();
+
+    // ✅ Detailed validation with field-specific error messages
     if (!selectedLeaveType) {
       toast.error("Please select a leave type");
       return;
@@ -165,11 +158,6 @@ export default function RequestLeavePage() {
 
     if (!startDate) {
       toast.error("Please select a start date");
-      return;
-    }
-
-    if (selectedLeaveTypeConfig?.requiresAttachment && !attachmentFile) {
-      toast.error("Attachment is required for this leave type");
       return;
     }
 
@@ -183,7 +171,11 @@ export default function RequestLeavePage() {
       return;
     }
 
-    // Check balance
+    if (selectedLeaveTypeConfig?.requiresAttachment && !attachmentFile) {
+      toast.error("Attachment is required for this leave type");
+      return;
+    }
+
     const leaveTypeCode = selectedLeaveTypeConfig?.leaveCode || "";
     if (selectedLeaveTypeConfig?.deductsBalance) {
       const balance = balances[leaveTypeCode];
@@ -201,7 +193,6 @@ export default function RequestLeavePage() {
     try {
       let attachmentUrl = null;
 
-      // Upload attachment if required
       if (attachmentFile) {
         const formData = new FormData();
         formData.append("file", attachmentFile);
@@ -221,7 +212,7 @@ export default function RequestLeavePage() {
         }
       }
 
-      // Submit leave request
+      // ✅ Build request body with all required fields
       const requestBody = {
         leaveType: leaveTypeCode,
         startDate: startDate.toISOString(),
@@ -229,10 +220,12 @@ export default function RequestLeavePage() {
         totalDays: isHalfDay ? 0.5 : totalDays,
         isHalfDay,
         halfDaySession: isHalfDay ? halfDaySession : null,
-        reason,
-        alternateFacultyName: alternateFacultyName.trim(),
+        reason: reason || "",
+        alternateFacultyName: alternateFacultyName.trim(), // ✅ Ensure this is sent
         attachmentUrl,
       };
+
+      console.log("📤 Submitting leave request:", requestBody);
 
       const response = await fetch("/api/leave/request", {
         method: "POST",
@@ -243,7 +236,13 @@ export default function RequestLeavePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to submit leave request");
+        // ✅ Handle field-specific errors
+        if (data.field) {
+          toast.error(`${data.field}: ${data.error}`);
+        } else {
+          throw new Error(data.error || "Failed to submit leave request");
+        }
+        return;
       }
 
       toast.success(
@@ -261,10 +260,8 @@ export default function RequestLeavePage() {
       setAttachmentFile(null);
       setIsHalfDay(false);
 
-      // Refresh balances
       await fetchData();
 
-      // ✅ SMART REDIRECT: Go to status page to see the new request
       toast.success("🎯 Redirecting to your leave status page...");
       setTimeout(() => {
         router.push("/status");
@@ -278,7 +275,6 @@ export default function RequestLeavePage() {
     }
   };
 
-  // Get selected balance
   const getSelectedBalance = () => {
     if (selectedLeaveTypeConfig) {
       return balances[selectedLeaveTypeConfig.leaveCode] || null;
@@ -286,7 +282,6 @@ export default function RequestLeavePage() {
     return null;
   };
 
-  // Check if submit should be disabled
   const isSubmitDisabled = (() => {
     const selectedBalance = getSelectedBalance();
     
@@ -413,7 +408,6 @@ export default function RequestLeavePage() {
                       selected={startDate}
                       onSelect={(date) => {
                         setStartDate(date);
-                        // If half-day is checked, set end date = start date
                         if (isHalfDay && date) {
                           setEndDate(date);
                         }
@@ -476,12 +470,10 @@ export default function RequestLeavePage() {
                     const checked = e.target.checked;
                     setIsHalfDay(checked);
                     
-                    // If half-day is checked, set end date = start date
                     if (checked && startDate) {
                       setEndDate(startDate);
                     }
                     
-                    // If half-day is unchecked, clear end date
                     if (!checked) {
                       setEndDate(undefined);
                     }
@@ -535,7 +527,7 @@ export default function RequestLeavePage() {
             />
           </div>
 
-          {/* Alternate Faculty Name - REQUIRED for all */}
+          {/* ✅ Alternate Faculty Name - REQUIRED */}
           <div className="space-y-2">
             <Label htmlFor="alternateFaculty">
               Alternate Faculty Name *
@@ -550,6 +542,9 @@ export default function RequestLeavePage() {
               onChange={(e) => setAlternateFacultyName(e.target.value)}
               required
             />
+            {alternateFacultyName.trim() && alternateFacultyName.trim().length < 3 && (
+              <p className="text-xs text-red-500">Name must be at least 3 characters</p>
+            )}
           </div>
 
           {/* Attachment */}
