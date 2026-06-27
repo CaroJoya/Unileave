@@ -1,4 +1,4 @@
-// app/api/leave/request/[id]/edit/route.ts - COMPLETE REWRITE
+// app/api/leave/request/[id]/edit/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -69,6 +69,7 @@ interface EditRequestData {
   leaveType?: string;
   startDate?: string;
   endDate?: string;
+  totalDays?: number;
   isHalfDay?: boolean;
   halfDaySession?: "First Half" | "Second Half" | null;
   reason?: string;
@@ -123,18 +124,22 @@ async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | 
   const rtdb = getRTDB();
   if (!rtdb) return null;
   
-  const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
-  const types = typesSnapshot.val() as Record<string, LeaveTypeData> | null || {};
+  try {
+    const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
+    const types = typesSnapshot.val() as Record<string, LeaveTypeData> | null || {};
 
-  for (const [, type] of Object.entries(types)) {
-    if (type.leaveCode === leaveCode && type.isActive) {
-      return {
-        leaveCode: type.leaveCode,
-        deductsBalance: type.deductsBalance !== false,
-        requiresAttachment: type.requiresAttachment || false,
-        allowHalfDay: type.allowHalfDay || false,
-      };
+    for (const [, type] of Object.entries(types)) {
+      if (type.leaveCode === leaveCode && type.isActive) {
+        return {
+          leaveCode: type.leaveCode,
+          deductsBalance: type.deductsBalance !== false,
+          requiresAttachment: type.requiresAttachment || false,
+          allowHalfDay: type.allowHalfDay || false,
+        };
+      }
     }
+  } catch (error) {
+    console.error("Error fetching leave type config:", error);
   }
   return null;
 }
@@ -144,10 +149,15 @@ function calculateTotalDays(startDate: string, endDate: string, isHalfDay: boole
     return 0.5;
   }
   
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const diffTime = Math.abs(end.getTime() - start.getTime());
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  try {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  } catch (error) {
+    console.error("Error calculating total days:", error);
+    return 1;
+  }
 }
 
 // ============ MAIN HANDLER ============
@@ -212,7 +222,17 @@ export async function PUT(
     }
 
     // Parse request body
-    const body = await request.json() as EditRequestData;
+    let body: EditRequestData;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error("Error parsing request body:", parseError);
+      return NextResponse.json(
+        { error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
+    
     console.log("📝 Edit Request Body:", JSON.stringify(body, null, 2));
 
     // ============ VALIDATE AND MERGE CHANGES ============
@@ -223,7 +243,7 @@ export async function PUT(
     
     if (!leaveTypeConfig) {
       return NextResponse.json(
-        { error: "Invalid leave type", field: "leaveType" },
+        { error: `Invalid leave type: ${finalLeaveType}`, field: "leaveType" },
         { status: 400 }
       );
     }
@@ -260,18 +280,36 @@ export async function PUT(
     }
 
     // Validate date range
-    const start = new Date(finalStartDate);
-    const end = new Date(finalEndDate);
-    
-    if (start > end) {
+    try {
+      const start = new Date(finalStartDate);
+      const end = new Date(finalEndDate);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return NextResponse.json(
+          { error: "Invalid date format", field: "dates" },
+          { status: 400 }
+        );
+      }
+      
+      if (start > end) {
+        return NextResponse.json(
+          { error: "Start date cannot be after end date", field: "startDate" },
+          { status: 400 }
+        );
+      }
+    } catch (dateError) {
+      console.error("Date validation error:", dateError);
       return NextResponse.json(
-        { error: "Start date cannot be after end date", field: "startDate" },
+        { error: "Invalid date format", field: "dates" },
         { status: 400 }
       );
     }
 
-    // 5. Total Days - Calculate
-    const finalTotalDays = calculateTotalDays(finalStartDate, finalEndDate, finalIsHalfDay);
+    // 5. Total Days - Calculate if not provided
+    let finalTotalDays = body.totalDays || 0;
+    if (finalTotalDays <= 0) {
+      finalTotalDays = calculateTotalDays(finalStartDate, finalEndDate, finalIsHalfDay);
+    }
 
     // 6. Other fields
     const finalReason = body.reason !== undefined ? body.reason : existingRequest.reason;
@@ -300,43 +338,58 @@ export async function PUT(
 
     // ============ CHECK FOR OVERLAPPING REQUESTS ============
 
-    const existingRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
-    const allRequests = existingRequestsSnapshot.val() as Record<string, ExistingLeaveRequest> | null || {};
+    try {
+      const existingRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
+      const allRequests = existingRequestsSnapshot.val() as Record<string, ExistingLeaveRequest> | null || {};
 
-    const hasOverlap = Object.values(allRequests).some((req) => {
-      if (req.applicantId !== userId) return false;
-      if (req.id === id) return false;
-      if (
-        req.status === "Cancelled" ||
-        req.status === "Rejected_HOD" ||
-        req.status === "Rejected_Registrar" ||
-        req.status === "Rejected_Principal"
-      ) {
-        return false;
+      const hasOverlap = Object.values(allRequests).some((req) => {
+        if (req.applicantId !== userId) return false;
+        if (req.id === id) return false;
+        if (
+          req.status === "Cancelled" ||
+          req.status === "Rejected_HOD" ||
+          req.status === "Rejected_Registrar" ||
+          req.status === "Rejected_Principal"
+        ) {
+          return false;
+        }
+        
+        try {
+          const reqStart = new Date(req.startDate);
+          const reqEnd = new Date(req.endDate);
+          const newStart = new Date(finalStartDate);
+          const newEnd = new Date(finalEndDate);
+          
+          if (isNaN(reqStart.getTime()) || isNaN(reqEnd.getTime()) || 
+              isNaN(newStart.getTime()) || isNaN(newEnd.getTime())) {
+            return false;
+          }
+          
+          return newStart <= reqEnd && newEnd >= reqStart;
+        } catch (error) {
+          console.error("Error checking overlap:", error);
+          return false;
+        }
+      });
+
+      if (hasOverlap) {
+        return NextResponse.json(
+          { error: "You have an overlapping leave request", field: "overlap" },
+          { status: 400 }
+        );
       }
-      
-      const reqStart = new Date(req.startDate);
-      const reqEnd = new Date(req.endDate);
-      const newStart = new Date(finalStartDate);
-      const newEnd = new Date(finalEndDate);
-      
-      return newStart <= reqEnd && newEnd >= reqStart;
-    });
-
-    if (hasOverlap) {
-      return NextResponse.json(
-        { error: "You have an overlapping leave request", field: "overlap" },
-        { status: 400 }
-      );
+    } catch (overlapError) {
+      console.error("Error checking overlaps:", overlapError);
+      // Continue - don't block the edit if overlap check fails
     }
 
     // ============ UPDATE LEAVE BALANCE ============
 
-    let balanceUpdateResult = { success: true, message: "" };
+    let balanceUpdateSuccess = true;
     const leaveTypeChanged = body.leaveType && body.leaveType !== existingRequest.leaveType;
     const daysChanged = finalTotalDays !== existingRequest.totalDays;
 
-    if (leaveTypeChanged || daysChanged) {
+    if ((leaveTypeChanged || daysChanged) && leaveTypeConfig.deductsBalance) {
       try {
         const academicYear = getCurrentAcademicYear();
         const balanceKey = `${userId}_${academicYear}`;
@@ -346,12 +399,12 @@ export async function PUT(
 
         if (balanceDoc && balanceDoc.balances) {
           // Remove from old leave type's pending
-          if (existingRequest.leaveType !== finalLeaveType) {
+          if (leaveTypeChanged && existingRequest.leaveType !== finalLeaveType) {
             const oldBalance = balanceDoc.balances[existingRequest.leaveType];
             if (oldBalance) {
               await balanceRef.update({
-                [`balances.${existingRequest.leaveType}.pending`]: Math.max(0, oldBalance.pending - existingRequest.totalDays),
-                [`balances.${existingRequest.leaveType}.available`]: oldBalance.available + existingRequest.totalDays,
+                [`balances.${existingRequest.leaveType}.pending`]: Math.max(0, (oldBalance.pending || 0) - existingRequest.totalDays),
+                [`balances.${existingRequest.leaveType}.available`]: (oldBalance.available || 0) + existingRequest.totalDays,
               });
             }
             
@@ -367,11 +420,11 @@ export async function PUT(
               }
               
               await balanceRef.update({
-                [`balances.${finalLeaveType}.pending`]: newBalance.pending + finalTotalDays,
-                [`balances.${finalLeaveType}.available`]: newBalance.available - finalTotalDays,
+                [`balances.${finalLeaveType}.pending`]: (newBalance.pending || 0) + finalTotalDays,
+                [`balances.${finalLeaveType}.available`]: (newBalance.available || 0) - finalTotalDays,
               });
             }
-          } else if (daysChanged) {
+          } else if (daysChanged && !leaveTypeChanged) {
             // Same leave type, adjust the difference
             const currentBalance = balanceDoc.balances[finalLeaveType];
             if (currentBalance) {
@@ -385,19 +438,16 @@ export async function PUT(
               }
               
               await balanceRef.update({
-                [`balances.${finalLeaveType}.pending`]: currentBalance.pending + dayDifference,
-                [`balances.${finalLeaveType}.available`]: currentBalance.available - dayDifference,
+                [`balances.${finalLeaveType}.pending`]: (currentBalance.pending || 0) + dayDifference,
+                [`balances.${finalLeaveType}.available`]: (currentBalance.available || 0) - dayDifference,
               });
             }
           }
         }
       } catch (balanceError) {
-        console.error("Balance update failed:", balanceError);
-        balanceUpdateResult = { 
-          success: false, 
-          message: "Failed to update leave balance. Please try again." 
-        };
-        // Continue with the edit, but warn the user
+        console.error("❌ Balance update failed:", balanceError);
+        balanceUpdateSuccess = false;
+        // Continue with the edit, but log the error
       }
     }
 
@@ -408,114 +458,139 @@ export async function PUT(
 
     // If resubmitting after revision
     if (existingRequest.status === "Pending_Revision") {
-      const userRoles = existingRequest.applicantRoles as Role[];
-      const route = determineApprover(userRoles, finalLeaveType);
-      const approverRole = route.firstApproverRole;
-      const approverUserId = await getApproverUserId(
-        approverRole,
-        userData.collegeId,
-        userData.departmentId
-      );
-
-      if (!approverUserId) {
-        return NextResponse.json(
-          { error: `No ${approverRole} found to approve this request`, field: "approver" },
-          { status: 400 }
+      try {
+        const userRoles = existingRequest.applicantRoles as Role[];
+        const route = determineApprover(userRoles, finalLeaveType);
+        const approverRole = route.firstApproverRole;
+        const approverUserId = await getApproverUserId(
+          approverRole,
+          userData.collegeId,
+          userData.departmentId
         );
+
+        if (!approverUserId) {
+          return NextResponse.json(
+            { error: `No ${approverRole} found to approve this request`, field: "approver" },
+            { status: 400 }
+          );
+        }
+
+        newStatus = getStatusForApprover(approverRole) as LeaveStatus;
+        newRevisionCount = existingRequest.revisionCount + 1;
+
+        await rtdb.ref(`leaveRequests/${id}`).update({
+          currentApproverId: approverUserId,
+        });
+
+        // Record revision resubmission
+        const revisionId = `rev_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        await rtdb.ref(`revisionHistory/${revisionId}`).set({
+          id: revisionId,
+          leaveRequestId: id,
+          cycleNumber: newRevisionCount,
+          remarkSentBy: existingRequest.currentApproverId,
+          remarkSentByName: "",
+          remarkText: "Resubmitted after revision",
+          remarkSentAt: new Date().toISOString(),
+          resubmittedBy: userId,
+          resubmittedAt: new Date().toISOString(),
+        });
+      } catch (revisionError) {
+        console.error("Error handling revision:", revisionError);
+        // Continue with the edit
       }
-
-      newStatus = getStatusForApprover(approverRole) as LeaveStatus;
-      newRevisionCount = existingRequest.revisionCount + 1;
-
-      await rtdb.ref(`leaveRequests/${id}`).update({
-        currentApproverId: approverUserId,
-      });
-
-      // Record revision resubmission
-      const revisionId = `rev_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-      await rtdb.ref(`revisionHistory/${revisionId}`).set({
-        id: revisionId,
-        leaveRequestId: id,
-        cycleNumber: newRevisionCount,
-        remarkSentBy: existingRequest.currentApproverId,
-        remarkSentByName: "",
-        remarkText: "Resubmitted after revision",
-        remarkSentAt: new Date().toISOString(),
-        resubmittedBy: userId,
-        resubmittedAt: new Date().toISOString(),
-      });
     }
 
     // ============ UPDATE THE REQUEST ============
 
-    const updateData: Partial<LeaveRequest> = {
-      leaveType: finalLeaveType as LeaveType,
-      startDate: new Date(finalStartDate).toISOString(),
-      endDate: new Date(finalEndDate).toISOString(),
-      totalDays: finalTotalDays,
-      isHalfDay: finalIsHalfDay,
-      halfDaySession: finalHalfDaySession,
-      reason: finalReason || "",
-      alternateFacultyName: finalAlternateFacultyName ? finalAlternateFacultyName.trim() : existingRequest.alternateFacultyName,
-      attachmentUrl: finalAttachmentUrl,
-      status: newStatus,
-      revisionCount: newRevisionCount,
-      updatedAt: new Date().toISOString(),
-    };
+    try {
+      const updateData: Partial<LeaveRequest> = {
+        leaveType: finalLeaveType as LeaveType,
+        startDate: new Date(finalStartDate).toISOString(),
+        endDate: new Date(finalEndDate).toISOString(),
+        totalDays: finalTotalDays,
+        isHalfDay: finalIsHalfDay,
+        halfDaySession: finalHalfDaySession,
+        reason: finalReason || "",
+        alternateFacultyName: finalAlternateFacultyName ? finalAlternateFacultyName.trim() : existingRequest.alternateFacultyName,
+        attachmentUrl: finalAttachmentUrl,
+        status: newStatus,
+        revisionCount: newRevisionCount,
+        updatedAt: new Date().toISOString(),
+      };
 
-    await rtdb.ref(`leaveRequests/${id}`).update(updateData);
+      await rtdb.ref(`leaveRequests/${id}`).update(updateData);
+    } catch (updateError) {
+      console.error("❌ Failed to update request:", updateError);
+      return NextResponse.json(
+        { error: "Failed to update leave request" },
+        { status: 500 }
+      );
+    }
 
     // ============ LOG THE ACTION ============
 
-    const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    await rtdb.ref(`approvalLogs/${logId}`).set({
-      id: logId,
-      leaveRequestId: id,
-      actionBy: userId,
-      actionByName: userData.name,
-      actionRole: existingRequest.applicantRoles[0] || "staff",
-      action: existingRequest.status === "Pending_Revision" ? "RESUBMIT" : "EDIT",
-      remark: JSON.stringify({
-        oldLeaveType: existingRequest.leaveType,
-        newLeaveType: finalLeaveType,
-        oldTotalDays: existingRequest.totalDays,
-        newTotalDays: finalTotalDays,
-      }),
-      oldStatus: existingRequest.status,
-      newStatus,
-      actionAt: new Date().toISOString(),
-    });
+    try {
+      const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      await rtdb.ref(`approvalLogs/${logId}`).set({
+        id: logId,
+        leaveRequestId: id,
+        actionBy: userId,
+        actionByName: userData.name,
+        actionRole: existingRequest.applicantRoles[0] || "staff",
+        action: existingRequest.status === "Pending_Revision" ? "RESUBMIT" : "EDIT",
+        remark: JSON.stringify({
+          oldLeaveType: existingRequest.leaveType,
+          newLeaveType: finalLeaveType,
+          oldTotalDays: existingRequest.totalDays,
+          newTotalDays: finalTotalDays,
+          oldIsHalfDay: existingRequest.isHalfDay,
+          newIsHalfDay: finalIsHalfDay,
+        }),
+        oldStatus: existingRequest.status,
+        newStatus,
+        actionAt: new Date().toISOString(),
+      });
+    } catch (logError) {
+      console.error("Error logging action:", logError);
+      // Non-critical, continue
+    }
 
     // ============ SEND EMAIL NOTIFICATIONS ============
 
     // If resubmitted after revision, notify approver
     if (existingRequest.status === "Pending_Revision") {
-      const userRoles = existingRequest.applicantRoles as Role[];
-      const route = determineApprover(userRoles, finalLeaveType);
-      const approverRole = route.firstApproverRole;
-      const approverId = await getApproverUserId(
-        approverRole,
-        userData.collegeId,
-        userData.departmentId
-      );
+      try {
+        const userRoles = existingRequest.applicantRoles as Role[];
+        const route = determineApprover(userRoles, finalLeaveType);
+        const approverRole = route.firstApproverRole;
+        const approverId = await getApproverUserId(
+          approverRole,
+          userData.collegeId,
+          userData.departmentId
+        );
 
-      if (approverId) {
-        const approverSnapshot = await rtdb.ref(`users/${approverId}`).once("value");
-        const approverData = approverSnapshot.val() as { email: string } | null;
+        if (approverId) {
+          const approverSnapshot = await rtdb.ref(`users/${approverId}`).once("value");
+          const approverData = approverSnapshot.val() as { email: string } | null;
 
-        if (approverData?.email) {
-          const statusPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/status`;
-          const emailHtml = getResubmittedEmail(
-            userData.name,
-            statusPageUrl
-          );
-          
-          sendEmail(
-            approverData.email,
-            `Resubmitted: Leave Request from ${userData.name}`,
-            emailHtml
-          ).catch(err => console.error("❌ Failed to send resubmission email:", err));
+          if (approverData?.email) {
+            const statusPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/status`;
+            const emailHtml = getResubmittedEmail(
+              userData.name,
+              statusPageUrl
+            );
+            
+            sendEmail(
+              approverData.email,
+              `Resubmitted: Leave Request from ${userData.name}`,
+              emailHtml
+            ).catch(err => console.error("❌ Failed to send resubmission email:", err));
+          }
         }
+      } catch (emailError) {
+        console.error("Error sending email:", emailError);
+        // Non-critical, continue
       }
     }
 
@@ -526,8 +601,7 @@ export async function PUT(
       newStatus,
       totalDays: finalTotalDays,
       isHalfDay: finalIsHalfDay,
-      balanceUpdated: balanceUpdateResult.success,
-      balanceMessage: balanceUpdateResult.message,
+      balanceUpdated: balanceUpdateSuccess,
       message: existingRequest.status === "Pending_Revision"
         ? "Request resubmitted successfully"
         : "Request updated successfully",
@@ -535,8 +609,9 @@ export async function PUT(
     
   } catch (error) {
     console.error("❌ Error editing leave request:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to edit leave request";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to edit leave request" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
