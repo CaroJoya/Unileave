@@ -10,6 +10,18 @@ import type { Role } from "@/types/roles";
 
 // ============ TYPES ============
 
+interface EditRequestData {
+  leaveType?: string;
+  startDate?: string;
+  endDate?: string;
+  totalDays?: number;
+  isHalfDay?: boolean;
+  halfDaySession?: "First Half" | "Second Half" | null;
+  reason?: string;
+  alternateFacultyName?: string;
+  attachmentUrl?: string | null;
+}
+
 interface UserData {
   name: string;
   roles: string[];
@@ -63,18 +75,6 @@ interface LeaveBalanceDoc {
       available: number;
     };
   };
-}
-
-interface EditRequestData {
-  leaveType?: string;
-  startDate?: string;
-  endDate?: string;
-  totalDays?: number;
-  isHalfDay?: boolean;
-  halfDaySession?: "First Half" | "Second Half" | null;
-  reason?: string;
-  alternateFacultyName?: string;
-  attachmentUrl?: string | null;
 }
 
 const EDITABLE_STATUSES: LeaveStatus[] = [
@@ -160,23 +160,6 @@ function calculateTotalDays(startDate: string, endDate: string, isHalfDay: boole
   }
 }
 
-function isValidDateString(dateStr: string): boolean {
-  if (!dateStr) return false;
-  try {
-    const d = new Date(dateStr);
-    return !isNaN(d.getTime());
-  } catch {
-    return false;
-  }
-}
-
-function getValidDateString(dateStr: string | undefined, fallback: string): string {
-  if (dateStr && isValidDateString(dateStr)) {
-    return dateStr;
-  }
-  return fallback;
-}
-
 // ============ MAIN HANDLER ============
 
 export async function PUT(
@@ -191,7 +174,6 @@ export async function PUT(
     
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session")?.value;
-    console.log(`🍪 Session cookie: ${sessionCookie ? "Present" : "Missing"}`);
 
     if (!sessionCookie) {
       console.log("❌ No session cookie");
@@ -200,7 +182,6 @@ export async function PUT(
 
     const auth = getAuth();
     const rtdb = getRTDB();
-    console.log(`🔐 Auth: ${auth ? "Initialized" : "Not initialized"}, RTDB: ${rtdb ? "Initialized" : "Not initialized"}`);
 
     if (!auth || !rtdb) {
       console.error('Firebase Admin not initialized');
@@ -217,7 +198,6 @@ export async function PUT(
     // Get user data
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val() as UserData | null;
-    console.log(`👤 User data: ${userData ? "Found" : "Not found"}`);
 
     if (!userData) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -226,7 +206,6 @@ export async function PUT(
     // Get existing request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const existingRequest = requestSnapshot.val() as LeaveRequest | null;
-    console.log(`📋 Existing request: ${existingRequest ? "Found" : "Not found"}`);
 
     if (!existingRequest) {
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
@@ -234,7 +213,6 @@ export async function PUT(
 
     // Authorization check
     if (existingRequest.applicantId !== userId) {
-      console.log(`❌ Authorization failed: User ${userId} tried to edit request from ${existingRequest.applicantId}`);
       return NextResponse.json(
         { error: "Not authorized to edit this request" },
         { status: 403 }
@@ -243,35 +221,71 @@ export async function PUT(
 
     // Status check
     if (!EDITABLE_STATUSES.includes(existingRequest.status)) {
-      console.log(`❌ Status not editable: ${existingRequest.status}`);
       return NextResponse.json(
         { error: "This request cannot be edited. It has already been approved or rejected." },
         { status: 400 }
       );
     }
 
-    // Parse request body
-    let body: EditRequestData;
-    try {
-      body = await request.json();
-      console.log("📝 Edit Request Body:", JSON.stringify(body, null, 2));
-    } catch (parseError) {
-      console.error("Error parsing request body:", parseError);
-      return NextResponse.json(
-        { error: "Invalid request body" },
-        { status: 400 }
-      );
-    }
+    // ✅ PARSE REQUEST BODY
+    // ✅ PARSE REQUEST BODY WITH PROPER TYPE
+let body: EditRequestData;
+try {
+  const rawBody = await request.text();
+  console.log("📝 Raw request body:", rawBody);
+  body = JSON.parse(rawBody) as EditRequestData;
+  console.log("📝 Parsed body:", JSON.stringify(body, null, 2));
+} catch (parseError) {
+  console.error("Error parsing request body:", parseError);
+  return NextResponse.json(
+    { error: "Invalid request body" },
+    { status: 400 }
+  );
+}
 
-    // ============ VALIDATE AND MERGE CHANGES ============
-
-    // 1. Leave Type - Validate if changed
+    // ✅ EXTRACT VALUES WITH DEFAULT FALLBACKS
     const finalLeaveType = body.leaveType || existingRequest.leaveType;
-    console.log(`📌 Final leave type: ${finalLeaveType}`);
+    const finalIsHalfDay = body.isHalfDay !== undefined ? body.isHalfDay : existingRequest.isHalfDay;
+    const finalHalfDaySession = body.halfDaySession !== undefined ? body.halfDaySession : existingRequest.halfDaySession;
     
+    // ✅ CRITICAL FIX: Ensure dates are always valid strings
+    const todayStr = new Date().toISOString().split("T")[0];
+    
+    let finalStartDate = body.startDate || existingRequest.startDate || todayStr;
+    let finalEndDate = body.endDate || existingRequest.endDate || finalStartDate;
+    
+    // Ensure dates are in YYYY-MM-DD format
+    if (finalStartDate.includes("T")) {
+      finalStartDate = finalStartDate.split("T")[0];
+    }
+    if (finalEndDate.includes("T")) {
+      finalEndDate = finalEndDate.split("T")[0];
+    }
+    
+    // If half-day, end date = start date
+    if (finalIsHalfDay) {
+      finalEndDate = finalStartDate;
+    }
+    
+    const finalTotalDays = body.totalDays || calculateTotalDays(finalStartDate, finalEndDate, finalIsHalfDay);
+    const finalReason = body.reason !== undefined ? body.reason : existingRequest.reason;
+    const finalAlternateFacultyName = body.alternateFacultyName !== undefined 
+      ? body.alternateFacultyName 
+      : existingRequest.alternateFacultyName;
+    const finalAttachmentUrl = body.attachmentUrl !== undefined 
+      ? body.attachmentUrl 
+      : existingRequest.attachmentUrl;
+
+    console.log(`📌 Final values:`, {
+      leaveType: finalLeaveType,
+      startDate: finalStartDate,
+      endDate: finalEndDate,
+      totalDays: finalTotalDays,
+      isHalfDay: finalIsHalfDay,
+    });
+
+    // ✅ GET LEAVE TYPE CONFIG
     const leaveTypeConfig = await getLeaveTypeConfig(finalLeaveType);
-    console.log(`📌 Leave type config: ${leaveTypeConfig ? "Found" : "Not found"}`);
-    
     if (!leaveTypeConfig) {
       return NextResponse.json(
         { error: `Invalid leave type: ${finalLeaveType}`, field: "leaveType" },
@@ -279,10 +293,7 @@ export async function PUT(
       );
     }
 
-    // 2. Half Day - Validate
-    const finalIsHalfDay = body.isHalfDay !== undefined ? body.isHalfDay : existingRequest.isHalfDay;
-    console.log(`📌 Final isHalfDay: ${finalIsHalfDay}`);
-    
+    // ✅ VALIDATE HALF DAY
     if (finalIsHalfDay && !leaveTypeConfig.allowHalfDay) {
       return NextResponse.json(
         { error: `Half-day leave is not allowed for ${finalLeaveType}`, field: "isHalfDay" },
@@ -290,11 +301,6 @@ export async function PUT(
       );
     }
 
-    // 3. Half Day Session - Validate
-    const finalHalfDaySession = body.halfDaySession !== undefined 
-      ? body.halfDaySession 
-      : existingRequest.halfDaySession;
-    
     if (finalIsHalfDay && !finalHalfDaySession) {
       return NextResponse.json(
         { error: "Half-day session is required", field: "halfDaySession" },
@@ -302,29 +308,7 @@ export async function PUT(
       );
     }
 
-    // 4. Dates - Validate and ensure we have valid dates
-// 4. Dates - Validate and ensure we have valid dates
-const todayStr = new Date().toISOString().split("T")[0];
-
-// ✅ Use const for finalStartDate (never reassigned)
-const finalStartDate = getValidDateString(
-  body.startDate || existingRequest.startDate,
-  todayStr
-);
-
-// ✅ Use let for finalEndDate (may be reassigned below)
-let finalEndDate = getValidDateString(
-  body.endDate || existingRequest.endDate,
-  finalStartDate
-);
-
-// If half-day, end date must equal start date
-if (finalIsHalfDay) {
-  finalEndDate = finalStartDate; // ← Reassignment, so 'let' is correct
-}
-
-console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
-    // Validate date range
+    // ✅ VALIDATE DATES
     try {
       const start = new Date(finalStartDate);
       const end = new Date(finalEndDate);
@@ -351,23 +335,7 @@ console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
       );
     }
 
-    // 5. Total Days - Calculate if not provided
-    let finalTotalDays = body.totalDays || 0;
-    if (finalTotalDays <= 0) {
-      finalTotalDays = calculateTotalDays(finalStartDate, finalEndDate, finalIsHalfDay);
-    }
-    console.log(`📌 Final total days: ${finalTotalDays}`);
-
-    // 6. Other fields
-    const finalReason = body.reason !== undefined ? body.reason : existingRequest.reason;
-    const finalAlternateFacultyName = body.alternateFacultyName !== undefined 
-      ? body.alternateFacultyName 
-      : existingRequest.alternateFacultyName;
-    const finalAttachmentUrl = body.attachmentUrl !== undefined 
-      ? body.attachmentUrl 
-      : existingRequest.attachmentUrl;
-
-    // Validate alternate faculty name
+    // ✅ VALIDATE ALTERNATE FACULTY NAME
     if (finalAlternateFacultyName && finalAlternateFacultyName.trim().length < 3) {
       return NextResponse.json(
         { error: "Alternate faculty name must be at least 3 characters", field: "alternateFacultyName" },
@@ -375,7 +343,7 @@ console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
       );
     }
 
-    // Validate attachment
+    // ✅ VALIDATE ATTACHMENT
     if (leaveTypeConfig.requiresAttachment && !finalAttachmentUrl) {
       return NextResponse.json(
         { error: "Attachment is required for this leave type", field: "attachmentUrl" },
@@ -568,29 +536,11 @@ console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
 
     try {
       console.log("🔄 Updating leave request...");
-      console.log("📝 Debugging values:");
-      console.log("finalStartDate:", finalStartDate);
-      console.log("finalEndDate:", finalEndDate);
-      console.log("finalTotalDays:", finalTotalDays);
-      console.log("finalIsHalfDay:", finalIsHalfDay);
       
-      // ✅ FIX: Convert dates to ISO strings safely
-      const startDateISO = new Date(finalStartDate).toISOString();
-      const endDateISO = new Date(finalEndDate).toISOString();
-      
-      // Validate the ISO strings
-      if (isNaN(new Date(startDateISO).getTime()) || isNaN(new Date(endDateISO).getTime())) {
-        console.error("❌ Invalid ISO date conversion");
-        return NextResponse.json(
-          { error: "Invalid date conversion", field: "dates" },
-          { status: 400 }
-        );
-      }
-
-      const updateData: Partial<LeaveRequest> = {
+      const updateData = {
         leaveType: finalLeaveType as LeaveType,
-        startDate: startDateISO,
-        endDate: endDateISO,
+        startDate: new Date(finalStartDate).toISOString(),
+        endDate: new Date(finalEndDate).toISOString(),
         totalDays: finalTotalDays,
         isHalfDay: finalIsHalfDay,
         halfDaySession: finalHalfDaySession,
@@ -603,14 +553,13 @@ console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
       };
 
       console.log("📊 Update data:", JSON.stringify(updateData, null, 2));
-      console.log("📋 Updating at ref:", `leaveRequests/${id}`);
       
       await rtdb.ref(`leaveRequests/${id}`).update(updateData);
       console.log("✅ Leave request updated");
     } catch (updateError) {
       console.error("❌ Failed to update request:", updateError);
       return NextResponse.json(
-        { error: "Failed to update leave request: " + (updateError instanceof Error ? updateError.message : "unknown error") },
+        { error: "Failed to update leave request: " + (updateError instanceof Error ? updateError.message : "unknown") },
         { status: 500 }
       );
     }
@@ -618,7 +567,6 @@ console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
     // ============ LOG THE ACTION ============
 
     try {
-      console.log("🔄 Creating approval log...");
       const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       await rtdb.ref(`approvalLogs/${logId}`).set({
         id: logId,
@@ -701,10 +649,8 @@ console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
     
   } catch (error) {
     console.error("❌ Error editing leave request:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to edit leave request";
-    console.error("❌ Error stack:", error instanceof Error ? error.stack : "no stack");
     return NextResponse.json(
-      { error: errorMessage, stack: error instanceof Error ? error.stack : undefined },
+      { error: error instanceof Error ? error.message : "Failed to edit leave request" },
       { status: 500 }
     );
   }
