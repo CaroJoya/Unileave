@@ -319,10 +319,20 @@ export default function StatusPage() {
       const selectedLeaveType = leaveTypes.find(t => t.id === editForm.leaveType);
       const leaveTypeCode = selectedLeaveType?.leaveCode || editingRequest.leaveType;
       
+      // ✅ CRITICAL FIX: Ensure dates are always valid strings in YYYY-MM-DD format
+      const getValidDate = (dateStr: string | undefined): string => {
+        if (!dateStr) return new Date().toISOString().split("T")[0];
+        // If it's a full ISO string, extract just the date part
+        if (dateStr.includes("T")) {
+          return dateStr.split("T")[0];
+        }
+        return dateStr;
+      };
+      
       const requestBody = {
         leaveType: leaveTypeCode,
-        startDate: editForm.startDate || editingRequest.startDate.split("T")[0],
-        endDate: editForm.endDate || editingRequest.endDate.split("T")[0],
+        startDate: getValidDate(editForm.startDate || editingRequest.startDate),
+        endDate: getValidDate(editForm.endDate || editingRequest.endDate),
         totalDays,
         isHalfDay: editForm.isHalfDay,
         halfDaySession: editForm.isHalfDay ? editForm.halfDaySession : null,
@@ -344,7 +354,6 @@ export default function StatusPage() {
         throw new Error(errorData.error || "Failed to update request");
       }
       
-      // ✅ FIX: Remove unused 'data' variable
       await response.json();
       
       const successMessage = editingRequest.status === "Pending_Revision"
@@ -370,13 +379,20 @@ export default function StatusPage() {
     const leaveTypeObj = leaveTypes.find(t => t.leaveCode === request.leaveType);
     const leaveTypeId = leaveTypeObj?.id || "";
     
+    // ✅ Ensure dates are in YYYY-MM-DD format
+    const getDatePart = (dateStr: string): string => {
+      if (dateStr.includes("T")) {
+        return dateStr.split("T")[0];
+      }
+      return dateStr;
+    };
+    
     setEditingRequest(request);
     setEditForm({
       leaveType: leaveTypeId,
-      startDate: request.startDate.split("T")[0],
-      endDate: request.endDate.split("T")[0],
+      startDate: getDatePart(request.startDate),
+      endDate: getDatePart(request.endDate),
       isHalfDay: request.isHalfDay,
-      // ✅ FIX: Cast the value to the correct union type
       halfDaySession: (request.halfDaySession as "First Half" | "Second Half") || "First Half",
       reason: request.reason || "",
       alternateFacultyName: request.alternateFacultyName || "",
@@ -812,7 +828,7 @@ export default function StatusPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ============ EDIT DIALOG - UPDATED VERSION ============ */}
+      {/* ============ EDIT DIALOG ============ */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => {
         if (!open) {
           setEditDialogOpen(false);
@@ -855,7 +871,6 @@ export default function StatusPage() {
                   setEditForm({ 
                     ...editForm, 
                     leaveType: value,
-                    // Reset half-day if new type doesn't allow it
                     isHalfDay: selectedType?.allowHalfDay ? editForm.isHalfDay : false,
                     halfDaySession: selectedType?.allowHalfDay ? editForm.halfDaySession : "First Half",
                   });
@@ -902,9 +917,7 @@ export default function StatusPage() {
                     setEditForm({
                       ...editForm,
                       isHalfDay,
-                      // If half-day, auto-set end date to start date
                       endDate: isHalfDay ? editForm.startDate : editForm.endDate,
-                      // Clear half-day session if unchecked
                       halfDaySession: isHalfDay ? editForm.halfDaySession || "First Half" : "First Half",
                     });
                   }}
@@ -919,7 +932,6 @@ export default function StatusPage() {
                 </Label>
               </div>
               
-              {/* Half Day Session - Show only if half-day is checked */}
               {editForm.isHalfDay && (
                 <div className="flex gap-4 mt-2">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -972,7 +984,6 @@ export default function StatusPage() {
                         setEditForm({
                           ...editForm,
                           startDate: newStartDate,
-                          // If half-day, auto-set end date = start date
                           endDate: editForm.isHalfDay ? newStartDate : editForm.endDate,
                         });
                       }}
@@ -1007,7 +1018,6 @@ export default function StatusPage() {
                         selected={editForm.endDate ? new Date(editForm.endDate) : undefined}
                         onSelect={(date) => {
                           const newEndDate = date ? date.toISOString().split("T")[0] : "";
-                          // Validate end date >= start date
                           if (editForm.startDate && new Date(newEndDate) < new Date(editForm.startDate)) {
                             toast.error("End date cannot be before start date");
                             return;

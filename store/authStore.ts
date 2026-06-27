@@ -1,4 +1,4 @@
-// store/authStore.ts
+// store/authStore.ts - COMPLETE FIXED VERSION
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { 
@@ -59,37 +59,43 @@ export const useAuthStore = create<AuthState>()(
       hydrationComplete: false,
 
       setUser: (user) => {
-    console.log("🔑 setUser called with:", user);
-    set({ 
-      user, 
-      userRoles: user?.roles || [],
-      isAuthenticated: !!user 
-    });
-  },
+        console.log("🔑 setUser called with:", user);
+        set({ 
+          user, 
+          userRoles: user?.roles || [],
+          isAuthenticated: !!user 
+        });
+      },
       
       setIsLoading: (loading) => set({ isLoading: loading }),
       setError: (error) => set({ error }),
+      
       setHydrationComplete: () => {
-    console.log("💧 setHydrationComplete called, setting hydrationComplete to true");
-    set({ hydrationComplete: true });
-  },
+        console.log("💧 setHydrationComplete called, setting hydrationComplete to true");
+        set({ hydrationComplete: true });
+      },
 
-  initialize: async () => {
-    const state = get();
-    console.log("🏁 initialize called, current state:", { hydrationComplete: state.hydrationComplete, user: !!state.user, isLoading: state.isLoading });
-    
-    if (state.hydrationComplete && state.user) {
-      console.log("🔄 Checking session validity on startup...");
-      const isValid = await state.checkSession();
-      if (!isValid) {
-        console.log("🔄 Session invalid, logging out...");
-        await state.logout();
-      }
-    }
-    
-    set({ isLoading: false });
-    console.log("✅ Auth store initialized, isLoading set to false");
-  },
+      initialize: async () => {
+        const state = get();
+        console.log("🏁 initialize called, current state:", { 
+          hydrationComplete: state.hydrationComplete, 
+          user: !!state.user, 
+          isLoading: state.isLoading 
+        });
+        
+        // ✅ Only check session if hydration is complete and user exists
+        if (state.hydrationComplete && state.user) {
+          console.log("🔄 Checking session validity on startup...");
+          const isValid = await state.checkSession();
+          if (!isValid) {
+            console.log("🔄 Session invalid, logging out...");
+            await state.logout();
+          }
+        }
+        
+        set({ isLoading: false });
+        console.log("✅ Auth store initialized, isLoading set to false");
+      },
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -114,6 +120,7 @@ export const useAuthStore = create<AuthState>()(
             
             const errorCode = error?.code;
             if (errorCode === "auth/user-not-found") {
+              // Check if user exists in RTDB
               const userRef = ref(rtdb, `users`);
               const snapshot = await firebaseGet(userRef);
               const users = snapshot.val();
@@ -223,6 +230,7 @@ export const useAuthStore = create<AuthState>()(
             error: null
           });
           
+          // ✅ Wait a moment for state to update
           await new Promise(resolve => setTimeout(resolve, 100));
           
           console.log("9️⃣ Login complete");
@@ -251,14 +259,14 @@ export const useAuthStore = create<AuthState>()(
         } finally {
           localStorage.removeItem("unileave-auth");
 
-            set({
-              user: null,
-              userRoles: [],
-              isAuthenticated: false,
-              isLoading: false,
-              error: null,
-      });
-      }
+          set({
+            user: null,
+            userRoles: [],
+            isAuthenticated: false,
+            isLoading: false,
+            error: null,
+          });
+        }
       },
 
       forgotPassword: async (email: string) => {
@@ -474,12 +482,12 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated 
       }),
       onRehydrateStorage: () => (state) => {
-    console.log("🔄 Zustand onRehydrateStorage called, state:", state ? { user: !!state.user } : null);
-    if (state) {
-      state.setHydrationComplete();
-      state.initialize();
-    }
-  },
+        console.log("🔄 Zustand onRehydrateStorage called, state:", state ? { user: !!state.user } : null);
+        if (state) {
+          state.setHydrationComplete();
+          state.initialize();
+        }
+      },
     }
   )
 );

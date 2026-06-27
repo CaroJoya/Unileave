@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx
+// app/dashboard/page.tsx - COMPLETE FIXED
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
