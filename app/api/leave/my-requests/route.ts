@@ -33,12 +33,14 @@ export async function GET(request: Request) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
+    console.log("📋 /api/leave/my-requests called by user:", userId);
     const requestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = requestsSnapshot.val() as Record<string, LeaveRequest> | null || {};
-
+    console.log("📋 All requests:", allRequests);
     let userRequests = Object.values(allRequests).filter(
       (req) => req.applicantId === userId
     );
+    console.log("📋 User requests:", userRequests);
 
     if (leaveType) {
       userRequests = userRequests.filter((req) => req.leaveType === leaveType);

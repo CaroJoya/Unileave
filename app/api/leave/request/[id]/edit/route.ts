@@ -1,4 +1,4 @@
-// app/api/leave/request/[id]/edit/route.ts - WITH EXTENSIVE LOGGING
+// app/api/leave/request/[id]/edit/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -160,6 +160,23 @@ function calculateTotalDays(startDate: string, endDate: string, isHalfDay: boole
   }
 }
 
+function isValidDateString(dateStr: string): boolean {
+  if (!dateStr) return false;
+  try {
+    const d = new Date(dateStr);
+    return !isNaN(d.getTime());
+  } catch {
+    return false;
+  }
+}
+
+function getValidDateString(dateStr: string | undefined, fallback: string): string {
+  if (dateStr && isValidDateString(dateStr)) {
+    return dateStr;
+  }
+  return fallback;
+}
+
 // ============ MAIN HANDLER ============
 
 export async function PUT(
@@ -285,23 +302,35 @@ export async function PUT(
       );
     }
 
-    // 4. Dates - Validate
-    const finalStartDate = body.startDate || existingRequest.startDate;
-    let finalEndDate = body.endDate || existingRequest.endDate;
+    // 4. Dates - Validate and ensure we have valid dates
+// 4. Dates - Validate and ensure we have valid dates
+const todayStr = new Date().toISOString().split("T")[0];
 
-    // If half-day, end date must equal start date
-    if (finalIsHalfDay) {
-      finalEndDate = finalStartDate;
-    }
+// ✅ Use const for finalStartDate (never reassigned)
+const finalStartDate = getValidDateString(
+  body.startDate || existingRequest.startDate,
+  todayStr
+);
 
-    console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
+// ✅ Use let for finalEndDate (may be reassigned below)
+let finalEndDate = getValidDateString(
+  body.endDate || existingRequest.endDate,
+  finalStartDate
+);
 
+// If half-day, end date must equal start date
+if (finalIsHalfDay) {
+  finalEndDate = finalStartDate; // ← Reassignment, so 'let' is correct
+}
+
+console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
     // Validate date range
     try {
       const start = new Date(finalStartDate);
       const end = new Date(finalEndDate);
       
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        console.error("❌ Invalid date values:", { finalStartDate, finalEndDate });
         return NextResponse.json(
           { error: "Invalid date format", field: "dates" },
           { status: 400 }
@@ -539,10 +568,29 @@ export async function PUT(
 
     try {
       console.log("🔄 Updating leave request...");
+      console.log("📝 Debugging values:");
+      console.log("finalStartDate:", finalStartDate);
+      console.log("finalEndDate:", finalEndDate);
+      console.log("finalTotalDays:", finalTotalDays);
+      console.log("finalIsHalfDay:", finalIsHalfDay);
+      
+      // ✅ FIX: Convert dates to ISO strings safely
+      const startDateISO = new Date(finalStartDate).toISOString();
+      const endDateISO = new Date(finalEndDate).toISOString();
+      
+      // Validate the ISO strings
+      if (isNaN(new Date(startDateISO).getTime()) || isNaN(new Date(endDateISO).getTime())) {
+        console.error("❌ Invalid ISO date conversion");
+        return NextResponse.json(
+          { error: "Invalid date conversion", field: "dates" },
+          { status: 400 }
+        );
+      }
+
       const updateData: Partial<LeaveRequest> = {
         leaveType: finalLeaveType as LeaveType,
-        startDate: new Date(finalStartDate).toISOString(),
-        endDate: new Date(finalEndDate).toISOString(),
+        startDate: startDateISO,
+        endDate: endDateISO,
         totalDays: finalTotalDays,
         isHalfDay: finalIsHalfDay,
         halfDaySession: finalHalfDaySession,
@@ -555,12 +603,14 @@ export async function PUT(
       };
 
       console.log("📊 Update data:", JSON.stringify(updateData, null, 2));
+      console.log("📋 Updating at ref:", `leaveRequests/${id}`);
+      
       await rtdb.ref(`leaveRequests/${id}`).update(updateData);
       console.log("✅ Leave request updated");
     } catch (updateError) {
       console.error("❌ Failed to update request:", updateError);
       return NextResponse.json(
-        { error: "Failed to update leave request" },
+        { error: "Failed to update leave request: " + (updateError instanceof Error ? updateError.message : "unknown error") },
         { status: 500 }
       );
     }
@@ -652,9 +702,9 @@ export async function PUT(
   } catch (error) {
     console.error("❌ Error editing leave request:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to edit leave request";
-    console.error("❌ Error details:", errorMessage);
+    console.error("❌ Error stack:", error instanceof Error ? error.stack : "no stack");
     return NextResponse.json(
-      { error: errorMessage },
+      { error: errorMessage, stack: error instanceof Error ? error.stack : undefined },
       { status: 500 }
     );
   }
