@@ -321,8 +321,8 @@ export default function StatusPage() {
       
       const requestBody = {
         leaveType: leaveTypeCode,
-        startDate: editForm.startDate || editingRequest.startDate,
-        endDate: editForm.endDate || editingRequest.endDate,
+        startDate: editForm.startDate || editingRequest.startDate.split("T")[0],
+        endDate: editForm.endDate || editingRequest.endDate.split("T")[0],
         totalDays,
         isHalfDay: editForm.isHalfDay,
         halfDaySession: editForm.isHalfDay ? editForm.halfDaySession : null,
@@ -968,7 +968,7 @@ export default function StatusPage() {
                       mode="single"
                       selected={editForm.startDate ? new Date(editForm.startDate) : undefined}
                       onSelect={(date) => {
-                        const newStartDate = date?.toISOString() || "";
+                        const newStartDate = date ? date.toISOString().split("T")[0] : "";
                         setEditForm({
                           ...editForm,
                           startDate: newStartDate,
@@ -1006,7 +1006,7 @@ export default function StatusPage() {
                         mode="single"
                         selected={editForm.endDate ? new Date(editForm.endDate) : undefined}
                         onSelect={(date) => {
-                          const newEndDate = date?.toISOString() || "";
+                          const newEndDate = date ? date.toISOString().split("T")[0] : "";
                           // Validate end date >= start date
                           if (editForm.startDate && new Date(newEndDate) < new Date(editForm.startDate)) {
                             toast.error("End date cannot be before start date");
