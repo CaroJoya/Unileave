@@ -57,7 +57,7 @@ interface DashboardData {
 }
 
 function DashboardContent() {
-  const { user, userRoles, isLoading: authLoading } = useAuthStore();
+  const { user, userRoles, isLoading: authLoading, hydrationComplete } = useAuthStore();
   const { currentRole } = useRoleStore();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -80,6 +80,7 @@ function DashboardContent() {
 
   // Auth check
   useEffect(() => {
+    if (!hydrationComplete) return;
     if (!authLoading && !user) {
       router.push("/login");
       return;
@@ -119,7 +120,7 @@ function DashboardContent() {
         }
       }
     }
-  }, [user, userRoles, authLoading, router, currentRole]);
+  }, [user, userRoles, authLoading, router, currentRole, hydrationComplete]);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
@@ -228,7 +229,7 @@ function DashboardContent() {
     let isMounted = true;
 
     const loadData = async () => {
-      if (user && isMounted) {
+      if (hydrationComplete && user && isMounted) {
         await fetchDashboardData();
       }
     };
@@ -238,9 +239,9 @@ function DashboardContent() {
     return () => {
       isMounted = false;
     };
-  }, [user, fetchDashboardData]);
+  }, [user, fetchDashboardData, hydrationComplete]);
 
-  if (authLoading || loading) {
+  if (!hydrationComplete || authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">

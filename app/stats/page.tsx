@@ -118,7 +118,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function StatsPage() {
-  const { user, isLoading: authLoading } = useAuthStore();
+  const { user, isLoading: authLoading, hydrationComplete } = useAuthStore();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
@@ -134,6 +134,7 @@ export default function StatsPage() {
 
   // Auth check
   useEffect(() => {
+    if (!hydrationComplete) return;
     if (!authLoading && !user) {
       router.push("/login");
       return;
@@ -142,7 +143,7 @@ export default function StatsPage() {
       router.push("/principal/dashboard");
       return;
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, hydrationComplete]);
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -219,7 +220,7 @@ export default function StatsPage() {
 
   // Fetch data once when user is available
   useEffect(() => {
-    if (!user || user.roles?.includes("principal")) return;
+    if (!hydrationComplete || !user || user.roles?.includes("principal")) return;
     
     if (!hasFetched.current) {
       hasFetched.current = true;
@@ -229,7 +230,7 @@ export default function StatsPage() {
     return () => {
       isMounted.current = false;
     };
-  }, [user, fetchData]);
+  }, [user, fetchData, hydrationComplete]);
 
   // Filter by year and status
   const filteredRequests = requests.filter((req) => {
@@ -331,7 +332,7 @@ export default function StatsPage() {
   };
 
   // Show loading state
-  if (authLoading || loading) {
+  if (!hydrationComplete || authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">

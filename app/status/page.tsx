@@ -86,7 +86,7 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function StatusPage() {
-  const { user, isLoading: authLoading } = useAuthStore();
+  const { user, isLoading: authLoading, hydrationComplete } = useAuthStore();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
@@ -118,6 +118,7 @@ export default function StatusPage() {
 
   // Auth check
   useEffect(() => {
+    if (!hydrationComplete) return;
     if (!authLoading && !user) {
       router.push("/login");
       return;
@@ -126,7 +127,7 @@ export default function StatusPage() {
       router.push("/principal/dashboard");
       return;
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, hydrationComplete]);
 
   // Fetch leave requests
 const fetchRequests = useCallback(async () => {
@@ -168,7 +169,7 @@ const fetchRequests = useCallback(async () => {
 
   // Fetch data once when user is available
   useEffect(() => {
-    if (!user || user.roles?.includes("principal")) return;
+    if (!hydrationComplete || !user || user.roles?.includes("principal")) return;
     
     if (!hasFetched.current) {
       hasFetched.current = true;
@@ -178,7 +179,7 @@ const fetchRequests = useCallback(async () => {
     return () => {
       isMounted.current = false;
     };
-  }, [user, fetchRequests]);
+  }, [user, fetchRequests, hydrationComplete]);
 
   // Apply filters using useMemo
   const filteredRequests = useMemo(() => {
@@ -378,7 +379,7 @@ const fetchRequests = useCallback(async () => {
   const counts = getCounts();
 
   // Show loading state
-  if (authLoading || loading) {
+  if (!hydrationComplete || authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">

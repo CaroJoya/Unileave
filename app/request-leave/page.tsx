@@ -36,7 +36,7 @@ interface LeaveBalance {
 }
 
 export default function RequestLeavePage() {
-  const { user, isLoading: authLoading } = useAuthStore();
+  const { user, isLoading: authLoading, hydrationComplete } = useAuthStore();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -57,6 +57,7 @@ export default function RequestLeavePage() {
 
   // Auth check
   useEffect(() => {
+    if (!hydrationComplete) return;
     if (!authLoading && !user) {
       router.push("/login");
     }
@@ -64,7 +65,7 @@ export default function RequestLeavePage() {
       toast.error("Principal cannot request leave");
       router.push("/principal/dashboard");
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, hydrationComplete]);
 
   // Fetch leave types and balances
   const fetchData = useCallback(async () => {
@@ -98,7 +99,7 @@ export default function RequestLeavePage() {
     let isMounted = true;
     
     const loadData = async () => {
-      if (user && !user.roles?.includes("principal") && isMounted) {
+      if (hydrationComplete && user && !user.roles?.includes("principal") && isMounted) {
         await fetchData();
       }
     };
@@ -108,7 +109,7 @@ export default function RequestLeavePage() {
     return () => {
       isMounted = false;
     };
-  }, [user, fetchData]);
+  }, [user, fetchData, hydrationComplete]);
 
   const calculatedTotalDays = useMemo(() => {
     if (isHalfDay) {
@@ -302,7 +303,7 @@ export default function RequestLeavePage() {
 
   const selectedBalance = getSelectedBalance();
 
-  if (authLoading || loading) {
+  if (!hydrationComplete || authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
