@@ -13,7 +13,7 @@ let transporter: nodemailer.Transporter | null = null;
 let mailEnabled = false;
 
 // ========== INITIALIZE SMTP ==========
-if (SMTP_USER && SMTP_PASS && SMTP_USER !== "your-email@gmail.com") {
+if (SMTP_USER && SMTP_PASS) {
   try {
     transporter = nodemailer.createTransport({
       host: SMTP_HOST,
@@ -27,6 +27,8 @@ if (SMTP_USER && SMTP_PASS && SMTP_USER !== "your-email@gmail.com") {
         rejectUnauthorized: false,
       },
     });
+    
+    mailEnabled = true; // Assume enabled initially
     
     transporter.verify((error) => {
       if (error) {
