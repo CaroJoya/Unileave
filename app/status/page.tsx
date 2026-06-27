@@ -62,6 +62,23 @@ interface RevisionHistory {
   resubmittedAt: string | null;
 }
 
+interface LeaveType {
+  id: string;
+  leaveCode: string;
+  leaveName: string;
+  allowHalfDay: boolean;
+  requiresAttachment: boolean;
+  deductsBalance: boolean;
+  isActive: boolean;
+}
+
+interface LeaveBalance {
+  allocated: number;
+  used: number;
+  pending: number;
+  available: number;
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   Pending_HOD: { label: "Pending HOD", color: "bg-yellow-100 text-yellow-800", icon: <Clock className="h-3 w-3" /> },
   Pending_Registrar: { label: "Pending Registrar", color: "bg-yellow-100 text-yellow-800", icon: <Clock className="h-3 w-3" /> },
@@ -90,6 +107,8 @@ export default function StatusPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
+  const [balances, setBalances] = useState<Record<string, LeaveBalance>>({});
   const [activeTab, setActiveTab] = useState("all");
   const [leaveTypeFilter, setLeaveTypeFilter] = useState("all");
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
@@ -102,10 +121,14 @@ export default function StatusPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingRequest, setEditingRequest] = useState<LeaveRequest | null>(null);
   const [editForm, setEditForm] = useState({
+    leaveType: "",
     startDate: "",
     endDate: "",
+    isHalfDay: false,
+    halfDaySession: "First Half" as "First Half" | "Second Half",
     reason: "",
     alternateFacultyName: "",
+    attachmentUrl: null as string | null,
   });
   const [editLoading, setEditLoading] = useState(false);
   
@@ -128,6 +151,30 @@ export default function StatusPage() {
       return;
     }
   }, [user, authLoading, router, hydrationComplete]);
+
+  // Fetch leave types and balances
+  const fetchLeaveTypesAndBalances = useCallback(async () => {
+    try {
+      // Fetch leave types
+      const typesResponse = await fetch("/api/leave-types");
+      const typesData = await typesResponse.json();
+      if (typesResponse.ok) {
+        const activeTypes = (typesData.leaveTypes || []).filter(
+          (type: LeaveType) => type.isActive
+        );
+        setLeaveTypes(activeTypes);
+      }
+
+      // Fetch balances
+      const balanceResponse = await fetch("/api/leave/balances");
+      const balanceData = await balanceResponse.json();
+      if (balanceResponse.ok && balanceData.balances) {
+        setBalances(balanceData.balances);
+      }
+    } catch (error) {
+      console.error("Error fetching leave types/balances:", error);
+    }
+  }, []);
 
   // Fetch leave requests
   const fetchRequests = useCallback(async () => {
@@ -172,13 +219,13 @@ export default function StatusPage() {
     
     if (!hasFetched.current) {
       hasFetched.current = true;
-      fetchRequests();
+      Promise.all([fetchRequests(), fetchLeaveTypesAndBalances()]);
     }
     
     return () => {
       isMounted.current = false;
     };
-  }, [user, fetchRequests, hydrationComplete]);
+  }, [user, fetchRequests, fetchLeaveTypesAndBalances, hydrationComplete]);
 
   // Apply filters using useMemo
   const filteredRequests = useMemo(() => {
@@ -223,6 +270,7 @@ export default function StatusPage() {
     return filtered;
   }, [requests, activeTab, leaveTypeFilter, dateRange]);
 
+  // ============ CANCEL HANDLER ============
   const handleCancelRequest = async () => {
     if (!cancellingRequest) return;
     
@@ -249,40 +297,55 @@ export default function StatusPage() {
     }
   };
 
+  // ============ EDIT HANDLER ============
   const handleEditRequest = async () => {
     if (!editingRequest) return;
     
     setEditLoading(true);
     try {
-      const totalDays = (() => {
-        if (editForm.startDate && editForm.endDate) {
-          const start = new Date(editForm.startDate);
-          const end = new Date(editForm.endDate);
-          const diffTime = Math.abs(end.getTime() - start.getTime());
-          return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        }
-        return editingRequest.totalDays;
-      })();
+      // Calculate total days
+      let totalDays = editingRequest.totalDays;
+      
+      if (editForm.isHalfDay) {
+        totalDays = 0.5;
+      } else if (editForm.startDate && editForm.endDate) {
+        const start = new Date(editForm.startDate);
+        const end = new Date(editForm.endDate);
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      }
+      
+      // Get the leave type code from the selected ID
+      const selectedLeaveType = leaveTypes.find(t => t.id === editForm.leaveType);
+      const leaveTypeCode = selectedLeaveType?.leaveCode || editingRequest.leaveType;
+      
+      const requestBody = {
+        leaveType: leaveTypeCode,
+        startDate: editForm.startDate || editingRequest.startDate,
+        endDate: editForm.endDate || editingRequest.endDate,
+        totalDays,
+        isHalfDay: editForm.isHalfDay,
+        halfDaySession: editForm.isHalfDay ? editForm.halfDaySession : null,
+        reason: editForm.reason || editingRequest.reason,
+        alternateFacultyName: editForm.alternateFacultyName || editingRequest.alternateFacultyName,
+        attachmentUrl: editForm.attachmentUrl !== undefined ? editForm.attachmentUrl : editingRequest.attachmentUrl,
+      };
+      
+      console.log("📝 Submitting edit:", requestBody);
       
       const response = await fetch(`/api/leave/request/${editingRequest.id}/edit`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startDate: editForm.startDate || editingRequest.startDate,
-          endDate: editForm.endDate || editingRequest.endDate,
-          totalDays,
-          isHalfDay: editingRequest.isHalfDay,
-          halfDaySession: editingRequest.halfDaySession,
-          reason: editForm.reason || editingRequest.reason,
-          alternateFacultyName: editForm.alternateFacultyName || editingRequest.alternateFacultyName,
-          attachmentUrl: editingRequest.attachmentUrl,
-        }),
+        body: JSON.stringify(requestBody),
       });
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
         throw new Error(errorData.error || "Failed to update request");
       }
+      
+      // ✅ FIX: Remove unused 'data' variable
+      await response.json();
       
       const successMessage = editingRequest.status === "Pending_Revision"
         ? "Leave request resubmitted successfully!"
@@ -292,6 +355,7 @@ export default function StatusPage() {
       setEditDialogOpen(false);
       setEditingRequest(null);
       await fetchRequests();
+      await fetchLeaveTypesAndBalances();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update";
       toast.error(errorMessage);
@@ -300,17 +364,38 @@ export default function StatusPage() {
     }
   };
 
+  // ============ OPEN EDIT DIALOG ============
   const openEditDialog = (request: LeaveRequest) => {
+    // Get the leave type ID from the leave code
+    const leaveTypeObj = leaveTypes.find(t => t.leaveCode === request.leaveType);
+    const leaveTypeId = leaveTypeObj?.id || "";
+    
     setEditingRequest(request);
     setEditForm({
+      leaveType: leaveTypeId,
       startDate: request.startDate.split("T")[0],
       endDate: request.endDate.split("T")[0],
-      reason: request.reason,
-      alternateFacultyName: request.alternateFacultyName,
+      isHalfDay: request.isHalfDay,
+      // ✅ FIX: Cast the value to the correct union type
+      halfDaySession: (request.halfDaySession as "First Half" | "Second Half") || "First Half",
+      reason: request.reason || "",
+      alternateFacultyName: request.alternateFacultyName || "",
+      attachmentUrl: request.attachmentUrl,
     });
     setEditDialogOpen(true);
   };
 
+  // ============ CALCULATE TOTAL DAYS FOR DISPLAY ============
+  const calculateTotalDays = (startDate: string, endDate: string, isHalfDay: boolean): number => {
+    if (isHalfDay) return 0.5;
+    if (!startDate || !endDate) return 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  };
+
+  // ============ STATUS BADGE ============
   const getStatusBadge = (status: string, revisionCount: number = 0) => {
     const config = STATUS_CONFIG[status] || { label: status, color: "bg-gray-100 text-gray-800", icon: null };
     
@@ -727,8 +812,13 @@ export default function StatusPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+      {/* ============ EDIT DIALOG - UPDATED VERSION ============ */}
+      <Dialog open={editDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setEditDialogOpen(false);
+          setEditingRequest(null);
+        }
+      }}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -740,7 +830,8 @@ export default function StatusPage() {
                 : "Update your leave request details. Changes will be saved."}
             </DialogDescription>
           </DialogHeader>
-          
+
+          {/* Revision Remarks - Show if pending revision */}
           {editingRequest?.status === "Pending_Revision" && editingRequest.revisionHistory && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-amber-800 font-medium flex items-center gap-2">
@@ -752,65 +843,343 @@ export default function StatusPage() {
               </p>
             </div>
           )}
-          
+
           <div className="space-y-4">
+            {/* 1. LEAVE TYPE - Always editable */}
             <div className="space-y-2">
-              <Label>Leave Type</Label>
-              <p className="text-sm font-medium text-muted-foreground">
-                {editingRequest ? LEAVE_TYPE_LABELS[editingRequest.leaveType] : ""} ({editingRequest?.leaveType})
+              <Label htmlFor="editLeaveType">Leave Type *</Label>
+              <Select
+                value={editForm.leaveType || ""}
+                onValueChange={(value) => {
+                  const selectedType = leaveTypes.find(t => t.id === value);
+                  setEditForm({ 
+                    ...editForm, 
+                    leaveType: value,
+                    // Reset half-day if new type doesn't allow it
+                    isHalfDay: selectedType?.allowHalfDay ? editForm.isHalfDay : false,
+                    halfDaySession: selectedType?.allowHalfDay ? editForm.halfDaySession : "First Half",
+                  });
+                }}
+              >
+                <SelectTrigger id="editLeaveType">
+                  <SelectValue placeholder="Select leave type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {leaveTypes.map((type) => {
+                    const balance = balances[type.leaveCode];
+                    const isAvailable = !type.deductsBalance || (balance && balance.available > 0);
+                    return (
+                      <SelectItem
+                        key={type.id}
+                        value={type.id}
+                        disabled={!isAvailable}
+                      >
+                        {type.leaveName} ({type.leaveCode})
+                        {type.deductsBalance && balance && (
+                          <span className="text-xs text-muted-foreground ml-2">
+                            - {balance.available} days available
+                          </span>
+                        )}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Changing leave type will update balance calculations
               </p>
-              <p className="text-xs text-muted-foreground">Leave type cannot be changed</p>
             </div>
-            
+
+            {/* 2. HALF DAY TOGGLE - Always editable */}
             <div className="space-y-2">
-              <Label>Start Date</Label>
-              <Input
-                type="date"
-                value={editForm.startDate}
-                onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
-              />
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="editHalfDay"
+                  checked={editForm.isHalfDay || false}
+                  onChange={(e) => {
+                    const isHalfDay = e.target.checked;
+                    setEditForm({
+                      ...editForm,
+                      isHalfDay,
+                      // If half-day, auto-set end date to start date
+                      endDate: isHalfDay ? editForm.startDate : editForm.endDate,
+                      // Clear half-day session if unchecked
+                      halfDaySession: isHalfDay ? editForm.halfDaySession || "First Half" : "First Half",
+                    });
+                  }}
+                  className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  disabled={(() => {
+                    const selectedType = leaveTypes.find(t => t.id === editForm.leaveType);
+                    return selectedType ? !selectedType.allowHalfDay : false;
+                  })()}
+                />
+                <Label htmlFor="editHalfDay" className="cursor-pointer">
+                  Half Day Leave
+                </Label>
+              </div>
+              
+              {/* Half Day Session - Show only if half-day is checked */}
+              {editForm.isHalfDay && (
+                <div className="flex gap-4 mt-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      value="First Half"
+                      checked={editForm.halfDaySession === "First Half"}
+                      onChange={(e) => setEditForm({ ...editForm, halfDaySession: e.target.value as "First Half" | "Second Half" })}
+                      className="w-4 h-4"
+                    />
+                    <span>First Half</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      value="Second Half"
+                      checked={editForm.halfDaySession === "Second Half"}
+                      onChange={(e) => setEditForm({ ...editForm, halfDaySession: e.target.value as "First Half" | "Second Half" })}
+                      className="w-4 h-4"
+                    />
+                    <span>Second Half</span>
+                  </label>
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>End Date</Label>
-              <Input
-                type="date"
-                value={editForm.endDate}
-                onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
-              />
+
+            {/* 3. DATES */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Start Date *</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !editForm.startDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editForm.startDate ? format(new Date(editForm.startDate), "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={editForm.startDate ? new Date(editForm.startDate) : undefined}
+                      onSelect={(date) => {
+                        const newStartDate = date?.toISOString() || "";
+                        setEditForm({
+                          ...editForm,
+                          startDate: newStartDate,
+                          // If half-day, auto-set end date = start date
+                          endDate: editForm.isHalfDay ? newStartDate : editForm.endDate,
+                        });
+                      }}
+                      disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>End Date {!editForm.isHalfDay && "*"}</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !editForm.endDate && "text-muted-foreground",
+                        editForm.isHalfDay && "opacity-50 cursor-not-allowed"
+                      )}
+                      disabled={editForm.isHalfDay}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editForm.endDate ? format(new Date(editForm.endDate), "PPP") : 
+                        editForm.isHalfDay ? "Same as start date" : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  {!editForm.isHalfDay && (
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={editForm.endDate ? new Date(editForm.endDate) : undefined}
+                        onSelect={(date) => {
+                          const newEndDate = date?.toISOString() || "";
+                          // Validate end date >= start date
+                          if (editForm.startDate && new Date(newEndDate) < new Date(editForm.startDate)) {
+                            toast.error("End date cannot be before start date");
+                            return;
+                          }
+                          setEditForm({ ...editForm, endDate: newEndDate });
+                        }}
+                        disabled={(date) => {
+                          if (!editForm.startDate) return true;
+                          return date < new Date(editForm.startDate);
+                        }}
+                      />
+                    </PopoverContent>
+                  )}
+                </Popover>
+              </div>
             </div>
+
+            {/* 4. TOTAL DAYS - Auto-calculated */}
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm">
+                Total Days: <strong>
+                  {editForm.isHalfDay ? 0.5 : (() => {
+                    if (editForm.startDate && editForm.endDate) {
+                      return calculateTotalDays(editForm.startDate, editForm.endDate, false);
+                    }
+                    return editingRequest?.totalDays || 0;
+                  })()}
+                </strong>
+              </p>
+              {editForm.isHalfDay && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Half-day leave counts as 0.5 day
+                </p>
+              )}
+            </div>
+
+            {/* 5. REASON */}
             <div className="space-y-2">
-              <Label>Reason</Label>
+              <Label htmlFor="editReason">Reason</Label>
               <Textarea
-                value={editForm.reason}
+                id="editReason"
+                value={editForm.reason || ""}
                 onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })}
                 rows={3}
               />
             </div>
+
+            {/* 6. ALTERNATE FACULTY */}
             <div className="space-y-2">
-              <Label>Alternate Faculty Name *</Label>
+              <Label htmlFor="editAlternateFaculty">Alternate Faculty Name *</Label>
               <Input
-                value={editForm.alternateFacultyName}
+                id="editAlternateFaculty"
+                value={editForm.alternateFacultyName || ""}
                 onChange={(e) => setEditForm({ ...editForm, alternateFacultyName: e.target.value })}
                 placeholder="Name of faculty covering your duties"
               />
+              {editForm.alternateFacultyName && editForm.alternateFacultyName.trim().length < 3 && (
+                <p className="text-xs text-red-500">Name must be at least 3 characters</p>
+              )}
             </div>
+
+            {/* 7. ATTACHMENT - Show if required */}
+            {(() => {
+              const selectedType = leaveTypes.find(t => t.id === editForm.leaveType);
+              if (!selectedType?.requiresAttachment) return null;
+              
+              return (
+                <div className="space-y-2">
+                  <Label>Attachment</Label>
+                  {editingRequest?.attachmentUrl ? (
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={editingRequest.attachmentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline text-sm"
+                      >
+                        View current attachment
+                      </a>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditForm({ ...editForm, attachmentUrl: null })}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Attachment is required for this leave type
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* 8. BALANCE WARNING */}
+            {(() => {
+              const selectedType = leaveTypes.find(t => t.id === editForm.leaveType);
+              if (!selectedType?.deductsBalance) return null;
+              
+              const balance = balances[selectedType.leaveCode];
+              if (!balance) return null;
+              
+              const newTotalDays = editForm.isHalfDay ? 0.5 : (() => {
+                if (editForm.startDate && editForm.endDate) {
+                  return calculateTotalDays(editForm.startDate, editForm.endDate, false);
+                }
+                return editingRequest?.totalDays || 0;
+              })();
+              
+              const willExceed = balance.available < newTotalDays;
+              
+              return (
+                <div className={cn(
+                  "p-3 rounded-lg",
+                  willExceed ? "bg-red-50 border border-red-200" : "bg-green-50 border border-green-200"
+                )}>
+                  <p className="text-sm">
+                    <span className="font-medium">{selectedType.leaveCode} Balance:</span>{" "}
+                    {balance.available} days available
+                    {willExceed && (
+                      <span className="text-red-600 block mt-1">
+                        ⚠️ Insufficient balance! Need {newTotalDays} days, only {balance.available} available.
+                      </span>
+                    )}
+                    {!willExceed && newTotalDays > 0 && (
+                      <span className="text-green-600 block mt-1">
+                        ✓ You have enough balance for this request.
+                      </span>
+                    )}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancel
             </Button>
             <Button 
               onClick={handleEditRequest} 
-              disabled={editLoading || !editForm.alternateFacultyName.trim()}
+              disabled={
+                editLoading || 
+                !editForm.alternateFacultyName?.trim() ||
+                !editForm.leaveType ||
+                !editForm.startDate ||
+                (!editForm.isHalfDay && !editForm.endDate)
+              }
+              className="flex-1"
             >
-              {editLoading ? "Submitting..." : editingRequest?.status === "Pending_Revision" ? "Resubmit Request" : "Save Changes"}
+              {editLoading ? (
+                <>
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                  Submitting...
+                </>
+              ) : (
+                editingRequest?.status === "Pending_Revision" ? "Resubmit Request" : "Save Changes"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Cancel Confirmation Dialog */}
-      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+      <Dialog open={cancelDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setCancelDialogOpen(false);
+          setCancellingRequest(null);
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Cancel Leave Request</DialogTitle>

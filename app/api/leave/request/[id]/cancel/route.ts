@@ -1,4 +1,4 @@
-// app/api/leave/request/[id]/cancel/route.ts - FIXED
+// app/api/leave/request/[id]/cancel/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -96,37 +96,56 @@ export async function PUT(
       );
     }
 
-    const leaveTypeConfig = await getLeaveTypeConfig(leaveRequest.leaveType);
-    if (leaveTypeConfig?.deductsBalance && !leaveRequest.balanceRestored) {
-      const academicYear = getCurrentAcademicYear();
-      const balanceKey = `${userId}_${academicYear}`;
-      const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
-      const balanceSnapshot = await balanceRef.once("value");
-      const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+    // ✅ FIX: Wrap balance restoration in try-catch to prevent 500
+    let balanceRestored = false;
+    
+    if (!leaveRequest.balanceRestored) {
+      try {
+        const leaveTypeConfig = await getLeaveTypeConfig(leaveRequest.leaveType);
+        if (leaveTypeConfig?.deductsBalance) {
+          const academicYear = getCurrentAcademicYear();
+          const balanceKey = `${userId}_${academicYear}`;
+          const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
+          const balanceSnapshot = await balanceRef.once("value");
+          const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
-      if (balanceDoc) {
-        await balanceRef.update({
-          [`balances.${leaveRequest.leaveType}.pending`]: Math.max(
-            0,
-            (balanceDoc.balances[leaveRequest.leaveType]?.pending || 0) -
-              leaveRequest.totalDays
-          ),
-          [`balances.${leaveRequest.leaveType}.available`]:
-            (balanceDoc.balances[leaveRequest.leaveType]?.available || 0) +
-            leaveRequest.totalDays,
-          updatedAt: new Date().toISOString(),
-        });
+          if (balanceDoc && balanceDoc.balances) {
+            const currentBalance = balanceDoc.balances[leaveRequest.leaveType];
+            if (currentBalance) {
+              // ✅ Restore pending and available balance
+              const newPending = Math.max(0, (currentBalance.pending || 0) - leaveRequest.totalDays);
+              const newAvailable = (currentBalance.available || 0) + leaveRequest.totalDays;
+              
+              await balanceRef.update({
+                [`balances.${leaveRequest.leaveType}.pending`]: newPending,
+                [`balances.${leaveRequest.leaveType}.available`]: newAvailable,
+                updatedAt: new Date().toISOString(),
+              });
+              
+              balanceRestored = true;
+              console.log(`✅ Balance restored for user ${userId}, leave type ${leaveRequest.leaveType}`);
+            }
+          }
+        }
+      } catch (balanceError) {
+        // ⚠️ Log error but continue with cancellation
+        console.error("❌ Error restoring balance during cancel:", balanceError);
+        // Don't return an error - the cancellation should still proceed
       }
+    } else {
+      balanceRestored = true;
     }
 
+    // ✅ Cancel the request regardless of balance restoration status
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Cancelled",
-      balanceRestored: true,
+      balanceRestored: balanceRestored || leaveRequest.balanceRestored,
       cancelledAt: new Date().toISOString(),
       cancelledBy: userId,
       updatedAt: new Date().toISOString(),
     });
 
+    // Log the cancellation
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -141,6 +160,7 @@ export async function PUT(
       actionAt: new Date().toISOString(),
     });
 
+    // Notify the approver if there is one
     if (leaveRequest.currentApproverId) {
       const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       await rtdb.ref(`notifications/${notificationId}`).set({
@@ -158,11 +178,15 @@ export async function PUT(
       });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true,
+      balanceRestored: balanceRestored,
+      message: "Leave request cancelled successfully" 
+    });
   } catch (error) {
     console.error("Error cancelling leave request:", error);
     return NextResponse.json(
-      { error: "Failed to cancel leave request" },
+      { error: error instanceof Error ? error.message : "Failed to cancel leave request" },
       { status: 500 }
     );
   }
