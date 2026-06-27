@@ -1,4 +1,4 @@
-// app/api/leave/request/[id]/edit/route.ts - COMPLETE FIXED VERSION
+// app/api/leave/request/[id]/edit/route.ts - WITH EXTENSIVE LOGGING
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -166,17 +166,24 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  console.log("🚀 EDIT ROUTE STARTED");
+  
   try {
     const { id } = await params;
+    console.log(`📝 Editing request ID: ${id}`);
+    
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session")?.value;
+    console.log(`🍪 Session cookie: ${sessionCookie ? "Present" : "Missing"}`);
 
     if (!sessionCookie) {
+      console.log("❌ No session cookie");
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const auth = getAuth();
     const rtdb = getRTDB();
+    console.log(`🔐 Auth: ${auth ? "Initialized" : "Not initialized"}, RTDB: ${rtdb ? "Initialized" : "Not initialized"}`);
 
     if (!auth || !rtdb) {
       console.error('Firebase Admin not initialized');
@@ -188,10 +195,12 @@ export async function PUT(
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
+    console.log(`👤 User ID: ${userId}`);
 
     // Get user data
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val() as UserData | null;
+    console.log(`👤 User data: ${userData ? "Found" : "Not found"}`);
 
     if (!userData) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -200,6 +209,7 @@ export async function PUT(
     // Get existing request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const existingRequest = requestSnapshot.val() as LeaveRequest | null;
+    console.log(`📋 Existing request: ${existingRequest ? "Found" : "Not found"}`);
 
     if (!existingRequest) {
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
@@ -207,6 +217,7 @@ export async function PUT(
 
     // Authorization check
     if (existingRequest.applicantId !== userId) {
+      console.log(`❌ Authorization failed: User ${userId} tried to edit request from ${existingRequest.applicantId}`);
       return NextResponse.json(
         { error: "Not authorized to edit this request" },
         { status: 403 }
@@ -215,6 +226,7 @@ export async function PUT(
 
     // Status check
     if (!EDITABLE_STATUSES.includes(existingRequest.status)) {
+      console.log(`❌ Status not editable: ${existingRequest.status}`);
       return NextResponse.json(
         { error: "This request cannot be edited. It has already been approved or rejected." },
         { status: 400 }
@@ -225,6 +237,7 @@ export async function PUT(
     let body: EditRequestData;
     try {
       body = await request.json();
+      console.log("📝 Edit Request Body:", JSON.stringify(body, null, 2));
     } catch (parseError) {
       console.error("Error parsing request body:", parseError);
       return NextResponse.json(
@@ -232,14 +245,15 @@ export async function PUT(
         { status: 400 }
       );
     }
-    
-    console.log("📝 Edit Request Body:", JSON.stringify(body, null, 2));
 
     // ============ VALIDATE AND MERGE CHANGES ============
 
     // 1. Leave Type - Validate if changed
     const finalLeaveType = body.leaveType || existingRequest.leaveType;
+    console.log(`📌 Final leave type: ${finalLeaveType}`);
+    
     const leaveTypeConfig = await getLeaveTypeConfig(finalLeaveType);
+    console.log(`📌 Leave type config: ${leaveTypeConfig ? "Found" : "Not found"}`);
     
     if (!leaveTypeConfig) {
       return NextResponse.json(
@@ -250,6 +264,7 @@ export async function PUT(
 
     // 2. Half Day - Validate
     const finalIsHalfDay = body.isHalfDay !== undefined ? body.isHalfDay : existingRequest.isHalfDay;
+    console.log(`📌 Final isHalfDay: ${finalIsHalfDay}`);
     
     if (finalIsHalfDay && !leaveTypeConfig.allowHalfDay) {
       return NextResponse.json(
@@ -278,6 +293,8 @@ export async function PUT(
     if (finalIsHalfDay) {
       finalEndDate = finalStartDate;
     }
+
+    console.log(`📌 Final dates: ${finalStartDate} to ${finalEndDate}`);
 
     // Validate date range
     try {
@@ -310,6 +327,7 @@ export async function PUT(
     if (finalTotalDays <= 0) {
       finalTotalDays = calculateTotalDays(finalStartDate, finalEndDate, finalIsHalfDay);
     }
+    console.log(`📌 Final total days: ${finalTotalDays}`);
 
     // 6. Other fields
     const finalReason = body.reason !== undefined ? body.reason : existingRequest.reason;
@@ -373,6 +391,7 @@ export async function PUT(
       });
 
       if (hasOverlap) {
+        console.log("❌ Overlap detected");
         return NextResponse.json(
           { error: "You have an overlapping leave request", field: "overlap" },
           { status: 400 }
@@ -388,9 +407,11 @@ export async function PUT(
     let balanceUpdateSuccess = true;
     const leaveTypeChanged = body.leaveType && body.leaveType !== existingRequest.leaveType;
     const daysChanged = finalTotalDays !== existingRequest.totalDays;
+    console.log(`📌 Leave type changed: ${leaveTypeChanged}, Days changed: ${daysChanged}`);
 
     if ((leaveTypeChanged || daysChanged) && leaveTypeConfig.deductsBalance) {
       try {
+        console.log("🔄 Updating balance...");
         const academicYear = getCurrentAcademicYear();
         const balanceKey = `${userId}_${academicYear}`;
         const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
@@ -398,10 +419,14 @@ export async function PUT(
         const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
         if (balanceDoc && balanceDoc.balances) {
+          console.log("📊 Balance doc found");
+          
           // Remove from old leave type's pending
           if (leaveTypeChanged) {
+            console.log(`🔄 Moving from ${existingRequest.leaveType} to ${finalLeaveType}`);
             const oldBalance = balanceDoc.balances[existingRequest.leaveType];
             if (oldBalance) {
+              console.log(`📊 Old balance: pending=${oldBalance.pending}, available=${oldBalance.available}`);
               await balanceRef.update({
                 [`balances.${existingRequest.leaveType}.pending`]: Math.max(0, (oldBalance.pending || 0) - existingRequest.totalDays),
                 [`balances.${existingRequest.leaveType}.available`]: (oldBalance.available || 0) + existingRequest.totalDays,
@@ -411,6 +436,7 @@ export async function PUT(
             // Add to new leave type's pending
             const newBalance = balanceDoc.balances[finalLeaveType];
             if (newBalance) {
+              console.log(`📊 New balance: pending=${newBalance.pending}, available=${newBalance.available}`);
               // Check if enough available
               if (newBalance.available < finalTotalDays) {
                 return NextResponse.json(
@@ -425,10 +451,13 @@ export async function PUT(
               });
             }
           } else if (daysChanged) {
+            console.log(`🔄 Adjusting days by ${finalTotalDays - existingRequest.totalDays}`);
             // Same leave type, adjust the difference
             const currentBalance = balanceDoc.balances[finalLeaveType];
             if (currentBalance) {
               const dayDifference = finalTotalDays - existingRequest.totalDays;
+              console.log(`📊 Current balance: pending=${currentBalance.pending}, available=${currentBalance.available}`);
+              console.log(`📊 Day difference: ${dayDifference}`);
               
               if (dayDifference > 0 && currentBalance.available < dayDifference) {
                 return NextResponse.json(
@@ -443,6 +472,9 @@ export async function PUT(
               });
             }
           }
+          console.log("✅ Balance update successful");
+        } else {
+          console.log("⚠️ No balance doc found, skipping balance update");
         }
       } catch (balanceError) {
         console.error("❌ Balance update failed:", balanceError);
@@ -459,6 +491,7 @@ export async function PUT(
     // If resubmitting after revision
     if (existingRequest.status === "Pending_Revision") {
       try {
+        console.log("🔄 Processing revision resubmission");
         const userRoles = existingRequest.applicantRoles as Role[];
         const route = determineApprover(userRoles, finalLeaveType);
         const approverRole = route.firstApproverRole;
@@ -495,6 +528,7 @@ export async function PUT(
           resubmittedBy: userId,
           resubmittedAt: new Date().toISOString(),
         });
+        console.log("✅ Revision resubmission processed");
       } catch (revisionError) {
         console.error("Error handling revision:", revisionError);
         // Continue with the edit
@@ -504,6 +538,7 @@ export async function PUT(
     // ============ UPDATE THE REQUEST ============
 
     try {
+      console.log("🔄 Updating leave request...");
       const updateData: Partial<LeaveRequest> = {
         leaveType: finalLeaveType as LeaveType,
         startDate: new Date(finalStartDate).toISOString(),
@@ -519,7 +554,9 @@ export async function PUT(
         updatedAt: new Date().toISOString(),
       };
 
+      console.log("📊 Update data:", JSON.stringify(updateData, null, 2));
       await rtdb.ref(`leaveRequests/${id}`).update(updateData);
+      console.log("✅ Leave request updated");
     } catch (updateError) {
       console.error("❌ Failed to update request:", updateError);
       return NextResponse.json(
@@ -531,6 +568,7 @@ export async function PUT(
     // ============ LOG THE ACTION ============
 
     try {
+      console.log("🔄 Creating approval log...");
       const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       await rtdb.ref(`approvalLogs/${logId}`).set({
         id: logId,
@@ -551,6 +589,7 @@ export async function PUT(
         newStatus,
         actionAt: new Date().toISOString(),
       });
+      console.log("✅ Approval log created");
     } catch (logError) {
       console.error("Error logging action:", logError);
       // Non-critical, continue
@@ -561,6 +600,7 @@ export async function PUT(
     // If resubmitted after revision, notify approver
     if (existingRequest.status === "Pending_Revision") {
       try {
+        console.log("🔄 Sending revision notification email...");
         const userRoles = existingRequest.applicantRoles as Role[];
         const route = determineApprover(userRoles, finalLeaveType);
         const approverRole = route.firstApproverRole;
@@ -588,6 +628,7 @@ export async function PUT(
             ).catch(err => console.error("❌ Failed to send resubmission email:", err));
           }
         }
+        console.log("✅ Revision notification email sent");
       } catch (emailError) {
         console.error("Error sending email:", emailError);
         // Non-critical, continue
@@ -596,6 +637,7 @@ export async function PUT(
 
     // ============ RETURN RESPONSE ============
 
+    console.log("✅ Edit completed successfully");
     return NextResponse.json({
       success: true,
       newStatus,
@@ -610,6 +652,7 @@ export async function PUT(
   } catch (error) {
     console.error("❌ Error editing leave request:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to edit leave request";
+    console.error("❌ Error details:", errorMessage);
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }
