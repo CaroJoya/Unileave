@@ -1,4 +1,4 @@
-// app/stats/page.tsx
+// app/stats/page.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -124,8 +124,8 @@ export default function StatsPage() {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [balances, setBalances] = useState<Record<string, LeaveBalance>>({});
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear().toString());
-  const [statusFilter, setStatusFilter] = useState("");
-  const [leaveTypeFilter, setLeaveTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState("all");
   const [departmentData, setDepartmentData] = useState<DepartmentData[]>([]);
   const [showDepartmentComparison, setShowDepartmentComparison] = useState(false);
   
@@ -147,76 +147,78 @@ export default function StatsPage() {
 
   // Fetch data
   const fetchData = useCallback(async () => {
-  if (!user) return;
-  
-  setLoading(true);
-  try {
-    console.log("📊 Fetching stats data...");
+    if (!user) return;
     
-    // Fetch leave requests
-    const requestsRes = await fetch("/api/leave/my-requests", {
-      cache: 'no-store'
-    });
-    
-    if (!requestsRes.ok) {
-      const errorText = await requestsRes.text();
-      console.error("❌ Requests API Error:", errorText);
-      throw new Error(`Failed to fetch requests: ${requestsRes.status}`);
-    }
-    
-    const requestsData = await requestsRes.json();
-    console.log("✅ Requests data received:", requestsData);
-    setRequests(requestsData.requests || []);
-    
-    // Fetch balances
-    const balancesRes = await fetch("/api/leave/balances", {
-      cache: 'no-store'
-    });
-    
-    if (!balancesRes.ok) {
-      const errorText = await balancesRes.text();
-      console.error("❌ Balances API Error:", errorText);
-      throw new Error(`Failed to fetch balances: ${balancesRes.status}`);
-    }
-    
-    const balancesData = await balancesRes.json();
-    console.log("✅ Balances data received:", balancesData);
-    setBalances(balancesData.balances || {});
-    
-    // Check if user is HOD or Registrar for department comparison
-    const isHodOrRegistrar = user?.roles?.some((r) => r === "hod" || r === "registrar") || false;
-    setShowDepartmentComparison(isHodOrRegistrar);
+    setLoading(true);
+    try {
+      console.log("📊 Fetching stats data...");
+      
+      // Fetch leave requests
+      const requestsRes = await fetch("/api/leave/my-requests", {
+        cache: 'no-store'
+      });
+      
+      if (!requestsRes.ok) {
+        const errorText = await requestsRes.text();
+        console.error("❌ Requests API Error:", errorText);
+        throw new Error(`Failed to fetch requests: ${requestsRes.status}`);
+      }
+      
+      const requestsData = await requestsRes.json();
+      console.log("✅ Requests data received:", requestsData);
+      setRequests(requestsData.requests || []);
+      
+      // Fetch balances
+      const balancesRes = await fetch("/api/leave/balances", {
+        cache: 'no-store'
+      });
+      
+      if (!balancesRes.ok) {
+        const errorText = await balancesRes.text();
+        console.error("❌ Balances API Error:", errorText);
+        throw new Error(`Failed to fetch balances: ${balancesRes.status}`);
+      }
+      
+      const balancesData = await balancesRes.json();
+      console.log("✅ Balances data received:", balancesData);
+      
+      // ✅ Safely set balances with default
+      setBalances(balancesData.balances || {});
+      
+      // Check if user is HOD or Registrar for department comparison
+      const isHodOrRegistrar = user?.roles?.some((r) => r === "hod" || r === "registrar") || false;
+      setShowDepartmentComparison(isHodOrRegistrar);
 
-    // If HOD or Registrar, fetch department stats
-    if (isHodOrRegistrar) {
-      try {
-        const deptRes = await fetch("/api/stats/department", {
-          cache: 'no-store'
-        });
-        
-        if (deptRes.ok) {
-          const deptData = await deptRes.json();
-          setDepartmentData(deptData.departments || []);
+      // If HOD or Registrar, fetch department stats
+      if (isHodOrRegistrar) {
+        try {
+          const deptRes = await fetch("/api/stats/department", {
+            cache: 'no-store'
+          });
+          
+          if (deptRes.ok) {
+            const deptData = await deptRes.json();
+            setDepartmentData(deptData.departments || []);
+          }
+        } catch (deptError) {
+          console.warn("Could not fetch department stats:", deptError);
+          setDepartmentData([]);
         }
-      } catch (deptError) {
-        console.warn("Could not fetch department stats:", deptError);
-        setDepartmentData([]);
+      }
+      
+      console.log("✅ Stats data loaded successfully");
+    } catch (error) {
+      console.error("❌ Error fetching stats:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to fetch stats data");
+      setRequests([]);
+      setBalances({});
+      setDepartmentData([]);
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
       }
     }
-    
-    console.log("✅ Stats data loaded successfully");
-  } catch (error) {
-    console.error("❌ Error fetching stats:", error);
-    toast.error(error instanceof Error ? error.message : "Failed to fetch stats data");
-    setRequests([]);
-    setBalances({});
-    setDepartmentData([]);
-  } finally {
-    if (isMounted.current) {
-      setLoading(false);
-    }
-  }
-}, [user]);
+  }, [user]);
 
   // Fetch data once when user is available
   useEffect(() => {
@@ -236,8 +238,8 @@ export default function StatsPage() {
   const filteredRequests = requests.filter((req) => {
     const reqYear = new Date(req.createdAt).getFullYear().toString();
     if (reqYear !== yearFilter) return false;
-    if (statusFilter && req.status !== statusFilter) return false;
-    if (leaveTypeFilter && req.leaveType !== leaveTypeFilter) return false;
+    if (statusFilter !== "all" && req.status !== statusFilter) return false;
+    if (leaveTypeFilter !== "all" && req.leaveType !== leaveTypeFilter) return false;
     return true;
   });
 
@@ -387,7 +389,7 @@ export default function StatsPage() {
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All types</SelectItem>
+                  <SelectItem value="all">All types</SelectItem>
                   {uniqueLeaveTypes.map((type) => (
                     <SelectItem key={type} value={type}>
                       {LEAVE_TYPE_LABELS[type] || type}
@@ -403,7 +405,7 @@ export default function StatsPage() {
                   <SelectValue placeholder="All status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All status</SelectItem>
+                  <SelectItem value="all">All status</SelectItem>
                   {uniqueStatuses.map((status) => (
                     <SelectItem key={status} value={status}>
                       {STATUS_LABELS[status] || status}
@@ -418,8 +420,8 @@ export default function StatsPage() {
                 size="sm" 
                 onClick={() => {
                   setYearFilter(new Date().getFullYear().toString());
-                  setLeaveTypeFilter("");
-                  setStatusFilter("");
+                  setLeaveTypeFilter("all");
+                  setStatusFilter("all");
                 }}
               >
                 Reset Filters
@@ -504,16 +506,20 @@ export default function StatsPage() {
             <>
               <div className="grid gap-4 md:grid-cols-5">
                 {Object.entries(balances).map(([type, balance]) => {
-                  const usedPercent = balance.allocated > 0 
-                    ? ((balance.used / balance.allocated) * 100) 
-                    : 0;
-                  const isLow = balance.available < balance.allocated * 0.2;
+                  // ✅ Safe access with defaults to prevent undefined errors
+                  const allocated = balance?.allocated ?? 0;
+                  const used = balance?.used ?? 0;
+                  const available = balance?.available ?? 0;
+                  const pending = balance?.pending ?? 0;
+                  
+                  const usedPercent = allocated > 0 ? ((used / allocated) * 100) : 0;
+                  const isLow = available < allocated * 0.2;
                   
                   return (
                     <div key={type} className="text-center p-4 bg-gray-50 rounded-lg">
                       <p className="font-semibold">{LEAVE_TYPE_LABELS[type] || type}</p>
                       <p className="text-2xl font-bold text-primary mt-2">
-                        {balance.available.toFixed(1)}
+                        {available.toFixed(1)}
                       </p>
                       <p className="text-xs text-muted-foreground">available</p>
                       <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
@@ -526,11 +532,11 @@ export default function StatsPage() {
                         />
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {balance.used.toFixed(1)} / {balance.allocated.toFixed(1)} used
+                        {used.toFixed(1)} / {allocated.toFixed(1)} used
                       </p>
-                      {balance.pending > 0 && (
+                      {pending > 0 && (
                         <p className="text-xs text-amber-600 mt-0.5">
-                          {balance.pending} pending
+                          {pending} pending
                         </p>
                       )}
                     </div>

@@ -58,31 +58,38 @@ export const useAuthStore = create<AuthState>()(
       error: null,
       hydrationComplete: false,
 
-      setUser: (user) => set({ 
-        user, 
-        userRoles: user?.roles || [],
-        isAuthenticated: !!user 
-      }),
+      setUser: (user) => {
+    console.log("🔑 setUser called with:", user);
+    set({ 
+      user, 
+      userRoles: user?.roles || [],
+      isAuthenticated: !!user 
+    });
+  },
       
       setIsLoading: (loading) => set({ isLoading: loading }),
       setError: (error) => set({ error }),
-      setHydrationComplete: () => set({ hydrationComplete: true }),
+      setHydrationComplete: () => {
+    console.log("💧 setHydrationComplete called, setting hydrationComplete to true");
+    set({ hydrationComplete: true });
+  },
 
-      initialize: async () => {
-        const state = get();
-        
-        if (state.hydrationComplete && state.user) {
-          console.log("🔄 Checking session validity on startup...");
-          const isValid = await state.checkSession();
-          if (!isValid) {
-            console.log("🔄 Session invalid, logging out...");
-            await state.logout();
-          }
-        }
-        
-        set({ isLoading: false });
-        console.log("✅ Auth store initialized, isLoading:", false);
-      },
+  initialize: async () => {
+    const state = get();
+    console.log("🏁 initialize called, current state:", { hydrationComplete: state.hydrationComplete, user: !!state.user, isLoading: state.isLoading });
+    
+    if (state.hydrationComplete && state.user) {
+      console.log("🔄 Checking session validity on startup...");
+      const isValid = await state.checkSession();
+      if (!isValid) {
+        console.log("🔄 Session invalid, logging out...");
+        await state.logout();
+      }
+    }
+    
+    set({ isLoading: false });
+    console.log("✅ Auth store initialized, isLoading set to false");
+  },
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -467,12 +474,12 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated 
       }),
       onRehydrateStorage: () => (state) => {
-        console.log("🔄 Zustand hydration complete");
-        if (state) {
-          state.setHydrationComplete();
-          state.initialize();
-        }
-      },
+    console.log("🔄 Zustand onRehydrateStorage called, state:", state ? { user: !!state.user } : null);
+    if (state) {
+      state.setHydrationComplete();
+      state.initialize();
+    }
+  },
     }
   )
 );

@@ -1,4 +1,4 @@
-// app/status/page.tsx
+// app/status/page.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -91,7 +91,7 @@ export default function StatusPage() {
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [activeTab, setActiveTab] = useState("all");
-  const [leaveTypeFilter, setLeaveTypeFilter] = useState("");
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState("all");
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
     from: undefined,
     to: undefined,
@@ -130,42 +130,41 @@ export default function StatusPage() {
   }, [user, authLoading, router, hydrationComplete]);
 
   // Fetch leave requests
-const fetchRequests = useCallback(async () => {
-  if (!user) return;
-  
-  setLoading(true);
-  try {
-    console.log("📋 Fetching leave requests...");
+  const fetchRequests = useCallback(async () => {
+    if (!user) return;
     
-    const response = await fetch("/api/leave/my-requests", {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache'
+    setLoading(true);
+    try {
+      console.log("📋 Fetching leave requests...");
+      
+      const response = await fetch("/api/leave/my-requests", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ API Error Response:", errorText);
+        throw new Error(`Failed to fetch requests: ${response.status}`);
       }
-    });
-    
-    // ✅ Better error handling
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ API Error Response:", errorText);
-      throw new Error(`Failed to fetch requests: ${response.status}`);
+      
+      const data = await response.json();
+      console.log("✅ Status data received:", data);
+      
+      setRequests(data.requests || []);
+    } catch (error) {
+      console.error("❌ Error fetching requests:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to fetch leave requests");
+      setRequests([]);
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-    
-    const data = await response.json();
-    console.log("✅ Status data received:", data);
-    
-    setRequests(data.requests || []);
-  } catch (error) {
-    console.error("❌ Error fetching requests:", error);
-    toast.error(error instanceof Error ? error.message : "Failed to fetch leave requests");
-    setRequests([]);
-  } finally {
-    if (isMounted.current) {
-      setLoading(false);
-    }
-  }
-}, [user]);
+  }, [user]);
 
   // Fetch data once when user is available
   useEffect(() => {
@@ -209,7 +208,7 @@ const fetchRequests = useCallback(async () => {
     }
     
     // Leave type filter
-    if (leaveTypeFilter) {
+    if (leaveTypeFilter && leaveTypeFilter !== "all") {
       filtered = filtered.filter(r => r.leaveType === leaveTypeFilter);
     }
     
@@ -448,7 +447,7 @@ const fetchRequests = useCallback(async () => {
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All types</SelectItem>
+                  <SelectItem value="all">All types</SelectItem>
                   {Object.entries(LEAVE_TYPE_LABELS).map(([code, name]) => (
                     <SelectItem key={code} value={code}>{name}</SelectItem>
                   ))}
@@ -507,13 +506,13 @@ const fetchRequests = useCallback(async () => {
             </div>
           </div>
           
-          {(leaveTypeFilter || dateRange.from || dateRange.to) && (
+          {(leaveTypeFilter !== "all" || dateRange.from || dateRange.to) && (
             <div className="mt-4">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setLeaveTypeFilter("");
+                  setLeaveTypeFilter("all");
                   setDateRange({ from: undefined, to: undefined });
                 }}
               >
