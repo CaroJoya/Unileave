@@ -596,45 +596,45 @@ const updateData = {
     }
 
     // ============ SEND EMAIL NOTIFICATIONS ============
+// app/api/leave/request/[id]/edit/route.ts - FIXED (Line ~620)
+// Find this section and update it:
 
-    // If resubmitted after revision, notify approver
-    if (existingRequest.status === "Pending_Revision") {
-      try {
-        console.log("🔄 Sending revision notification email...");
-        const userRoles = existingRequest.applicantRoles as Role[];
-        const route = determineApprover(userRoles, finalLeaveType);
-        const approverRole = route.firstApproverRole;
-        const approverId = await getApproverUserId(
-          approverRole,
-          userData.collegeId,
-          userData.departmentId
-        );
+// ============ SEND EMAIL NOTIFICATIONS ============
 
-        if (approverId) {
-          const approverSnapshot = await rtdb.ref(`users/${approverId}`).once("value");
-          const approverData = approverSnapshot.val() as { email: string } | null;
+// If resubmitted after revision, notify approver
+if (existingRequest.status === "Pending_Revision") {
+  try {
+    console.log("🔄 Sending revision notification email...");
+    const userRoles = existingRequest.applicantRoles as Role[];
+    const route = determineApprover(userRoles, finalLeaveType);
+    const approverRole = route.firstApproverRole;
+    const approverId = await getApproverUserId(
+      approverRole,
+      userData.collegeId,
+      userData.departmentId
+    );
 
-          if (approverData?.email) {
-            const statusPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/status`;
-            const emailHtml = getResubmittedEmail(
-              userData.name,
-              statusPageUrl
-            );
-            
-            sendEmail(
-              approverData.email,
-              `Resubmitted: Leave Request from ${userData.name}`,
-              emailHtml
-            ).catch(err => console.error("❌ Failed to send resubmission email:", err));
-          }
-        }
-        console.log("✅ Revision notification email sent");
-      } catch (emailError) {
-        console.error("Error sending email:", emailError);
-        // Non-critical, continue
+    if (approverId) {
+      const approverSnapshot = await rtdb.ref(`users/${approverId}`).once("value");
+      const approverData = approverSnapshot.val() as { email: string } | null;
+
+      if (approverData?.email) {
+        // ✅ FIXED: Only pass 1 argument to getResubmittedEmail
+        const emailHtml = getResubmittedEmail(userData.name);
+        
+        sendEmail(
+          approverData.email,
+          `Resubmitted: Leave Request from ${userData.name}`,
+          emailHtml
+        ).catch(err => console.error("❌ Failed to send resubmission email:", err));
       }
     }
-
+    console.log("✅ Revision notification email sent");
+  } catch (emailError) {
+    console.error("Error sending email:", emailError);
+    // Non-critical, continue
+  }
+}
     // ============ RETURN RESPONSE ============
 
     console.log("✅ Edit completed successfully");

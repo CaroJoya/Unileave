@@ -1,4 +1,4 @@
-// app/headclerk/dashboard/page.tsx
+// app/headclerk/dashboard/page.tsx - COMPLETE FIXED FILE WITH ALL LEAVE TYPES
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -69,6 +69,9 @@ interface Policy {
       EL: number;
       ML: number;
       CO: number;
+      MAT: number;
+      PAT: number;
+      SPL: number;
     };
   };
 }
@@ -93,6 +96,10 @@ interface OverworkConfig {
 
 type RoleKey = "faculty" | "lab_assistant" | "office_staff" | "hod" | "registrar" | "principal" | "head_clerk";
 
+// ✅ ALL 7 LEAVE TYPES - Complete list
+const LEAVE_TYPES = ["CL", "EL", "ML", "CO", "MAT", "PAT", "SPL"] as const;
+type LeaveTypeCode = typeof LEAVE_TYPES[number];
+
 const roles: { id: RoleKey; label: string }[] = [
   { id: "faculty", label: "Faculty" },
   { id: "lab_assistant", label: "Lab Assistant" },
@@ -103,17 +110,18 @@ const roles: { id: RoleKey; label: string }[] = [
   { id: "head_clerk", label: "Head Clerk" },
 ];
 
-const defaultAllocations: Record<RoleKey, { CL: number; EL: number; ML: number; CO: number }> = {
-  faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
-  lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
-  office_staff: { CL: 20, EL: 10, ML: 15, CO: 8 },
-  hod: { CL: 24, EL: 15, ML: 15, CO: 10 },
-  registrar: { CL: 20, EL: 12, ML: 15, CO: 10 },
-  principal: { CL: 30, EL: 20, ML: 15, CO: 12 },
-  head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
+// ✅ Default allocations with ALL 7 leave types
+const defaultAllocations: Record<RoleKey, { CL: number; EL: number; ML: number; CO: number; MAT: number; PAT: number; SPL: number }> = {
+  faculty: { CL: 24, EL: 12, ML: 15, CO: 10, MAT: 180, PAT: 15, SPL: 10 },
+  lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8, MAT: 180, PAT: 15, SPL: 10 },
+  office_staff: { CL: 20, EL: 10, ML: 15, CO: 8, MAT: 180, PAT: 15, SPL: 10 },
+  hod: { CL: 24, EL: 15, ML: 15, CO: 10, MAT: 180, PAT: 15, SPL: 10 },
+  registrar: { CL: 20, EL: 12, ML: 15, CO: 10, MAT: 180, PAT: 15, SPL: 10 },
+  principal: { CL: 30, EL: 20, ML: 15, CO: 12, MAT: 180, PAT: 15, SPL: 10 },
+  head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10, MAT: 180, PAT: 15, SPL: 10 },
 };
 
-// Get initial tab from URL hash - FIXED: No useEffect needed
+// Get initial tab from URL hash
 const getInitialHeadClerkTab = (): string => {
   if (typeof window !== 'undefined') {
     const hash = window.location.hash.replace('#', '');
@@ -310,7 +318,7 @@ function HeadClerkDashboardContent() {
     setPolicyForm({
       academicYear: policy.academicYear,
       applyRule: policy.applyRule,
-      leaveAllocations: policy.leaveAllocations as Record<RoleKey, { CL: number; EL: number; ML: number; CO: number }>,
+      leaveAllocations: policy.leaveAllocations as Record<RoleKey, { CL: number; EL: number; ML: number; CO: number; MAT: number; PAT: number; SPL: number }>,
     });
     setShowPolicyDialog(true);
   };
@@ -1249,12 +1257,12 @@ function HeadClerkDashboardContent() {
         </DialogContent>
       </Dialog>
 
-      {/* CREATE/EDIT POLICY DIALOG */}
+      {/* CREATE/EDIT POLICY DIALOG - UPDATED WITH ALL 7 LEAVE TYPES */}
       <Dialog open={showPolicyDialog} onOpenChange={(open) => {
         if (!open) resetPolicyForm();
         setShowPolicyDialog(open);
       }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingPolicy ? "Edit Leave Policy" : "Create Leave Policy"}</DialogTitle>
             <DialogDescription>
@@ -1319,6 +1327,9 @@ function HeadClerkDashboardContent() {
                     <TableHead className="text-center">EL</TableHead>
                     <TableHead className="text-center">ML</TableHead>
                     <TableHead className="text-center">CO (Max)</TableHead>
+                    <TableHead className="text-center">MAT</TableHead>
+                    <TableHead className="text-center">PAT</TableHead>
+                    <TableHead className="text-center">SPL</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1343,7 +1354,7 @@ function HeadClerkDashboardContent() {
                               },
                             });
                           }}
-                          className="w-20 text-center mx-auto"
+                          className="w-16 text-center mx-auto"
                         />
                       </TableCell>
                       <TableCell className="text-center">
@@ -1364,7 +1375,7 @@ function HeadClerkDashboardContent() {
                               },
                             });
                           }}
-                          className="w-20 text-center mx-auto"
+                          className="w-16 text-center mx-auto"
                         />
                       </TableCell>
                       <TableCell className="text-center">
@@ -1385,7 +1396,7 @@ function HeadClerkDashboardContent() {
                               },
                             });
                           }}
-                          className="w-20 text-center mx-auto"
+                          className="w-16 text-center mx-auto"
                         />
                       </TableCell>
                       <TableCell className="text-center">
@@ -1406,7 +1417,70 @@ function HeadClerkDashboardContent() {
                               },
                             });
                           }}
-                          className="w-20 text-center mx-auto"
+                          className="w-16 text-center mx-auto"
+                        />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={policyForm.leaveAllocations[role.id]?.MAT || 0}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value) || 0;
+                            setPolicyForm({
+                              ...policyForm,
+                              leaveAllocations: {
+                                ...policyForm.leaveAllocations,
+                                [role.id]: {
+                                  ...policyForm.leaveAllocations[role.id],
+                                  MAT: value,
+                                },
+                              },
+                            });
+                          }}
+                          className="w-16 text-center mx-auto"
+                        />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={policyForm.leaveAllocations[role.id]?.PAT || 0}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value) || 0;
+                            setPolicyForm({
+                              ...policyForm,
+                              leaveAllocations: {
+                                ...policyForm.leaveAllocations,
+                                [role.id]: {
+                                  ...policyForm.leaveAllocations[role.id],
+                                  PAT: value,
+                                },
+                              },
+                            });
+                          }}
+                          className="w-16 text-center mx-auto"
+                        />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={policyForm.leaveAllocations[role.id]?.SPL || 0}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value) || 0;
+                            setPolicyForm({
+                              ...policyForm,
+                              leaveAllocations: {
+                                ...policyForm.leaveAllocations,
+                                [role.id]: {
+                                  ...policyForm.leaveAllocations[role.id],
+                                  SPL: value,
+                                },
+                              },
+                            });
+                          }}
+                          className="w-16 text-center mx-auto"
                         />
                       </TableCell>
                     </TableRow>

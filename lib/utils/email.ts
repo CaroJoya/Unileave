@@ -1,4 +1,4 @@
-// lib/utils/email.ts - COMPLETE FINAL VERSION
+// lib/utils/email.ts - COMPLETE UPDATED VERSION
 import nodemailer from "nodemailer";
 
 // ========== SMTP CONFIGURATION ==========
@@ -28,7 +28,7 @@ if (SMTP_USER && SMTP_PASS) {
       },
     });
     
-    mailEnabled = true; // Assume enabled initially
+    mailEnabled = true;
     
     transporter.verify((error) => {
       if (error) {
@@ -47,7 +47,7 @@ if (SMTP_USER && SMTP_PASS) {
   console.warn("⚠️ SMTP not configured. Emails will be logged only.");
 }
 
-// ========== CORE SEND FUNCTION - SUPPORTS BOTH FORMATS ==========
+// ========== CORE SEND FUNCTION ==========
 export async function sendEmail(
   toOrOptions: string | { to: string; subject: string; html: string },
   subject?: string,
@@ -57,7 +57,6 @@ export async function sendEmail(
   let finalSubject: string;
   let finalHtml: string;
 
-  // Handle both calling conventions
   if (typeof toOrOptions === 'string') {
     to = toOrOptions;
     finalSubject = subject || '';
@@ -95,16 +94,23 @@ export async function sendEmail(
   }
 }
 
+// ========== HELPER ==========
+function getAppUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL || "https://unileave.vercel.app";
+}
+
 // ========== EMAIL TEMPLATES ==========
 
+// 1. LEAVE SUBMITTED - To Approver
 export function getLeaveSubmittedEmail(
   applicantName: string,
   leaveType: string,
   startDate: string,
   endDate: string,
-  reason: string,
-  dashboardUrl: string
+  reason: string
 ): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -121,7 +127,13 @@ export function getLeaveSubmittedEmail(
       <p><strong>Period:</strong> ${new Date(startDate).toLocaleDateString()} → ${new Date(endDate).toLocaleDateString()}</p>
       <p><strong>Reason:</strong> ${reason || "No reason provided"}</p>
       <div style="text-align:center;margin-top:25px;">
-        <a href="${dashboardUrl}" style="display:inline-block;background:#6366F1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">Review Request →</a>
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#6366F1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to review this request
+        </p>
       </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
@@ -133,15 +145,17 @@ export function getLeaveSubmittedEmail(
   `;
 }
 
+// 2. LEAVE APPROVED - To Applicant
 export function getLeaveApprovedEmail(
   applicantName: string,
   leaveType: string,
   startDate: string,
   endDate: string,
   totalDays: number,
-  approverName: string,
-  statusPageUrl: string
+  approverName: string
 ): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -161,7 +175,13 @@ export function getLeaveApprovedEmail(
         <tr><td style="padding:8px 0;"><strong>Approved By:</strong></td><td>${approverName}</td></tr>
       </table>
       <div style="text-align:center;margin-top:25px;">
-        <a href="${statusPageUrl}" style="display:inline-block;background:#10B981;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">View Status →</a>
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#10B981;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to view your updated status
+        </p>
       </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
@@ -173,6 +193,7 @@ export function getLeaveApprovedEmail(
   `;
 }
 
+// 3. LEAVE REJECTED - To Applicant
 export function getLeaveRejectedEmail(
   applicantName: string,
   leaveType: string,
@@ -181,6 +202,8 @@ export function getLeaveRejectedEmail(
   reason: string,
   approverName: string
 ): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -199,6 +222,15 @@ export function getLeaveRejectedEmail(
         <p style="margin:8px 0 0;">${reason || "No reason provided"}</p>
       </div>
       <p style="font-size:14px;color:#6b7280;">You can submit a new request if needed.</p>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#EF4444;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to view the details
+        </p>
+      </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
       UniLeave • University Leave Management System
@@ -209,11 +241,13 @@ export function getLeaveRejectedEmail(
   `;
 }
 
+// 4. REVISION REQUESTED - To Applicant
 export function getRevisionEmail(
   applicantName: string,
-  remarkText: string,
-  statusPageUrl: string
+  remarkText: string
 ): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -232,7 +266,13 @@ export function getRevisionEmail(
       </div>
       <p style="font-size:14px;color:#6b7280;">Please edit your request and resubmit for approval.</p>
       <div style="text-align:center;margin-top:25px;">
-        <a href="${statusPageUrl}" style="display:inline-block;background:#F59E0B;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">View & Edit →</a>
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#F59E0B;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to view and edit your request
+        </p>
       </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
@@ -244,10 +284,12 @@ export function getRevisionEmail(
   `;
 }
 
+// 5. RESUBMITTED - To Approver
 export function getResubmittedEmail(
-  applicantName: string,
-  statusPageUrl: string
+  applicantName: string
 ): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -263,7 +305,13 @@ export function getResubmittedEmail(
       <p><strong>${applicantName}</strong> has resubmitted their leave request after revision.</p>
       <p style="font-size:14px;color:#6b7280;">Please review the updated request.</p>
       <div style="text-align:center;margin-top:25px;">
-        <a href="${statusPageUrl}" style="display:inline-block;background:#6366F1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">Review Request →</a>
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#6366F1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to review the updated request
+        </p>
       </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
@@ -275,11 +323,14 @@ export function getResubmittedEmail(
   `;
 }
 
+// 6. COMP-OFF APPROVED - To Applicant
 export function getCompOffApprovedEmail(
   applicantName: string,
   creditedDays: number,
   expiryDate: string
 ): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -297,6 +348,15 @@ export function getCompOffApprovedEmail(
         <tr><td style="padding:8px 0;"><strong>Expiry Date:</strong></td><td>${new Date(expiryDate).toLocaleDateString()}</td></tr>
       </table>
       <p style="font-size:14px;color:#6b7280;">You can now apply for comp-off leave from your dashboard.</p>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#10B981;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to view your comp-off credits
+        </p>
+      </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
       UniLeave • University Leave Management System
@@ -307,7 +367,10 @@ export function getCompOffApprovedEmail(
   `;
 }
 
+// 7. COMP-OFF REJECTED - To Applicant
 export function getCompOffRejectedEmail(applicantName: string): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -321,6 +384,15 @@ export function getCompOffRejectedEmail(applicantName: string): string {
       <p>Dear ${applicantName},</p>
       <p>Your compensatory off request has been <strong style="color:#EF4444;">rejected</strong>.</p>
       <p style="font-size:14px;color:#6b7280;">Please contact your HOD for more information.</p>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#EF4444;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to view the details
+        </p>
+      </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
       UniLeave • University Leave Management System
@@ -331,11 +403,14 @@ export function getCompOffRejectedEmail(applicantName: string): string {
   `;
 }
 
+// 8. OVERWORK APPROVED - To Applicant
 export function getOverworkApprovedEmail(
   applicantName: string,
   hours: number,
   earnedLeaveDays: number
 ): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -356,6 +431,15 @@ export function getOverworkApprovedEmail(
       ` : `
         <p style="font-size:14px;color:#6b7280;">Keep tracking your overwork hours!</p>
       `}
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#F59E0B;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to view your overwork history
+        </p>
+      </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
       UniLeave • University Leave Management System
@@ -366,7 +450,10 @@ export function getOverworkApprovedEmail(
   `;
 }
 
+// 9. OVERWORK REJECTED - To Applicant
 export function getOverworkRejectedEmail(applicantName: string, hours: number): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -380,6 +467,15 @@ export function getOverworkRejectedEmail(applicantName: string, hours: number): 
       <p>Dear ${applicantName},</p>
       <p>Your overwork entry of <strong>${hours} hours</strong> has been <strong style="color:#EF4444;">rejected</strong>.</p>
       <p style="font-size:14px;color:#6b7280;">Please contact your HOD for more information.</p>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#EF4444;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to view the details
+        </p>
+      </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
       UniLeave • University Leave Management System
@@ -390,15 +486,17 @@ export function getOverworkRejectedEmail(applicantName: string, hours: number): 
   `;
 }
 
+// 10. VACATION APPROVED - To Applicant
 export function getVacationApprovedEmail(
   applicantName: string,
   startDate: string,
   endDate: string,
   totalDays: number,
   paidDays: number,
-  unpaidDays: number,
-  statusPageUrl: string
+  unpaidDays: number
 ): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -419,7 +517,13 @@ export function getVacationApprovedEmail(
         <tr><td style="padding:8px 0;"><strong>Unpaid Days:</strong></td><td>${unpaidDays} day(s)</td></tr>
       </table>
       <div style="text-align:center;margin-top:25px;">
-        <a href="${statusPageUrl}" style="display:inline-block;background:#10B981;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;">View Status →</a>
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#10B981;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to view your vacation status
+        </p>
       </div>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
@@ -431,7 +535,10 @@ export function getVacationApprovedEmail(
   `;
 }
 
+// 11. VACATION REJECTED - To Applicant
 export function getVacationRejectedEmail(applicantName: string, reason: string): string {
+  const loginUrl = `${getAppUrl()}/login`;
+  
   return `
 <!DOCTYPE html>
 <html>
@@ -449,6 +556,54 @@ export function getVacationRejectedEmail(applicantName: string, reason: string):
         <p style="margin:8px 0 0;">${reason || "No reason provided"}</p>
       </div>
       <p style="font-size:14px;color:#6b7280;">You can submit a new request if needed.</p>
+      <div style="text-align:center;margin-top:25px;">
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#EF4444;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in to view the details
+        </p>
+      </div>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+// 12. PASSWORD RESET - To User
+export function getPasswordResetEmailTemplate(resetLink: string): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#6366F1,#4f46e5);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">🔐 Reset Password</h1>
+      <p style="margin:8px 0 0;opacity:0.9;">UniLeave - University Leave Management</p>
+    </div>
+    <div style="padding:30px;">
+      <p>We received a request to reset your UniLeave account password.</p>
+      <p>Click the button below to create a new password:</p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${resetLink}" 
+           style="display:inline-block;background:#6366F1;color:white;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:600;">
+          Reset Password
+        </a>
+      </div>
+      <div style="background-color:#FEF3C7;border-left:4px solid #F59E0B;padding:12px 16px;margin:20px 0;border-radius:4px;">
+        <p style="color:#92400e;font-size:14px;margin:0;">
+          ⚠️ This link will expire in 1 hour. If you didn't request this, please ignore this email.
+        </p>
+      </div>
+      <p style="font-size:12px;color:#6b7280;">
+        For security, this link will expire in 1 hour.
+      </p>
     </div>
     <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
       UniLeave • University Leave Management System
