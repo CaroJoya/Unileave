@@ -78,8 +78,8 @@ export default function AuditLogsPage() {
   const [filters, setFilters] = useState({
     startDate: "",
     endDate: "",
-    action: "",
-    module: "",
+    action: "all",
+    module: "all",
     userId: "",
   });
 
@@ -100,8 +100,8 @@ export default function AuditLogsPage() {
       const params = new URLSearchParams();
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
-      if (filters.action) params.append("action", filters.action);
-      if (filters.module) params.append("module", filters.module);
+      if (filters.action && filters.action !== "all") params.append("action", filters.action);
+      if (filters.module && filters.module !== "all") params.append("module", filters.module);
       if (filters.userId) params.append("userId", filters.userId);
 
       const response = await fetch(`/api/audit-logs?${params.toString()}`);
@@ -169,8 +169,8 @@ export default function AuditLogsPage() {
     setFilters({
       startDate: "",
       endDate: "",
-      action: "",
-      module: "",
+      action: "all",
+      module: "all",
       userId: "",
     });
   };
@@ -227,44 +227,44 @@ export default function AuditLogsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Action</Label>
-              <Select value={filters.action} onValueChange={(v) => setFilters({ ...filters, action: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All actions" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All actions</SelectItem>
-                  <SelectItem value="USER_CREATED">User Created</SelectItem>
-                  <SelectItem value="USER_DEACTIVATED">User Deactivated</SelectItem>
-                  <SelectItem value="USER_RESTORED">User Restored</SelectItem>
-                  <SelectItem value="USER_DELETED">User Deleted</SelectItem>
-                  <SelectItem value="LEAVE_APPROVED">Leave Approved</SelectItem>
-                  <SelectItem value="LEAVE_REJECTED">Leave Rejected</SelectItem>
-                  <SelectItem value="PRINCIPAL_OVERRIDE">Principal Override</SelectItem>
-                  <SelectItem value="POLICY_CREATED">Policy Created</SelectItem>
-                  <SelectItem value="POLICY_UPDATED">Policy Updated</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Module</Label>
-              <Select value={filters.module} onValueChange={(v) => setFilters({ ...filters, module: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All modules" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All modules</SelectItem>
-                  <SelectItem value="users">Users</SelectItem>
-                  <SelectItem value="leaveRequests">Leave Requests</SelectItem>
-                  <SelectItem value="compOffCredits">Comp-Off</SelectItem>
-                  <SelectItem value="overworkEntries">Overwork</SelectItem>
-                  <SelectItem value="leavePolicies">Leave Policies</SelectItem>
-                  <SelectItem value="leaveTypes">Leave Types</SelectItem>
-                  <SelectItem value="overworkConfig">Overwork Config</SelectItem>
-                  <SelectItem value="vacationPeriods">Vacation Periods</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Label>Action</Label>
+            <Select value={filters.action} onValueChange={(v) => setFilters({ ...filters, action: v })}>
+              <SelectTrigger>
+                <SelectValue placeholder="All actions" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All actions</SelectItem>
+                <SelectItem value="USER_CREATED">User Created</SelectItem>
+                <SelectItem value="USER_DEACTIVATED">User Deactivated</SelectItem>
+                <SelectItem value="USER_RESTORED">User Restored</SelectItem>
+                <SelectItem value="USER_DELETED">User Deleted</SelectItem>
+                <SelectItem value="LEAVE_APPROVED">Leave Approved</SelectItem>
+                <SelectItem value="LEAVE_REJECTED">Leave Rejected</SelectItem>
+                <SelectItem value="PRINCIPAL_OVERRIDE">Principal Override</SelectItem>
+                <SelectItem value="POLICY_CREATED">Policy Created</SelectItem>
+                <SelectItem value="POLICY_UPDATED">Policy Updated</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Module</Label>
+            <Select value={filters.module} onValueChange={(v) => setFilters({ ...filters, module: v })}>
+              <SelectTrigger>
+                <SelectValue placeholder="All modules" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All modules</SelectItem>
+                <SelectItem value="users">Users</SelectItem>
+                <SelectItem value="leaveRequests">Leave Requests</SelectItem>
+                <SelectItem value="compOffCredits">Comp-Off</SelectItem>
+                <SelectItem value="overworkEntries">Overwork</SelectItem>
+                <SelectItem value="leavePolicies">Leave Policies</SelectItem>
+                <SelectItem value="leaveTypes">Leave Types</SelectItem>
+                <SelectItem value="overworkConfig">Overwork Config</SelectItem>
+                <SelectItem value="vacationPeriods">Vacation Periods</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
             <div className="space-y-2">
               <Label>User ID</Label>
               <Input

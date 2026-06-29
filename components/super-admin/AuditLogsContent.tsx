@@ -73,8 +73,8 @@ export function AuditLogsContent() {
   const [filters, setFilters] = useState({
     startDate: "",
     endDate: "",
-    action: "",
-    module: "",
+    action: "all",
+    module: "all",
     userId: "",
   });
 
@@ -87,8 +87,8 @@ export function AuditLogsContent() {
       const params = new URLSearchParams();
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
-      if (filters.action) params.append("action", filters.action);
-      if (filters.module) params.append("module", filters.module);
+      if (filters.action && filters.action !== "all") params.append("action", filters.action);
+      if (filters.module && filters.module !== "all") params.append("module", filters.module);
       if (filters.userId) params.append("userId", filters.userId);
 
       const response = await fetch(`/api/audit-logs?${params.toString()}`);
@@ -156,8 +156,8 @@ export function AuditLogsContent() {
     setFilters({
       startDate: "",
       endDate: "",
-      action: "",
-      module: "",
+      action: "all",
+      module: "all",
       userId: "",
     });
   };
@@ -225,7 +225,7 @@ export function AuditLogsContent() {
                 <SelectValue placeholder="All actions" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All actions</SelectItem>
+                <SelectItem value="all">All actions</SelectItem>
                 <SelectItem value="USER_CREATED">User Created</SelectItem>
                 <SelectItem value="USER_DEACTIVATED">User Deactivated</SelectItem>
                 <SelectItem value="USER_RESTORED">User Restored</SelectItem>
@@ -245,7 +245,7 @@ export function AuditLogsContent() {
                 <SelectValue placeholder="All modules" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All modules</SelectItem>
+                <SelectItem value="all">All modules</SelectItem>
                 <SelectItem value="users">Users</SelectItem>
                 <SelectItem value="leaveRequests">Leave Requests</SelectItem>
                 <SelectItem value="compOffCredits">Comp-Off</SelectItem>
