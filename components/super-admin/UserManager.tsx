@@ -60,7 +60,7 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("active"); // ✅ Default to active only
+  const [statusFilter, setStatusFilter] = useState("active");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<string | null>(null);
@@ -86,7 +86,6 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
         throw new Error(data.error || "Failed to fetch users");
       }
 
-      // ✅ Filter out deleted users unless explicitly requested
       let filteredUsers = data.users || [];
       if (statusFilter !== "deleted") {
         filteredUsers = filteredUsers.filter((user: User) => user.status !== "deleted");
@@ -227,7 +226,6 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
 
   const hasDepartments = departments && departments.length > 0;
 
-  // Count users by status
   const activeUsers = users.filter(u => u.status === "active").length;
   const deletedUsers = users.filter(u => u.status === "deleted").length;
 
@@ -300,7 +298,7 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
                   </SelectItem>
                 ))
               ) : (
-                <SelectItem value="no-departments" disabled>
+                <SelectItem value="none" disabled>
                   No departments available
                 </SelectItem>
               )}
