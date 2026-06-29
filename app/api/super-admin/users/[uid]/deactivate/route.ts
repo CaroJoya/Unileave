@@ -5,9 +5,10 @@ import { createAuditLog } from "@/lib/services/audit-service";
 
 export async function POST(
   request: Request,
-  { params }: { params: { uid: string } }
+  { params }: { params: Promise<{ uid: string }> }
 ) {
   try {
+    const { uid } = await params;
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get("session")?.value;
 
@@ -45,8 +46,7 @@ export async function POST(
     }
 
     // Get target user data
-    const targetUid = params.uid;
-    const targetSnapshot = await rtdb.ref(`users/${targetUid}`).once('value');
+    const targetSnapshot = await rtdb.ref(`users/${uid}`).once('value');
     const targetUserData = targetSnapshot.val();
 
     if (!targetUserData) {
@@ -65,7 +65,7 @@ export async function POST(
 
     // Deactivate the user
     const deletedAt = new Date().toISOString();
-    await rtdb.ref(`users/${targetUid}`).update({
+    await rtdb.ref(`users/${uid}`).update({
       status: "deleted",
       deletedAt: deletedAt,
       deletedBy: adminId,
@@ -79,7 +79,7 @@ export async function POST(
       userRole: "super_admin",
       action: "USER_DEACTIVATED",
       module: "users",
-      targetId: targetUid,
+      targetId: uid,
       targetUser: targetUserData.email,
       oldData: { status: targetUserData.status },
       newData: { status: "deleted", deletedAt },

@@ -1,4 +1,4 @@
-// app/api/audit-logs/route.ts - FIXED
+// app/api/audit-logs/route.ts - ALREADY EXISTS
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";

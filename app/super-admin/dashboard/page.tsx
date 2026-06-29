@@ -1,4 +1,3 @@
-// app/super-admin/dashboard/page.tsx
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -8,11 +7,12 @@ import { CollegeProfile } from "@/components/super-admin/CollegeProfile";
 import { DepartmentManager } from "@/components/super-admin/DepartmentManager";
 import { UserManager } from "@/components/super-admin/UserManager";
 import { SystemTools } from "@/components/super-admin/SystemTools";
+import { AuditLogsContent } from "@/components/super-admin/AuditLogsContent";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { RoleNavbar } from "@/components/layout/RoleNavbar";
-import { Building2, Users, Database } from "lucide-react";
+import { Building2, Users, Database, FileText } from "lucide-react";
 
 interface Department {
   id: string;
@@ -23,7 +23,7 @@ interface Department {
 const getInitialTab = (): string => {
   if (typeof window !== 'undefined') {
     const hash = window.location.hash.replace('#', '');
-    if (hash && ['college', 'departments', 'users', 'system'].includes(hash)) {
+    if (hash && ['college', 'departments', 'users', 'audit-logs', 'system'].includes(hash)) {
       return hash;
     }
   }
@@ -136,6 +136,12 @@ function SuperAdminDashboardContent() {
       tab: "users"
     },
     { 
+      label: "Audit Logs", 
+      href: "/super-admin/dashboard", 
+      icon: <FileText className="h-4 w-4" />,
+      tab: "audit-logs"
+    },
+    { 
       label: "System", 
       href: "/super-admin/dashboard", 
       icon: <Database className="h-4 w-4" />,
@@ -180,6 +186,7 @@ function SuperAdminDashboardContent() {
           <TabsTrigger value="college">College Profile</TabsTrigger>
           <TabsTrigger value="departments">Departments</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="audit-logs">Audit Logs</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
 
@@ -197,6 +204,10 @@ function SuperAdminDashboardContent() {
             onRefresh={refreshDepartments}
             isLoading={isLoadingDepartments}
           />
+        </TabsContent>
+
+        <TabsContent value="audit-logs">
+          <AuditLogsContent />
         </TabsContent>
 
         <TabsContent value="system">

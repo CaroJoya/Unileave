@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { CreateUserModal } from "./CreateUserModal";
+import { Badge } from "@/components/ui/badge";
 
 interface User {
   uid: string;
@@ -59,12 +60,12 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active"); // ✅ Default to active only
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<string | null>(null);
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState<string | null>(null);
 
-  // ✅ Debug: Log departments when they change
   useEffect(() => {
     console.log("UserManager - departments received:", departments?.length || 0);
   }, [departments]);
@@ -85,7 +86,13 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
         throw new Error(data.error || "Failed to fetch users");
       }
 
-      setUsers(data.users || []);
+      // ✅ Filter out deleted users unless explicitly requested
+      let filteredUsers = data.users || [];
+      if (statusFilter !== "deleted") {
+        filteredUsers = filteredUsers.filter((user: User) => user.status !== "deleted");
+      }
+      
+      setUsers(filteredUsers);
     } catch (error) {
       console.error("Failed to fetch users:", error);
       toast.error("Failed to fetch users");
@@ -100,6 +107,31 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
     };
     loadUsers();
   }, [fetchUsers]);
+
+  const handleDeactivateUser = async (uid: string) => {
+    try {
+      const response = await fetch(`/api/super-admin/users/${uid}/deactivate`, {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to deactivate user");
+      }
+
+      toast.success("User deactivated. They have 30 days to restore.");
+      await fetchUsers();
+      setShowDeactivateConfirm(null);
+      
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to deactivate user";
+      toast.error(errorMessage);
+    }
+  };
 
   const handleDeleteUser = async (uid: string) => {
     try {
@@ -151,30 +183,6 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
     }
   };
 
-  const handleSoftDelete = async (uid: string) => {
-    try {
-      const response = await fetch(`/api/super-admin/users/${uid}/deactivate`, {
-        method: "POST",
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to deactivate user");
-      }
-
-      toast.success("User deactivated. They have 30 days to restore.");
-      await fetchUsers();
-      
-      if (onRefresh) {
-        onRefresh();
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to deactivate user";
-      toast.error(errorMessage);
-    }
-  };
-
   const getRoleBadgeColor = (role: string) => {
     const colors: Record<string, string> = {
       super_admin: "bg-purple-100 text-purple-800",
@@ -203,10 +211,8 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
     return labels[role] || role;
   };
 
-  // Helper to convert empty string to "all" for Select value
   const getSelectValue = (value: string) => value === "" ? "all" : value;
   
-  // Helper to convert "all" back to empty string for API
   const handleRoleChange = (value: string) => {
     setRoleFilter(value === "all" ? "" : value);
   };
@@ -219,13 +225,21 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
     setStatusFilter(value === "all" ? "" : value);
   };
 
-  // ✅ Show loading state for departments
   const hasDepartments = departments && departments.length > 0;
+
+  // Count users by status
+  const activeUsers = users.filter(u => u.status === "active").length;
+  const deletedUsers = users.filter(u => u.status === "deleted").length;
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">User Management</h2>
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <div>
+          <h2 className="text-2xl font-bold">User Management</h2>
+          <p className="text-sm text-muted-foreground">
+            {activeUsers} active users {deletedUsers > 0 && `• ${deletedUsers} deactivated`}
+          </p>
+        </div>
         <Button 
           onClick={() => setShowCreateModal(true)}
           disabled={!hasDepartments && !isLoading}
@@ -234,7 +248,6 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
         </Button>
       </div>
 
-      {/* Show warning if no departments */}
       {!isLoading && !hasDepartments && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
           <p className="text-sm">
@@ -303,7 +316,7 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
             <SelectContent>
               <SelectItem value="all">All status</SelectItem>
               <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="deleted">Deleted</SelectItem>
+              <SelectItem value="deleted">Deactivated</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -354,15 +367,12 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        user.status === "active"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
+                    <Badge
+                      variant={user.status === "active" ? "default" : "destructive"}
+                      className={user.status === "active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}
                     >
-                      {user.status === "active" ? "Active" : "Deleted"}
-                    </span>
+                      {user.status === "active" ? "Active" : "Deactivated"}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
@@ -379,7 +389,8 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleSoftDelete(user.uid)}
+                            className="text-yellow-600 border-yellow-300 hover:bg-yellow-50"
+                            onClick={() => setShowDeactivateConfirm(user.uid)}
                           >
                             Deactivate
                           </Button>
@@ -414,6 +425,30 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
         }}
         departments={departments}
       />
+
+      {/* Confirm Deactivate Modal */}
+      <Dialog open={!!showDeactivateConfirm} onOpenChange={() => setShowDeactivateConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deactivation</DialogTitle>
+            <DialogDescription>
+              This will deactivate the user&apos;s account. They will have 30 days to restore it.
+              The user will not be able to log in until restored.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeactivateConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => showDeactivateConfirm && handleDeactivateUser(showDeactivateConfirm)}
+            >
+              Deactivate Account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm Delete Modal */}
       <Dialog open={!!showDeleteConfirm} onOpenChange={() => setShowDeleteConfirm(null)}>
