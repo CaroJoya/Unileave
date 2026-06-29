@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +78,9 @@ export function AuditLogsContent() {
     userId: "",
   });
 
+  // ✅ Use a ref to track initial fetch
+  const initialFetchDone = useRef(false);
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
@@ -104,8 +107,12 @@ export function AuditLogsContent() {
     }
   }, [filters]);
 
+  // ✅ Only fetch once on mount, then when filters change
   useEffect(() => {
-    fetchLogs();
+    if (!initialFetchDone.current) {
+      initialFetchDone.current = true;
+      fetchLogs();
+    }
   }, [fetchLogs]);
 
   const handleExport = () => {
@@ -155,7 +162,12 @@ export function AuditLogsContent() {
     });
   };
 
-  if (loading) {
+  // ✅ Handle manual refresh
+  const handleRefresh = () => {
+    fetchLogs();
+  };
+
+  if (loading && logs.length === 0) {
     return (
       <Card>
         <CardContent className="pt-6">
@@ -181,9 +193,9 @@ export function AuditLogsContent() {
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
-            <Button variant="outline" onClick={fetchLogs}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
+            <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Loading...' : 'Refresh'}
             </Button>
           </div>
         </div>
@@ -260,16 +272,16 @@ export function AuditLogsContent() {
           <Button variant="ghost" size="sm" onClick={resetFilters}>
             Clear filters
           </Button>
-          <Button size="sm" onClick={fetchLogs}>
+          <Button size="sm" onClick={fetchLogs} disabled={loading}>
             <Search className="h-4 w-4 mr-2" />
-            Apply Filters
+            {loading ? 'Applying...' : 'Apply Filters'}
           </Button>
         </div>
 
         {/* Audit Logs Table */}
         {logs.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
-            No audit logs found.
+            {loading ? 'Loading audit logs...' : 'No audit logs found.'}
           </div>
         ) : (
           <div className="border rounded-lg overflow-x-auto">
