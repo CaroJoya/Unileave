@@ -27,10 +27,6 @@ interface User {
   collegeId?: string;
 }
 
-interface LeaveTypeConfig {
-  deductsBalance: boolean;
-}
-
 interface LeaveBalanceDoc {
   balances: {
     [key: string]: {
@@ -57,20 +53,6 @@ async function getRegistrarId(collegeId: string): Promise<string | null> {
   for (const [uid, user] of Object.entries(users)) {
     if (user.roles?.includes("registrar") && user.collegeId === collegeId) {
       return uid;
-    }
-  }
-  return null;
-}
-
-async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
-  const rtdb = getRTDB();
-  if (!rtdb) return null;
-  const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
-  const types = typesSnapshot.val() as Record<string, { leaveCode: string; deductsBalance: boolean; isActive: boolean }> | null || {};
-  
-  for (const [, type] of Object.entries(types)) {
-    if (type.leaveCode === leaveCode && type.isActive) {
-      return { deductsBalance: type.deductsBalance !== false };
     }
   }
   return null;
@@ -147,24 +129,24 @@ export async function POST(
     const applicantData = applicantSnapshot.val() as { collegeId: string } | null;
     const collegeId = applicantData?.collegeId || principalData.collegeId || "";
 
-    const leaveTypeConfig = await getLeaveTypeConfig(leaveRequest.leaveType);
-    if (leaveTypeConfig?.deductsBalance) {
-      const academicYear = getCurrentAcademicYear();
-      const balanceKey = `${leaveRequest.applicantId}_${academicYear}`;
-      const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
-      const balanceSnapshot = await balanceRef.once("value");
-      const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+    // ✅ FIX: Always restore balance - removed dependency on leaveTypeConfig
+    const academicYear = getCurrentAcademicYear();
+    const balanceKey = `${leaveRequest.applicantId}_${academicYear}`;
+    const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
+    const balanceSnapshot = await balanceRef.once("value");
+    const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+    
+    if (balanceDoc && balanceDoc.balances[leaveRequest.leaveType]) {
+      const currentPending = balanceDoc.balances[leaveRequest.leaveType].pending || 0;
+      const currentAvailable = balanceDoc.balances[leaveRequest.leaveType].available || 0;
       
-      if (balanceDoc && balanceDoc.balances[leaveRequest.leaveType]) {
-        await balanceRef.update({
-          [`balances.${leaveRequest.leaveType}.pending`]: Math.max(0, 
-            (balanceDoc.balances[leaveRequest.leaveType].pending || 0) - leaveRequest.totalDays
-          ),
-          [`balances.${leaveRequest.leaveType}.available`]: 
-            (balanceDoc.balances[leaveRequest.leaveType].available || 0) + leaveRequest.totalDays,
-          updatedAt: new Date().toISOString(),
-        });
-      }
+      await balanceRef.update({
+        [`balances.${leaveRequest.leaveType}.pending`]: Math.max(0, currentPending - leaveRequest.totalDays),
+        [`balances.${leaveRequest.leaveType}.available`]: currentAvailable + leaveRequest.totalDays,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      console.log(`✅ Balance restored for user ${leaveRequest.applicantId}, leave type ${leaveRequest.leaveType}`);
     }
 
     await rtdb.ref(`leaveRequests/${id}`).update({
@@ -172,7 +154,7 @@ export async function POST(
       overriddenBy: principalId,
       overriddenAt: new Date().toISOString(),
       overrideReason: reason,
-      balanceRestored: leaveTypeConfig?.deductsBalance === true,
+      balanceRestored: true,
       updatedAt: new Date().toISOString(),
     });
 

@@ -1,4 +1,4 @@
-// app/api/principal/leave/[id]/reject/route.ts
+// app/api/principal/leave/[id]/reject/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -25,10 +25,6 @@ interface User {
   departmentId: string;
 }
 
-interface LeaveTypeConfig {
-  deductsBalance: boolean;
-}
-
 interface LeaveBalanceDoc {
   balances: {
     [key: string]: {
@@ -36,21 +32,6 @@ interface LeaveBalanceDoc {
       available: number;
     };
   };
-}
-
-async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
-  const rtdb = getRTDB();
-  if (!rtdb) return null;
-  
-  const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
-  const types = typesSnapshot.val() as Record<string, { leaveCode: string; deductsBalance: boolean; isActive: boolean }> | null || {};
-  
-  for (const [, type] of Object.entries(types)) {
-    if (type.leaveCode === leaveCode && type.isActive) {
-      return { deductsBalance: type.deductsBalance !== false };
-    }
-  }
-  return null;
 }
 
 export async function POST(
@@ -105,29 +86,29 @@ export async function POST(
       return NextResponse.json({ error: "Request is not pending principal approval" }, { status: 400 });
     }
 
-    const leaveTypeConfig = await getLeaveTypeConfig(leaveRequest.leaveType);
-    if (leaveTypeConfig?.deductsBalance) {
-      const academicYear = getCurrentAcademicYear();
-      const balanceKey = `${leaveRequest.applicantId}_${academicYear}`;
-      const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
-      const balanceSnapshot = await balanceRef.once("value");
-      const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+    // ✅ FIX: Always restore balance
+    const academicYear = getCurrentAcademicYear();
+    const balanceKey = `${leaveRequest.applicantId}_${academicYear}`;
+    const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
+    const balanceSnapshot = await balanceRef.once("value");
+    const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+    
+    if (balanceDoc && balanceDoc.balances[leaveRequest.leaveType]) {
+      const currentPending = balanceDoc.balances[leaveRequest.leaveType].pending || 0;
+      const currentAvailable = balanceDoc.balances[leaveRequest.leaveType].available || 0;
       
-      if (balanceDoc && balanceDoc.balances[leaveRequest.leaveType]) {
-        await balanceRef.update({
-          [`balances.${leaveRequest.leaveType}.pending`]: Math.max(0, 
-            (balanceDoc.balances[leaveRequest.leaveType].pending || 0) - leaveRequest.totalDays
-          ),
-          [`balances.${leaveRequest.leaveType}.available`]: 
-            (balanceDoc.balances[leaveRequest.leaveType].available || 0) + leaveRequest.totalDays,
-          updatedAt: new Date().toISOString(),
-        });
-      }
+      await balanceRef.update({
+        [`balances.${leaveRequest.leaveType}.pending`]: Math.max(0, currentPending - leaveRequest.totalDays),
+        [`balances.${leaveRequest.leaveType}.available`]: currentAvailable + leaveRequest.totalDays,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      console.log(`✅ Balance restored for user ${leaveRequest.applicantId}, leave type ${leaveRequest.leaveType}`);
     }
 
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Rejected_Principal",
-      balanceRestored: leaveTypeConfig?.deductsBalance === true,
+      balanceRestored: true,
       updatedAt: new Date().toISOString(),
     });
 
@@ -145,24 +126,6 @@ export async function POST(
       actionAt: new Date().toISOString(),
     });
 
-    const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    await rtdb.ref(`auditLogs/${auditLogId}`).set({
-      id: auditLogId,
-      userId: principalId,
-      userName: principalData.name,
-      userRole: "principal",
-      action: "LEAVE_REJECTED",
-      module: "leaveRequests",
-      targetId: id,
-      targetUser: leaveRequest.applicantId,
-      details: {
-        leaveType: leaveRequest.leaveType,
-        totalDays: leaveRequest.totalDays,
-        reason,
-      },
-      createdAt: new Date().toISOString(),
-    });
-
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -174,7 +137,7 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // ✅ SEND REJECTION EMAIL TO APPLICANT (FIXED)
+    // ✅ SEND EMAIL TO APPLICANT
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as User | null;
 
@@ -188,15 +151,17 @@ export async function POST(
         principalData.name
       );
       
-      // ✅ FIXED: sendEmail expects 3 args: to, subject, html
-      await sendEmail(
+      sendEmail(
         applicantData.email,
         `Leave Request Rejected - ${leaveRequest.leaveType}`,
         emailHtml
       ).catch(err => console.error("❌ Failed to send rejection email:", err));
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true,
+      balanceRestored: true 
+    });
   } catch (error) {
     console.error("Error rejecting leave request:", error);
     return NextResponse.json({ error: "Failed to reject leave request" }, { status: 500 });

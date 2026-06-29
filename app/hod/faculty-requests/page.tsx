@@ -1,4 +1,4 @@
-// app/hod/faculty-requests/page.tsx
+// app/hod/faculty-requests/page.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Eye, Check, X, MessageSquare, RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 // ✅ Import from shared utility
 import { getLeaveTypeLabel } from "@/lib/constants/leave-types";
@@ -204,6 +205,7 @@ function RequestDetailsDrawer({
 export default function FacultyRequestsPage() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null);
@@ -275,6 +277,9 @@ export default function FacultyRequestsPage() {
       setShowDetails(false);
       setSelectedRequest(null);
       
+      // ✅ Invalidate balance query to refresh the user's balance
+      queryClient.invalidateQueries({ queryKey: ['leave-balance'] });
+      
       await fetchRequests();
       toast.success("📋 Request list updated");
     } catch (error) {
@@ -311,6 +316,9 @@ export default function FacultyRequestsPage() {
       setShowDetails(false);
       setSelectedRequest(null);
       
+      // ✅ Invalidate balance query to refresh the user's balance
+      queryClient.invalidateQueries({ queryKey: ['leave-balance'] });
+      
       await fetchRequests();
       toast.success("📋 Request list updated");
     } catch (error) {
@@ -346,6 +354,9 @@ export default function FacultyRequestsPage() {
       setRemarksModal({ open: false, requestId: null, remarks: "" });
       setShowDetails(false);
       setSelectedRequest(null);
+      
+      // ✅ Invalidate balance query (remarks don't affect balance, but keep consistency)
+      queryClient.invalidateQueries({ queryKey: ['leave-balance'] });
       
       await fetchRequests();
       toast.success("📋 Request list updated");

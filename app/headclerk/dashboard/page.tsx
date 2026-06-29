@@ -1,4 +1,4 @@
-// app/headclerk/dashboard/page.tsx - COMPLETE FIXED FILE WITH ALL LEAVE TYPES
+// app/headclerk/dashboard/page.tsx - COMPLETE FIXED FILE (ESLint warnings fixed)
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -96,10 +96,6 @@ interface OverworkConfig {
 
 type RoleKey = "faculty" | "lab_assistant" | "office_staff" | "hod" | "registrar" | "principal" | "head_clerk";
 
-// ✅ ALL 7 LEAVE TYPES - Complete list
-const LEAVE_TYPES = ["CL", "EL", "ML", "CO", "MAT", "PAT", "SPL"] as const;
-type LeaveTypeCode = typeof LEAVE_TYPES[number];
-
 const roles: { id: RoleKey; label: string }[] = [
   { id: "faculty", label: "Faculty" },
   { id: "lab_assistant", label: "Lab Assistant" },
@@ -144,6 +140,21 @@ function HeadClerkDashboardContent() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [formData, setFormData] = useState({
     leaveCode: "",
+    leaveName: "",
+    description: "",
+    allowHalfDay: false,
+    requiresAttachment: false,
+    deductsBalance: true,
+    hasExpiry: false,
+    expiryInDays: "",
+    maxConsecutiveDays: "",
+  });
+
+  // ✅ NEW: Edit Leave Type State
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingLeaveType, setEditingLeaveType] = useState<LeaveType | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editFormData, setEditFormData] = useState({
     leaveName: "",
     description: "",
     allowHalfDay: false,
@@ -249,6 +260,68 @@ function HeadClerkDashboardContent() {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create leave type";
       toast.error(errorMessage);
+    }
+  };
+
+  // ✅ NEW: Open Edit Dialog
+  const openEditDialog = (type: LeaveType) => {
+    setEditingLeaveType(type);
+    setEditFormData({
+      leaveName: type.leaveName,
+      description: type.description || "",
+      allowHalfDay: type.allowHalfDay,
+      requiresAttachment: type.requiresAttachment,
+      deductsBalance: type.deductsBalance,
+      hasExpiry: type.hasExpiry,
+      expiryInDays: type.expiryInDays?.toString() || "",
+      maxConsecutiveDays: type.maxConsecutiveDays?.toString() || "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  // ✅ NEW: Handle Edit Submit
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLeaveType) return;
+
+    if (!editFormData.leaveName.trim()) {
+      toast.error("Leave name is required");
+      return;
+    }
+
+    setEditLoading(true);
+    try {
+      const response = await fetch(`/api/headclerk/leave-types/${editingLeaveType.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leaveName: editFormData.leaveName.trim(),
+          description: editFormData.description.trim(),
+          allowHalfDay: editFormData.allowHalfDay,
+          requiresAttachment: editFormData.requiresAttachment,
+          deductsBalance: editFormData.deductsBalance,
+          hasExpiry: editFormData.hasExpiry,
+          expiryInDays: editFormData.expiryInDays ? parseInt(editFormData.expiryInDays) : null,
+          maxConsecutiveDays: editFormData.maxConsecutiveDays ? parseInt(editFormData.maxConsecutiveDays) : null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update leave type");
+      }
+
+      toast.success("Leave type updated successfully");
+      setEditDialogOpen(false);
+      setEditingLeaveType(null);
+      await fetchLeaveTypes();
+      toast.success("📋 Leave types list updated");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to update leave type";
+      toast.error(errorMessage);
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -723,9 +796,23 @@ function HeadClerkDashboardContent() {
                             </span>
                           </TableCell>
                           <TableCell>
-                            <Button size="sm" variant="outline" onClick={() => handleToggleActive(type)}>
-                              {type.isActive ? "Deactivate" : "Activate"}
-                            </Button>
+                            <div className="flex gap-2">
+                              {/* ✅ NEW: Edit Button */}
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => openEditDialog(type)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => handleToggleActive(type)}
+                              >
+                                {type.isActive ? "Deactivate" : "Activate"}
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1257,7 +1344,113 @@ function HeadClerkDashboardContent() {
         </DialogContent>
       </Dialog>
 
-      {/* CREATE/EDIT POLICY DIALOG - UPDATED WITH ALL 7 LEAVE TYPES */}
+      {/* ✅ NEW: EDIT LEAVE TYPE DIALOG */}
+      <Dialog open={editDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setEditDialogOpen(false);
+          setEditingLeaveType(null);
+        }
+      }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Leave Type</DialogTitle>
+            <DialogDescription>
+              Update the details of {editingLeaveType?.leaveCode} ({editingLeaveType?.leaveName})
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="editLeaveName">Leave Name *</Label>
+              <Input
+                id="editLeaveName"
+                value={editFormData.leaveName}
+                onChange={(e) => setEditFormData({ ...editFormData, leaveName: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="editDescription">Description</Label>
+              <Input
+                id="editDescription"
+                value={editFormData.description}
+                onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                placeholder="Optional description"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="editAllowHalfDay"
+                  checked={editFormData.allowHalfDay}
+                  onCheckedChange={(checked) => setEditFormData({ ...editFormData, allowHalfDay: checked === true })}
+                />
+                <Label htmlFor="editAllowHalfDay">Allow Half Day</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="editRequiresAttachment"
+                  checked={editFormData.requiresAttachment}
+                  onCheckedChange={(checked) => setEditFormData({ ...editFormData, requiresAttachment: checked === true })}
+                />
+                <Label htmlFor="editRequiresAttachment">Requires Attachment</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="editDeductsBalance"
+                  checked={editFormData.deductsBalance}
+                  onCheckedChange={(checked) => setEditFormData({ ...editFormData, deductsBalance: checked === true })}
+                />
+                <Label htmlFor="editDeductsBalance">Deducts from Balance</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="editHasExpiry"
+                  checked={editFormData.hasExpiry}
+                  onCheckedChange={(checked) => setEditFormData({ ...editFormData, hasExpiry: checked === true })}
+                />
+                <Label htmlFor="editHasExpiry">Has Expiry</Label>
+              </div>
+            </div>
+
+            {editFormData.hasExpiry && (
+              <div className="space-y-2">
+                <Label htmlFor="editExpiryInDays">Expiry (days)</Label>
+                <Input
+                  id="editExpiryInDays"
+                  type="number"
+                  placeholder="e.g., 180"
+                  value={editFormData.expiryInDays}
+                  onChange={(e) => setEditFormData({ ...editFormData, expiryInDays: e.target.value })}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="editMaxConsecutiveDays">Max Consecutive Days</Label>
+              <Input
+                id="editMaxConsecutiveDays"
+                type="number"
+                placeholder="Leave blank for no limit"
+                value={editFormData.maxConsecutiveDays}
+                onChange={(e) => setEditFormData({ ...editFormData, maxConsecutiveDays: e.target.value })}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={editLoading}>
+                {editLoading ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* CREATE/EDIT POLICY DIALOG */}
       <Dialog open={showPolicyDialog} onOpenChange={(open) => {
         if (!open) resetPolicyForm();
         setShowPolicyDialog(open);

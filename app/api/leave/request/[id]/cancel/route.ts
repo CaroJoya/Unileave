@@ -1,19 +1,9 @@
-// app/api/leave/request/[id]/cancel/route.ts - COMPLETE FIXED FILE
+// app/api/leave/request/[id]/cancel/route.ts - COMPLETE FIXED FILE (ESLint warnings fixed)
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import type { LeaveRequest, LeaveStatus } from "@/types/leave";
-
-interface LeaveTypeConfig {
-  deductsBalance: boolean;
-}
-
-interface LeaveTypeData {
-  leaveCode: string;
-  isActive: boolean;
-  deductsBalance: boolean;
-}
 
 interface LeaveBalanceDoc {
   balances: {
@@ -30,23 +20,6 @@ const CANCELLABLE_STATUSES: LeaveStatus[] = [
   "Pending_Principal",
   "Pending_Revision",
 ];
-
-async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeConfig | null> {
-  const rtdb = getRTDB();
-  if (!rtdb) return null;
-  
-  const typesSnapshot = await rtdb.ref("leaveTypes").once("value");
-  const types = typesSnapshot.val() as Record<string, LeaveTypeData> | null || {};
-
-  for (const [, type] of Object.entries(types)) {
-    if (type.leaveCode === leaveCode && type.isActive) {
-      return {
-        deductsBalance: type.deductsBalance !== false,
-      };
-    }
-  }
-  return null;
-}
 
 export async function PUT(
   request: Request,
@@ -96,41 +69,37 @@ export async function PUT(
       );
     }
 
-    // ✅ FIX: Wrap balance restoration in try-catch to prevent 500
+    // ✅ FIX: Always attempt to restore balance with improved error handling
     let balanceRestored = false;
-    
+
     if (!leaveRequest.balanceRestored) {
       try {
-        const leaveTypeConfig = await getLeaveTypeConfig(leaveRequest.leaveType);
-        if (leaveTypeConfig?.deductsBalance) {
-          const academicYear = getCurrentAcademicYear();
-          const balanceKey = `${userId}_${academicYear}`;
-          const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
-          const balanceSnapshot = await balanceRef.once("value");
-          const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+        // Always restore balance regardless of leave type config
+        const academicYear = getCurrentAcademicYear();
+        const balanceKey = `${userId}_${academicYear}`;
+        const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
+        const balanceSnapshot = await balanceRef.once("value");
+        const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
-          if (balanceDoc && balanceDoc.balances) {
-            const currentBalance = balanceDoc.balances[leaveRequest.leaveType];
-            if (currentBalance) {
-              // ✅ Restore pending and available balance
-              const newPending = Math.max(0, (currentBalance.pending || 0) - leaveRequest.totalDays);
-              const newAvailable = (currentBalance.available || 0) + leaveRequest.totalDays;
-              
-              await balanceRef.update({
-                [`balances.${leaveRequest.leaveType}.pending`]: newPending,
-                [`balances.${leaveRequest.leaveType}.available`]: newAvailable,
-                updatedAt: new Date().toISOString(),
-              });
-              
-              balanceRestored = true;
-              console.log(`✅ Balance restored for user ${userId}, leave type ${leaveRequest.leaveType}`);
-            }
+        if (balanceDoc && balanceDoc.balances) {
+          const currentBalance = balanceDoc.balances[leaveRequest.leaveType];
+          if (currentBalance) {
+            const newPending = Math.max(0, (currentBalance.pending || 0) - leaveRequest.totalDays);
+            const newAvailable = (currentBalance.available || 0) + leaveRequest.totalDays;
+            
+            await balanceRef.update({
+              [`balances.${leaveRequest.leaveType}.pending`]: newPending,
+              [`balances.${leaveRequest.leaveType}.available`]: newAvailable,
+              updatedAt: new Date().toISOString(),
+            });
+            
+            balanceRestored = true;
+            console.log(`✅ Balance restored for user ${userId}, leave type ${leaveRequest.leaveType}`);
           }
         }
       } catch (balanceError) {
-        // ⚠️ Log error but continue with cancellation
         console.error("❌ Error restoring balance during cancel:", balanceError);
-        // Don't return an error - the cancellation should still proceed
+        // Continue with cancellation even if balance restore fails
       }
     } else {
       balanceRestored = true;
