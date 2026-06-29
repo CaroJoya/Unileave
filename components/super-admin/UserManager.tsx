@@ -293,11 +293,13 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
               <SelectItem value="all">All departments</SelectItem>
               {hasDepartments ? (
                 departments.map((dept) => (
+                  // ✅ FIX: Ensure each item has a non-empty value
                   <SelectItem key={dept.id} value={dept.id}>
                     {dept.name}
                   </SelectItem>
                 ))
               ) : (
+                // ✅ FIX: Use non-empty string value
                 <SelectItem value="none" disabled>
                   No departments available
                 </SelectItem>

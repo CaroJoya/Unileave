@@ -58,7 +58,6 @@ export function CreateUserModal({
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
 
-  // ✅ Debug: Log departments when modal opens or they change
   useEffect(() => {
     if (open) {
       console.log("CreateUserModal - departments available:", departments?.length || 0);
@@ -66,7 +65,6 @@ export function CreateUserModal({
     }
   }, [open, departments]);
 
-  // Reset form when modal closes
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       setFormData(INITIAL_FORM_STATE);
@@ -140,7 +138,6 @@ export function CreateUserModal({
     }
   };
 
-  // ✅ Check if departments are available
   const hasDepartments = departments && departments.length > 0;
 
   return (
@@ -183,8 +180,13 @@ export function CreateUserModal({
           <div className="space-y-2">
             <Label htmlFor="departmentId">Department *</Label>
             <Select
-              value={formData.departmentId}
-              onValueChange={(value) => setFormData({ ...formData, departmentId: value })}
+              value={formData.departmentId || "none"}
+              onValueChange={(value) => {
+                // ✅ Only set if not "none"
+                if (value !== "none") {
+                  setFormData({ ...formData, departmentId: value });
+                }
+              }}
             >
               <SelectTrigger className={!hasDepartments ? "border-amber-500 bg-amber-50" : ""}>
                 <SelectValue placeholder={hasDepartments ? "Select department" : "⚠️ No departments available"} />
@@ -197,7 +199,8 @@ export function CreateUserModal({
                     </SelectItem>
                   ))
                 ) : (
-                  <SelectItem value="no-departments" disabled>
+                  // ✅ FIX: Use non-empty string value
+                  <SelectItem value="none" disabled>
                     ⚠️ No departments found. Please create one first.
                   </SelectItem>
                 )}
