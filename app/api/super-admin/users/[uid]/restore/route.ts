@@ -2,11 +2,13 @@
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { createAuditLog } from "@/lib/services/audit-service";
 
 interface User {
   status: string;
   roles?: string[];
   name?: string;
+  email?: string;
   [key: string]: unknown;
 }
 
@@ -35,8 +37,9 @@ export async function POST(
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
+    const adminId = decodedToken.uid;
     
-    const adminSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
+    const adminSnapshot = await rtdb.ref(`users/${adminId}`).once("value");
     const adminData = adminSnapshot.val() as User | null;
     
     if (!adminData?.roles?.includes("super_admin")) {
@@ -55,13 +58,27 @@ export async function POST(
       return NextResponse.json({ error: "User is not deleted" }, { status: 400 });
     }
 
+    const restoredAt = new Date().toISOString();
     await userRef.update({
       status: "active",
       deletedAt: null,
       deletedBy: null,
-      restoredAt: new Date().toISOString(),
-      restoredBy: decodedToken.uid,
+      restoredAt,
+      restoredBy: adminId,
       updatedAt: new Date().toISOString(),
+    });
+
+    await createAuditLog({
+      userId: adminId,
+      userName: adminData.name || "Unknown Admin",
+      userRole: "super_admin",
+      action: "USER_RESTORED",
+      module: "users",
+      targetId: uid,
+      targetUser: userData.email,
+      oldData: { status: userData.status, deletedAt: userData.deletedAt },
+      newData: { status: "active", restoredAt },
+      details: { restoredBy: adminId },
     });
 
     return NextResponse.json({ success: true });

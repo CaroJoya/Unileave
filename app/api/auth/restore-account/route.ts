@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { getAuth, getRTDB } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { createAuditLog } from "@/lib/services/audit-service";
 
 export async function POST() {
   try {
@@ -57,12 +58,26 @@ export async function POST() {
       );
     }
 
+    const restoredAt = new Date().toISOString();
     await rtdb.ref(`users/${userId}`).update({
       status: "active",
       deletedAt: null,
-      restoredAt: new Date().toISOString(),
+      restoredAt,
       restoredBy: userId,
       updatedAt: new Date().toISOString(),
+    });
+
+    await createAuditLog({
+      userId,
+      userName: userData.name || "Unknown User",
+      userRole: userData.roles?.[0] || "user",
+      action: "USER_RESTORED",
+      module: "users",
+      targetId: userId,
+      targetUser: userData.email,
+      oldData: { status: userData.status, deletedAt: userData.deletedAt },
+      newData: { status: "active", restoredAt },
+      details: { selfRestoration: true },
     });
 
     return NextResponse.json({

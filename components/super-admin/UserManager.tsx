@@ -153,10 +153,8 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
 
   const handleSoftDelete = async (uid: string) => {
     try {
-      const response = await fetch("/api/auth/request-delete", {
+      const response = await fetch(`/api/super-admin/users/${uid}/deactivate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid }),
       });
 
       const data = await response.json();
