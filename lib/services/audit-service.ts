@@ -1,4 +1,4 @@
-// lib/services/audit-service.ts - FIXED
+// lib/services/audit-service.ts - COMPLETE FILE
 import { getRTDB } from "@/lib/firebase/admin";
 
 export type AuditAction = 
@@ -7,6 +7,8 @@ export type AuditAction =
   | "USER_DEACTIVATED"
   | "USER_RESTORED"
   | "USER_DELETED"
+  | "ROLE_UNASSIGNED"  // ✅ NEW
+  | "AUDIT_LOGS_CLEARED"  // ✅ NEW
   | "LEAVE_APPROVED"
   | "LEAVE_REJECTED"
   | "LEAVE_REMARKS_SENT"
@@ -32,7 +34,8 @@ export type AuditAction =
   | "PRINCIPAL_ASSIGNED"
   | "DEPARTMENT_CREATED"
   | "DEPARTMENT_UPDATED"
-  | "DEPARTMENT_DELETED";
+  | "DEPARTMENT_DELETED"
+  | "LEAVE_TYPES_SEEDED";
 
 export type AuditModule =
   | "users"
@@ -44,7 +47,8 @@ export type AuditModule =
   | "overworkConfig"
   | "vacationPeriods"
   | "departments"
-  | "colleges";
+  | "colleges"
+  | "auditLogs";  // ✅ NEW
 
 export interface AuditLog {
   id: string;

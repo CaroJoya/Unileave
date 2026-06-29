@@ -1,7 +1,8 @@
-// app/api/super-admin/users/[uid]/permanent-delete/route.ts - FIXED
+// app/api/super-admin/users/[uid]/permanent-delete/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { createAuditLog } from "@/lib/services/audit-service";
 
 export async function DELETE(
   request: Request,
@@ -58,20 +59,126 @@ export async function DELETE(
       }
     }
 
+    // ============ ROLE UNASSIGNMENT LOGIC ============
+    const unassignmentLogs: string[] = [];
+    const userRoles: string[] = userData.roles || [];
+
+    // 1. Check if user is HOD - unassign from department
+    if (userRoles.includes("hod") && userData.departmentId) {
+      console.log(`🔍 User ${uid} is HOD of department ${userData.departmentId}, unassigning...`);
+      
+      const deptSnapshot = await rtdb.ref(`departments/${userData.departmentId}`).once("value");
+      const dept = deptSnapshot.val();
+      
+      if (dept && dept.hodId === uid) {
+        await rtdb.ref(`departments/${userData.departmentId}`).update({
+          hodId: null,
+          hodName: null,
+          updatedAt: new Date().toISOString(),
+        });
+        
+        unassignmentLogs.push(`Unassigned HOD from department "${dept.name || userData.departmentId}"`);
+        console.log(`✅ Unassigned HOD from department ${userData.departmentId}`);
+      }
+    }
+
+    // 2. Check if user is Registrar - unassign from Office department
+    if (userRoles.includes("registrar") && userData.departmentId) {
+      console.log(`🔍 User ${uid} is Registrar of department ${userData.departmentId}, unassigning...`);
+      
+      const deptSnapshot = await rtdb.ref(`departments/${userData.departmentId}`).once("value");
+      const dept = deptSnapshot.val();
+      
+      if (dept && dept.hodId === uid) {
+        await rtdb.ref(`departments/${userData.departmentId}`).update({
+          hodId: null,
+          hodName: null,
+          updatedAt: new Date().toISOString(),
+        });
+        
+        unassignmentLogs.push(`Unassigned Registrar from department "${dept.name || userData.departmentId}"`);
+        console.log(`✅ Unassigned Registrar from department ${userData.departmentId}`);
+      }
+    }
+
+    // 3. Check if user is Principal - unassign from college
+    if (userRoles.includes("principal") && userData.collegeId) {
+      console.log(`🔍 User ${uid} is Principal of college ${userData.collegeId}, unassigning...`);
+      
+      const collegeSnapshot = await rtdb.ref(`colleges/${userData.collegeId}`).once("value");
+      const college = collegeSnapshot.val();
+      
+      if (college && college.principalId === uid) {
+        await rtdb.ref(`colleges/${userData.collegeId}`).update({
+          principalId: null,
+          principalName: null,
+          updatedAt: new Date().toISOString(),
+        });
+        
+        unassignmentLogs.push(`Unassigned Principal from college "${college.name || userData.collegeId}"`);
+        console.log(`✅ Unassigned Principal from college ${userData.collegeId}`);
+      }
+    }
+
+    // ============ DELETE USER ============
     let authDeleted = false;
     try {
       await auth.deleteUser(uid);
       authDeleted = true;
-    } catch {
-      console.error("Auth deletion error - continuing with RTDB deletion");
+    } catch (authError) {
+      console.error("Auth deletion error - continuing with RTDB deletion:", authError);
     }
 
+    // Get user data before deletion for audit log
+    const userEmail = userData.email || uid;
+    const userName = userData.name || "Unknown User";
+
+    // Delete from RTDB
     await rtdb.ref(`users/${uid}`).remove();
+
+    // ============ AUDIT LOGS ============
+    // Log the deletion
+    await createAuditLog({
+      userId: decodedToken.uid,
+      userName: adminData.name || "Super Admin",
+      userRole: "super_admin",
+      action: "USER_DELETED",
+      module: "users",
+      targetId: uid,
+      targetUser: userEmail,
+      details: {
+        deletedUser: userName,
+        userRoles: userRoles,
+        authDeleted: authDeleted,
+        unassignments: unassignmentLogs,
+        unassignedCount: unassignmentLogs.length,
+      },
+    });
+
+    // Log each unassignment separately for better tracking
+    // ✅ FIXED: Added explicit type for 'logMessage'
+    for (const logMessage of unassignmentLogs) {
+      await createAuditLog({
+        userId: decodedToken.uid,
+        userName: adminData.name || "Super Admin",
+        userRole: "super_admin",
+        action: "ROLE_UNASSIGNED",
+        module: "departments",
+        targetId: uid,
+        targetUser: userEmail,
+        details: {
+          action: logMessage,
+          deletedUser: userName,
+          userRole: userRoles.find((r: string) => ["hod", "registrar", "principal"].includes(r)) || "unknown",
+        },
+      });
+    }
 
     return NextResponse.json({ 
       success: true, 
       authDeleted,
-      message: authDeleted ? "User deleted successfully" : "User deleted from database only (Auth deletion failed)"
+      unassignments: unassignmentLogs,
+      message: `User deleted${authDeleted ? '' : ' (Auth deletion failed)'}${unassignmentLogs.length > 0 ? ` - ${unassignmentLogs.length} role(s) unassigned` : ''}`
     });
   } catch (error) {
     console.error("Error permanently deleting user:", error);
