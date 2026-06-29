@@ -70,7 +70,7 @@ const MODULE_COLORS: Record<string, string> = {
 };
 
 export default function AuditLogsPage() {
-  const { user, isLoading: authLoading } = useAuthStore();
+  const { user, isLoading: authLoading, hydrationComplete } = useAuthStore();
   const router = useRouter();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,13 +85,14 @@ export default function AuditLogsPage() {
 
   // Auth check
   useEffect(() => {
+    if (!hydrationComplete) return;
     if (!authLoading && !user) {
       router.push("/login");
     }
     if (!authLoading && user && !user.roles?.includes("super_admin")) {
       router.push("/dashboard");
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, hydrationComplete]);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -121,11 +122,11 @@ export default function AuditLogsPage() {
 
   // Use a ref to prevent double fetch on mount
   useEffect(() => {
-    if (user?.roles?.includes("super_admin") && !hasFetched.current) {
+    if (hydrationComplete && user?.roles?.includes("super_admin") && !hasFetched.current) {
       hasFetched.current = true;
       fetchLogs();
     }
-  }, [user, fetchLogs]);
+  }, [user, fetchLogs, hydrationComplete]);
 
   const handleExport = () => {
     const headers = ["Date", "User", "Role", "Action", "Module", "Target", "Details"];
@@ -178,7 +179,7 @@ export default function AuditLogsPage() {
     fetchLogs();
   };
 
-  if (authLoading || loading) {
+  if (!hydrationComplete || authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>

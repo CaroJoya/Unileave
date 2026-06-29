@@ -31,7 +31,7 @@ const getInitialTab = (): string => {
 };
 
 function SuperAdminDashboardContent() {
-  const { user, isLoading } = useAuthStore();
+  const { user, isLoading, hydrationComplete } = useAuthStore();
   const router = useRouter();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoadingDepartments, setIsLoadingDepartments] = useState(true);
@@ -39,12 +39,14 @@ function SuperAdminDashboardContent() {
   const initialLoadDone = useRef(false);
 
   useEffect(() => {
+    if (!hydrationComplete) return;
     if (!isLoading && (!user || !user.roles?.includes("super_admin"))) {
       router.push("/dashboard");
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading, router, hydrationComplete]);
 
   useEffect(() => {
+    if (!hydrationComplete) return;
     if (!user?.collegeId || initialLoadDone.current) {
       if (user && !user.collegeId && !initialLoadDone.current) {
         console.log("User has no collegeId, fetching all departments");
@@ -84,7 +86,7 @@ function SuperAdminDashboardContent() {
     };
 
     loadDepartments();
-  }, [user, user?.collegeId]);
+  }, [user, user?.collegeId, hydrationComplete]);
 
   const refreshDepartments = useCallback(async () => {
     const { user: currentUser } = useAuthStore.getState();
@@ -155,7 +157,7 @@ function SuperAdminDashboardContent() {
     window.location.hash = tab;
   };
 
-  if (isLoading) {
+  if (!hydrationComplete || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
