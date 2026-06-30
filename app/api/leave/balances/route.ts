@@ -1,4 +1,4 @@
-// app/api/leave/balances/route.ts - COMPLETE FULL FILE
+// app/api/leave/balances/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -15,6 +15,25 @@ const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
   head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
 };
 
+// ✅ NEW: Get all leave types from the database
+async function getAllLeaveTypes(): Promise<string[]> {
+  const rtdb = getRTDB();
+  if (!rtdb) return ["CL", "EL", "ML", "CO"];
+  
+  try {
+    const snapshot = await rtdb.ref("leaveTypes").once("value");
+    const types = snapshot.val() as Record<string, { leaveCode: string; isActive: boolean }> | null || {};
+    
+    return Object.values(types)
+      .filter((type) => type.isActive !== false)
+      .map((type) => type.leaveCode);
+  } catch (error) {
+    console.error("Error fetching leave types:", error);
+    return ["CL", "EL", "ML", "CO"];
+  }
+}
+
+// ✅ NEW: Get role quotas from policy
 async function getRoleQuotas(role: string, academicYear: string): Promise<Record<string, number>> {
   const rtdb = getRTDB();
   if (!rtdb) return DEFAULT_QUOTAS.faculty;
@@ -28,12 +47,8 @@ async function getRoleQuotas(role: string, academicYear: string): Promise<Record
                       role === "office_staff" ? "office_staff" : role;
       const allocation = policy.leaveAllocations[roleKey];
       if (allocation) {
-        return {
-          CL: allocation.CL || 0,
-          EL: allocation.EL || 0,
-          ML: allocation.ML || 0,
-          CO: allocation.CO || 0,
-        };
+        // ✅ Return ALL leave types from policy
+        return allocation;
       }
     }
   } catch (error) {
@@ -54,13 +69,30 @@ async function initializeBalance(
   if (!rtdb) throw new Error("Database not initialized");
 
   const quotas = await getRoleQuotas(userRole, academicYear);
+  const allLeaveTypes = await getAllLeaveTypes();
   
-  const balances: Record<string, LeaveBalance> = {
-    CL: { allocated: quotas.CL || 0, used: 0, pending: 0, available: quotas.CL || 0 },
-    EL: { allocated: quotas.EL || 0, used: 0, pending: 0, available: quotas.EL || 0 },
-    ML: { allocated: quotas.ML || 0, used: 0, pending: 0, available: quotas.ML || 0 },
-    CO: { allocated: quotas.CO || 0, used: 0, pending: 0, available: quotas.CO || 0 },
-  };
+  const balances: Record<string, LeaveBalance> = {};
+  
+  // ✅ Initialize ALL leave types, not just CL, EL, ML, CO
+  for (const type of allLeaveTypes) {
+    const quota = quotas[type] || 0;
+    balances[type] = {
+      allocated: quota,
+      used: 0,
+      pending: 0,
+      available: quota,
+    };
+  }
+  
+  // ✅ Ensure CO is always included (for comp-off)
+  if (!balances["CO"]) {
+    balances["CO"] = {
+      allocated: 0,
+      used: 0,
+      pending: 0,
+      available: 0,
+    };
+  }
   
   const balanceDoc: LeaveBalancesDoc = {
     userId,
@@ -116,6 +148,32 @@ export async function GET() {
       const userRole = userData.roles?.[0] || "faculty";
       balanceDoc = await initializeBalance(userId, userRole, academicYear);
       console.log(`✅ Balance initialized for user ${userId}`);
+    } else {
+      // ✅ NEW: Check if all leave types are present, add missing ones
+      const allLeaveTypes = await getAllLeaveTypes();
+      let needsUpdate = false;
+      
+      for (const type of allLeaveTypes) {
+        if (!balanceDoc.balances[type]) {
+          const quotas = await getRoleQuotas(userData.roles?.[0] || "faculty", academicYear);
+          balanceDoc.balances[type] = {
+            allocated: quotas[type] || 0,
+            used: 0,
+            pending: 0,
+            available: quotas[type] || 0,
+          };
+          needsUpdate = true;
+          console.log(`✅ Added missing leave type: ${type}`);
+        }
+      }
+      
+      if (needsUpdate) {
+        await rtdb.ref(`leaveBalances/${balanceKey}`).update({
+          balances: balanceDoc.balances,
+          updatedAt: new Date().toISOString(),
+        });
+        console.log(`✅ Updated balance with missing leave types for user ${userId}`);
+      }
     }
 
     console.log(`📊 Balance data for ${userId}:`, JSON.stringify(balanceDoc.balances, null, 2));
