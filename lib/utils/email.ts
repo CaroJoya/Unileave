@@ -613,3 +613,54 @@ export function getPasswordResetEmailTemplate(resetLink: string): string {
 </html>
   `;
 }
+
+// lib/utils/email.ts - ADD THIS FUNCTION AT THE END OF THE FILE
+
+// 13. NEW ACCOUNT CREDENTIALS - To New User
+export function getNewAccountCredentialsEmail(
+  userName: string,
+  userEmail: string,
+  tempPassword: string,
+  superAdminName: string
+): string {
+  const loginUrl = `${getAppUrl()}/login`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;margin:0;padding:20px;background:#f0f4f8;">
+  <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#6366F1,#4f46e5);padding:30px;color:white;text-align:center;">
+      <h1 style="margin:0;">🎉 Welcome to UniLeave!</h1>
+      <p style="margin:8px 0 0;opacity:0.9;">Your account has been created.</p>
+    </div>
+    <div style="padding:30px;">
+      <p>Dear <strong>${userName}</strong>,</p>
+      <p>Your UniLeave account has been successfully created by <strong>${superAdminName}</strong>.</p>
+      <div style="background-color:#F3F4F6;padding:20px;border-radius:8px;margin:20px 0;">
+        <h3 style="margin-top:0;">🔑 Your Login Credentials</h3>
+        <p style="margin-bottom:5px;"><strong>Email:</strong> ${userEmail}</p>
+        <p style="margin-top:5px;"><strong>Temporary Password:</strong> <code style="background:#E5E7EB;padding:2px 8px;border-radius:4px;">${tempPassword}</code></p>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          ⚠️ For security, please change your password immediately after your first login.
+        </p>
+      </div>
+      <div style="text-align:center;margin:25px 0;">
+        <a href="${loginUrl}" 
+           style="display:inline-block;background:#6366F1;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+          Go to Login →
+        </a>
+        <p style="font-size:12px;color:#6b7280;margin-top:8px;">
+          Please log in with your credentials
+        </p>
+      </div>
+    </div>
+    <div style="text-align:center;padding:20px;font-size:12px;color:#6b7280;">
+      UniLeave • University Leave Management System
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}

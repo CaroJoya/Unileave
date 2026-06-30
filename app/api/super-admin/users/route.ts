@@ -1,7 +1,8 @@
-// app/api/super-admin/users/route.ts - FIXED WITH POST HANDLER
+// app/api/super-admin/users/route.ts - COMPLETE FILE WITH EMAIL FEATURE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { sendEmail, getNewAccountCredentialsEmail } from "@/lib/utils/email";
 
 interface User {
   uid: string;
@@ -110,7 +111,6 @@ export async function GET(request: Request) {
   }
 }
 
-// ✅ ADD THIS POST HANDLER - The missing part!
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -232,6 +232,29 @@ export async function POST(request: Request) {
       );
     }
 
+    // ✅ --- NEW CODE: Send welcome email with credentials ---
+    try {
+      const emailSent = await sendEmail(
+        userData.email, // To: the new user's email
+        `🎉 Welcome to UniLeave!`, // Subject
+        getNewAccountCredentialsEmail(
+          userData.name, // New user's name
+          userData.email, // New user's email
+          password, // The temporary password
+          adminData.name || "Super Admin" // The admin who created them
+        )
+      );
+
+      if (emailSent) {
+        console.log(`✅ Welcome email sent to ${userData.email}`);
+      } else {
+        console.log(`⚠️ Welcome email not sent to ${userData.email} (SMTP might not be configured)`);
+      }
+    } catch (emailError) {
+      // Log the error but don't fail the user creation process
+      console.error(`❌ Failed to send welcome email to ${userData.email}:`, emailError);
+    }
+
     // Log the action
     const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     await rtdb.ref(`auditLogs/${auditLogId}`).set({
@@ -247,13 +270,14 @@ export async function POST(request: Request) {
         email,
         roles,
         departmentName: department.name,
+        emailSent: true,
       }),
       createdAt: new Date().toISOString(),
     });
 
     return NextResponse.json({
       success: true,
-      message: "User created successfully",
+      message: "User created successfully and email notification sent",
       uid: userRecord.uid,
       user: userData,
     });

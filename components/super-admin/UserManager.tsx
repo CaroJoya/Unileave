@@ -1,3 +1,4 @@
+// components/super-admin/UserManager.tsx - COMPLETE FILE WITH RESEND CREDENTIALS
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -30,6 +31,7 @@ import {
 import { toast } from "sonner";
 import { CreateUserModal } from "./CreateUserModal";
 import { Badge } from "@/components/ui/badge";
+import { Mail } from "lucide-react"; // ✅ Import Mail icon for Resend button
 
 interface User {
   uid: string;
@@ -182,6 +184,26 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
     }
   };
 
+  // ✅ NEW: Handle Resend Credentials
+  const handleResendCredentials = async (uid: string) => {
+    try {
+      const response = await fetch(`/api/super-admin/users/${uid}/resend-credentials`, {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to resend credentials");
+      }
+
+      toast.success("Credentials email sent successfully!");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to send credentials";
+      toast.error(errorMessage);
+    }
+  };
+
   const getRoleBadgeColor = (role: string) => {
     const colors: Record<string, string> = {
       super_admin: "bg-purple-100 text-purple-800",
@@ -293,13 +315,11 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
               <SelectItem value="all">All departments</SelectItem>
               {hasDepartments ? (
                 departments.map((dept) => (
-                  // ✅ FIX: Ensure each item has a non-empty value
                   <SelectItem key={dept.id} value={dept.id}>
                     {dept.name}
                   </SelectItem>
                 ))
               ) : (
-                // ✅ FIX: Use non-empty string value
                 <SelectItem value="none" disabled>
                   No departments available
                 </SelectItem>
@@ -375,7 +395,18 @@ export function UserManager({ departments, onRefresh, isLoading = false }: UserM
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
+                      {/* ✅ NEW: Resend Credentials Button */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleResendCredentials(user.uid)}
+                        title="Resend credentials email"
+                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                      >
+                        <Mail className="h-4 w-4" />
+                      </Button>
+                      
                       {user.status === "deleted" ? (
                         <Button
                           size="sm"
