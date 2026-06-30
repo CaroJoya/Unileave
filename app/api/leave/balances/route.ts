@@ -1,4 +1,4 @@
-// app/api/leave/balances/route.ts - COMPLETE FIXED FILE (No Cache)
+// app/api/leave/balances/route.ts - COMPLETE FORCE REFRESH
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -114,16 +114,18 @@ export async function GET() {
       balanceDoc = await initializeBalance(userId, userRole, academicYear);
     }
 
+    // ✅ FORCE NO CACHE - Maximum cache prevention
     const response = NextResponse.json({
       success: true,
       balances: balanceDoc.balances,
       academicYear: balanceDoc.academicYear,
     });
 
-    // ✅ FIX: Remove caching to always show fresh data
-    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    // Remove all caching
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');
+    response.headers.set('Surrogate-Control', 'no-store');
     
     return response;
   } catch (error) {
