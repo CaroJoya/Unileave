@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx - COMPLETE UPDATED VERSION
+// app/dashboard/page.tsx - RESTORED & FIXED VERSION
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -153,6 +153,7 @@ function DashboardContent() {
         const balanceData = await balanceRes.json();
         const balances = balanceData.balances || {};
         
+        // ✅ FIX: Calculate totals from ALL balances (including CO)
         const totalAvailable = Object.values(balances).reduce(
           (sum: number, b: unknown) => {
             const balance = b as LeaveBalance;
@@ -215,7 +216,7 @@ function DashboardContent() {
         console.log("📊 Balance data:", balanceData);
       }
 
-      // ✅ NEW: Fetch Comp-Off balance from credits API
+      // Fetch Comp-Off balance from credits API
       let compOffBalance = 0;
       let compOffCredits: CompOffCredit[] = [];
       let expiringCompOffCredits: CompOffCredit[] = [];
@@ -320,14 +321,10 @@ function DashboardContent() {
           req.status === "Rejected_Principal"
       ).length;
 
+      // ✅ FIX: Use ALL balances, don't filter out CO
       const balances = balanceData.balances || {};
       
-      // ✅ FIX: Remove CO from regular balance calculation
-      const regularBalances = Object.entries(balances)
-        .filter(([type]) => type !== 'CO')
-        .reduce((acc, [type, balance]) => ({ ...acc, [type]: balance }), {});
-      
-      const totalAvailable = Object.values(regularBalances).reduce(
+      const totalAvailable = Object.values(balances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
           return sum + (balance?.available || 0);
@@ -335,7 +332,7 @@ function DashboardContent() {
         0
       );
       
-      const totalAllocated = Object.values(regularBalances).reduce(
+      const totalAllocated = Object.values(balances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
           return sum + (balance?.allocated || 0);
@@ -343,7 +340,7 @@ function DashboardContent() {
         0
       );
       
-      const totalUsed = Object.values(regularBalances).reduce(
+      const totalUsed = Object.values(balances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
           return sum + (balance?.used || 0);
@@ -354,7 +351,7 @@ function DashboardContent() {
       const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
 
       setData({
-        balances: regularBalances,
+        balances: balances, // ✅ Use ALL balances
         pendingRequests,
         approvedRequests,
         rejectedRequests,
@@ -372,8 +369,7 @@ function DashboardContent() {
       console.log("📊 Dashboard data updated:", {
         pending: pendingRequests,
         revision: revisionRequests,
-        compOffBalance,
-        expiring: expiringCompOffCredits.length,
+        balances: balances,
       });
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -498,7 +494,7 @@ function DashboardContent() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-5 mb-8 mt-6">
-        {/* Total Balance Card - Excluding CO */}
+        {/* Total Balance Card - Includes CO */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
@@ -530,7 +526,7 @@ function DashboardContent() {
           </CardContent>
         </Card>
 
-        {/* ✅ NEW: Comp-Off Balance Card */}
+        {/* Comp-Off Balance Card */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
