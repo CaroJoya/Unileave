@@ -1,4 +1,4 @@
-// app/api/super-admin/fix-broken-balances/route.ts - COMPLETE FIXED FILE (ESLint Compliant)
+// app/api/super-admin/fix-broken-balances/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -12,7 +12,7 @@ interface LeaveRequest {
   leaveType: string;
   totalDays: number;
   status: string;
-  balanceRestored: boolean;
+  balanceRestored?: boolean;
   cancelledAt?: string;
 }
 
@@ -102,12 +102,16 @@ export async function POST(request: Request) {
     const requestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = requestsSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Find broken requests: Cancelled but balanceRestored is false
-    const brokenRequests: (LeaveRequest & { error?: string })[] = [];
+    // Find broken requests: Cancelled but balanceRestored is NOT true
+    const brokenRequests: LeaveRequest[] = [];
 
     for (const [id, req] of Object.entries(allRequests)) {
+      // ✅ Check if status is "Cancelled" and balanceRestored is NOT true
       if (req.status === "Cancelled" && req.balanceRestored !== true) {
-        brokenRequests.push({ ...req, id });
+        brokenRequests.push({
+          ...req,
+          id,
+        });
       }
     }
 
@@ -148,16 +152,17 @@ export async function POST(request: Request) {
 
     for (const req of brokenRequests) {
       try {
+        console.log(`📝 Processing request ${req.id} for user ${req.applicantId}`);
+
         const balanceKey = `${req.applicantId}_${academicYear}`;
         const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
         const balanceSnapshot = await balanceRef.once("value");
         const existingBalanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
-        console.log(`📝 Processing request ${req.id} for user ${req.applicantId}`);
-
-        // STEP 1: Create or update balance
+        // STEP 1: Create balance if missing
         if (!existingBalanceDoc) {
-          // Get user data to determine role
+          console.log(`⚠️ Balance not found for user ${req.applicantId}, creating...`);
+          
           const userSnapshot = await rtdb.ref(`users/${req.applicantId}`).once("value");
           const userData = userSnapshot.val() as { roles?: string[]; name?: string } | null;
           const userRole = userData?.roles?.[0] || "faculty";
@@ -165,7 +170,6 @@ export async function POST(request: Request) {
           const quotas = DEFAULT_QUOTAS[userRole] || DEFAULT_QUOTAS.faculty;
           const newBalances: Record<string, LeaveBalance> = {};
           
-          // Initialize all leave types with quotas
           for (const [type, quota] of Object.entries(quotas)) {
             newBalances[type] = {
               allocated: quota,
@@ -175,7 +179,6 @@ export async function POST(request: Request) {
             };
           }
           
-          // Add the restored days
           if (!newBalances[req.leaveType]) {
             newBalances[req.leaveType] = {
               allocated: 0,
@@ -184,6 +187,8 @@ export async function POST(request: Request) {
               available: 0,
             };
           }
+          
+          // Add the restored days
           newBalances[req.leaveType].available += req.totalDays;
           
           const newBalanceDoc: LeaveBalanceDoc = {
@@ -207,9 +212,8 @@ export async function POST(request: Request) {
             msg 
           });
           fixed++;
-          
         } else {
-          // Update existing balance
+          // STEP 2: Update existing balance
           const balanceDoc = existingBalanceDoc;
           
           if (!balanceDoc.balances) {
@@ -227,6 +231,7 @@ export async function POST(request: Request) {
           
           const currentBalance = balanceDoc.balances[req.leaveType];
           
+          // ✅ CRITICAL FIX: Update both pending and available
           await balanceRef.update({
             [`balances.${req.leaveType}.pending`]: Math.max(0, (currentBalance.pending || 0) - req.totalDays),
             [`balances.${req.leaveType}.available`]: (currentBalance.available || 0) + req.totalDays,
@@ -248,7 +253,7 @@ export async function POST(request: Request) {
           fixed++;
         }
 
-        // STEP 2: Mark the request as balance restored
+        // STEP 3: Mark the request as balance restored
         await rtdb.ref(`leaveRequests/${req.id}`).update({
           balanceRestored: true,
           balanceRestoredAt: new Date().toISOString(),
