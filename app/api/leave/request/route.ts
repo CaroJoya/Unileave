@@ -1,4 +1,4 @@
-// app/api/leave/request/route.ts - COMPLETE FINAL VERSION
+// app/api/leave/request/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -37,13 +37,18 @@ interface CollegeData {
   principalId: string | null;
 }
 
-interface LeaveBalanceDoc {
-  balances: {
-    [key: string]: {
-      pending: number;
-      available: number;
-    };
-  };
+interface LeaveBalance {
+  allocated: number;
+  used: number;
+  pending: number;
+  available: number;
+}
+
+interface LeaveBalancesDoc {
+  userId: string;
+  academicYear: string;
+  balances: Record<string, LeaveBalance>;
+  updatedAt: string;
 }
 
 interface ExistingLeaveRequest {
@@ -52,6 +57,16 @@ interface ExistingLeaveRequest {
   startDate: string;
   endDate: string;
 }
+
+const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
+  faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
+  lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
+  office_staff: { CL: 20, EL: 10, ML: 15, CO: 8 },
+  hod: { CL: 24, EL: 15, ML: 15, CO: 10 },
+  registrar: { CL: 20, EL: 12, ML: 15, CO: 10 },
+  principal: { CL: 30, EL: 20, ML: 15, CO: 12 },
+  head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
+};
 
 async function getLeaveTypeConfig(leaveCode: string): Promise<LeaveTypeData | null> {
   const rtdb = getRTDB();
@@ -106,6 +121,84 @@ async function getApproverUserId(
   }
 
   return null;
+}
+
+async function getRoleQuotas(role: string, academicYear: string): Promise<Record<string, number>> {
+  const rtdb = getRTDB();
+  if (!rtdb) return DEFAULT_QUOTAS.faculty;
+
+  try {
+    const policySnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
+    const policy = policySnapshot.val();
+    
+    if (policy && policy.leaveAllocations) {
+      const roleKey = role === "lab_assistant" ? "lab_assistant" : 
+                      role === "office_staff" ? "office_staff" : role;
+      const allocation = policy.leaveAllocations[roleKey];
+      if (allocation) {
+        return {
+          CL: allocation.CL || 0,
+          EL: allocation.EL || 0,
+          ML: allocation.ML || 0,
+          CO: allocation.CO || 0,
+        };
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching policy:", error);
+  }
+  
+  const roleKey = role === "lab_assistant" ? "lab_assistant" : 
+                  role === "office_staff" ? "office_staff" : role;
+  return DEFAULT_QUOTAS[roleKey] || DEFAULT_QUOTAS.faculty;
+}
+
+async function initializeBalance(
+  userId: string, 
+  userRole: string, 
+  academicYear: string
+): Promise<LeaveBalancesDoc> {
+  const rtdb = getRTDB();
+  if (!rtdb) throw new Error("Database not initialized");
+
+  const quotas = await getRoleQuotas(userRole, academicYear);
+  
+  const balances: Record<string, LeaveBalance> = {
+    CL: { allocated: quotas.CL || 0, used: 0, pending: 0, available: quotas.CL || 0 },
+    EL: { allocated: quotas.EL || 0, used: 0, pending: 0, available: quotas.EL || 0 },
+    ML: { allocated: quotas.ML || 0, used: 0, pending: 0, available: quotas.ML || 0 },
+    CO: { allocated: quotas.CO || 0, used: 0, pending: 0, available: quotas.CO || 0 },
+  };
+  
+  const balanceDoc: LeaveBalancesDoc = {
+    userId,
+    academicYear,
+    balances,
+    updatedAt: new Date().toISOString(),
+  };
+  
+  await rtdb.ref(`leaveBalances/${userId}_${academicYear}`).set(balanceDoc);
+  return balanceDoc;
+}
+
+async function getOrCreateBalance(
+  userId: string,
+  userRole: string,
+  academicYear: string
+): Promise<LeaveBalancesDoc> {
+  const rtdb = getRTDB();
+  if (!rtdb) throw new Error("Database not initialized");
+
+  const balanceKey = `${userId}_${academicYear}`;
+  const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
+  const existingBalance = balanceSnapshot.val() as LeaveBalancesDoc | null;
+
+  if (existingBalance) {
+    return existingBalance;
+  }
+
+  // Create new balance if it doesn't exist
+  return await initializeBalance(userId, userRole, academicYear);
 }
 
 export async function POST(request: Request) {
@@ -260,20 +353,24 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check balance
+    // ✅ FIX: Get or create balance - this is the key fix
+    const academicYear = getCurrentAcademicYear();
+    let balanceDoc: LeaveBalancesDoc;
+    
+    try {
+      const userRole = userData.roles?.[0] || "faculty";
+      balanceDoc = await getOrCreateBalance(userId, userRole, academicYear);
+      console.log(`✅ Balance ${balanceDoc.balances ? 'exists' : 'created'} for user ${userId}`);
+    } catch (balanceError) {
+      console.error("❌ Error getting/creating balance:", balanceError);
+      return NextResponse.json(
+        { error: "Failed to initialize leave balance. Please contact admin.", field: "balance" },
+        { status: 500 }
+      );
+    }
+
+    // Check balance if leave type deducts from balance
     if (leaveTypeConfig.deductsBalance) {
-      const academicYear = getCurrentAcademicYear();
-      const balanceKey = `${userId}_${academicYear}`;
-      const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
-      const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
-
-      if (!balanceDoc) {
-        return NextResponse.json(
-          { error: "Leave balance not initialized", field: "balance" },
-          { status: 400 }
-        );
-      }
-
       const currentBalance = balanceDoc.balances[leaveType]?.available || 0;
       if (currentBalance < totalDays) {
         return NextResponse.json(
@@ -309,27 +406,22 @@ export async function POST(request: Request) {
 
     // Update balance
     if (leaveTypeConfig.deductsBalance) {
-      const academicYear = getCurrentAcademicYear();
-      const balanceKey = `${userId}_${academicYear}`;
-      const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
-      const balanceSnapshot = await balanceRef.once("value");
-      const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
-
-      if (balanceDoc) {
-        const currentBalance = balanceDoc.balances[leaveType] || { pending: 0, available: 0 };
-        const updateData = {
-          balances: {
-            ...balanceDoc.balances,
-            [leaveType]: {
-              pending: (currentBalance.pending || 0) + totalDays,
-              available: (currentBalance.available || 0) - totalDays,
-            }
-          },
-          updatedAt: new Date().toISOString(),
-        };
-        
-        await balanceRef.update(updateData);
-      }
+      const currentBalance = balanceDoc.balances[leaveType] || { pending: 0, available: 0 };
+      const updateData = {
+        balances: {
+          ...balanceDoc.balances,
+          [leaveType]: {
+            allocated: currentBalance.allocated || 0,
+            used: currentBalance.used || 0,
+            pending: (currentBalance.pending || 0) + totalDays,
+            available: (currentBalance.available || 0) - totalDays,
+          }
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      
+      await rtdb.ref(`leaveBalances/${userId}_${academicYear}`).update(updateData);
+      console.log(`✅ Balance updated for user ${userId}, leave type ${leaveType}`);
     }
 
     // Create leave request
@@ -402,14 +494,13 @@ export async function POST(request: Request) {
     const approverData = approverSnapshot.val() as { email: string; name: string } | null;
 
     if (approverData?.email) {
-      const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard`;
+      //const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard`;
       const emailHtml = getLeaveSubmittedEmail(
         userData.name,
         leaveType,
         startDate,
         endDate || startDate,
-        reason || "No reason provided",
-        dashboardUrl
+        reason || "No reason provided"
       );
       
       const emailSent = await sendEmail(
