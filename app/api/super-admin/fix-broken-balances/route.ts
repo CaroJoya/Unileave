@@ -38,6 +38,24 @@ interface UserData {
   [key: string]: unknown;
 }
 
+interface FixedRequest {
+  id: string;
+  applicantId: string;
+  applicantName: string;
+  leaveType: string;
+  totalDays: number;
+  msg: string;
+}
+
+interface FailedRequest {
+  id: string;
+  applicantId: string;
+  applicantName: string;
+  leaveType: string;
+  totalDays: number;
+  error: string;
+}
+
 const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
   faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
   lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
@@ -88,35 +106,35 @@ export async function POST(request: Request) {
     const brokenRequests: (LeaveRequest & { error?: string })[] = [];
 
     for (const [id, req] of Object.entries(allRequests)) {
-      if (req.status === "Cancelled" && req.balanceRestored === false) {
+      if (req.status === "Cancelled" && req.balanceRestored !== true) {
         brokenRequests.push({ ...req, id });
       }
     }
 
+    console.log(`🔍 Found ${brokenRequests.length} broken requests`);
+
     // If action is "find", just return the list
     if (action === "find") {
-      // Check if each broken request has a valid balance document
       const academicYear = getCurrentAcademicYear();
-      const requestsWithErrors = [];
+      const requestsWithDetails = [];
 
       for (const req of brokenRequests) {
         const balanceKey = `${req.applicantId}_${academicYear}`;
         const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
         const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
-        if (!balanceDoc || !balanceDoc.balances || !balanceDoc.balances[req.leaveType]) {
-          requestsWithErrors.push({
-            ...req,
-            error: "Balance record missing"
-          });
-        } else {
-          requestsWithErrors.push(req);
-        }
+        requestsWithDetails.push({
+          ...req,
+          hasBalanceDoc: !!balanceDoc,
+          hasLeaveType: balanceDoc?.balances?.[req.leaveType] ? true : false,
+        });
       }
 
       return NextResponse.json({
-        brokenRequests: requestsWithErrors,
-        count: requestsWithErrors.length,
+        success: true,
+        brokenRequests: requestsWithDetails,
+        count: requestsWithDetails.length,
+        academicYear,
       });
     }
 
@@ -125,6 +143,8 @@ export async function POST(request: Request) {
     let fixed = 0;
     let failed = 0;
     const details: string[] = [];
+    const fixedRequests: FixedRequest[] = [];
+    const failedRequests: FailedRequest[] = [];
 
     for (const req of brokenRequests) {
       try {
@@ -133,16 +153,15 @@ export async function POST(request: Request) {
         const balanceSnapshot = await balanceRef.once("value");
         const existingBalanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
-        // STEP 1: If balance doesn't exist, CREATE IT!
+        console.log(`📝 Processing request ${req.id} for user ${req.applicantId}`);
+
+        // STEP 1: Create or update balance
         if (!existingBalanceDoc) {
-          console.log(`⚠️ Balance not found for user ${req.applicantId}, creating...`);
-          
           // Get user data to determine role
           const userSnapshot = await rtdb.ref(`users/${req.applicantId}`).once("value");
           const userData = userSnapshot.val() as { roles?: string[]; name?: string } | null;
           const userRole = userData?.roles?.[0] || "faculty";
           
-          // Get quotas based on role
           const quotas = DEFAULT_QUOTAS[userRole] || DEFAULT_QUOTAS.faculty;
           const newBalances: Record<string, LeaveBalance> = {};
           
@@ -156,7 +175,7 @@ export async function POST(request: Request) {
             };
           }
           
-          // Make sure the leave type exists (add if missing)
+          // Add the restored days
           if (!newBalances[req.leaveType]) {
             newBalances[req.leaveType] = {
               allocated: 0,
@@ -165,11 +184,8 @@ export async function POST(request: Request) {
               available: 0,
             };
           }
-          
-          // CRITICAL: Add the restored days to available
           newBalances[req.leaveType].available += req.totalDays;
           
-          // Create the balance document
           const newBalanceDoc: LeaveBalanceDoc = {
             userId: req.applicantId,
             academicYear,
@@ -178,13 +194,22 @@ export async function POST(request: Request) {
           };
           
           await balanceRef.set(newBalanceDoc);
-          console.log(`✅ Balance CREATED for user ${req.applicantId} with ${req.totalDays} days restored`);
+          console.log(`✅ Balance CREATED for user ${req.applicantId}`);
           
-          details.push(`✅ ${req.applicantName || req.applicantId} - ${req.leaveType}: Balance created and ${req.totalDays} day(s) restored`);
+          const msg = `✅ ${req.applicantName || req.applicantId} - ${req.leaveType}: Balance created and ${req.totalDays} day(s) restored`;
+          details.push(msg);
+          fixedRequests.push({ 
+            id: req.id,
+            applicantId: req.applicantId,
+            applicantName: req.applicantName || req.applicantId,
+            leaveType: req.leaveType,
+            totalDays: req.totalDays,
+            msg 
+          });
           fixed++;
           
         } else {
-          // STEP 2: Balance exists, restore the days
+          // Update existing balance
           const balanceDoc = existingBalanceDoc;
           
           if (!balanceDoc.balances) {
@@ -192,7 +217,6 @@ export async function POST(request: Request) {
           }
           
           if (!balanceDoc.balances[req.leaveType]) {
-            // Create the leave type entry if it doesn't exist
             balanceDoc.balances[req.leaveType] = {
               allocated: 0,
               used: 0,
@@ -209,12 +233,22 @@ export async function POST(request: Request) {
             updatedAt: new Date().toISOString(),
           });
           
-          console.log(`✅ Balance RESTORED for user ${req.applicantId}, ${req.leaveType}: ${req.totalDays} days`);
-          details.push(`✅ ${req.applicantName || req.applicantId} - ${req.leaveType}: ${req.totalDays} day(s) restored`);
+          console.log(`✅ Balance UPDATED for user ${req.applicantId}`);
+          
+          const msg = `✅ ${req.applicantName || req.applicantId} - ${req.leaveType}: ${req.totalDays} day(s) restored`;
+          details.push(msg);
+          fixedRequests.push({ 
+            id: req.id,
+            applicantId: req.applicantId,
+            applicantName: req.applicantName || req.applicantId,
+            leaveType: req.leaveType,
+            totalDays: req.totalDays,
+            msg 
+          });
           fixed++;
         }
 
-        // STEP 3: Mark the request as balance restored
+        // STEP 2: Mark the request as balance restored
         await rtdb.ref(`leaveRequests/${req.id}`).update({
           balanceRestored: true,
           balanceRestoredAt: new Date().toISOString(),
@@ -226,7 +260,16 @@ export async function POST(request: Request) {
       } catch (error) {
         failed++;
         const errorMsg = error instanceof Error ? error.message : "Unknown error";
-        details.push(`❌ ${req.applicantName || req.applicantId} - ${req.leaveType}: Failed - ${errorMsg}`);
+        const msg = `❌ ${req.applicantName || req.applicantId} - ${req.leaveType}: Failed - ${errorMsg}`;
+        details.push(msg);
+        failedRequests.push({ 
+          id: req.id,
+          applicantId: req.applicantId,
+          applicantName: req.applicantName || req.applicantId,
+          leaveType: req.leaveType,
+          totalDays: req.totalDays,
+          error: errorMsg 
+        });
         console.error(`❌ Error fixing request ${req.id}:`, error);
       }
     }
@@ -243,6 +286,7 @@ export async function POST(request: Request) {
         fixed,
         failed,
         details,
+        academicYear,
         timestamp: new Date().toISOString(),
       },
     });
@@ -251,6 +295,9 @@ export async function POST(request: Request) {
       success: true,
       fixed,
       failed,
+      totalFound: brokenRequests.length,
+      fixedRequests,
+      failedRequests,
       details,
       message: `Fixed ${fixed} request(s), failed ${failed} request(s)`,
     });

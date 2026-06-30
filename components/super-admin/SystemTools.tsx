@@ -1,52 +1,84 @@
-// components/super-admin/SystemTools.tsx - COMPLETE FILE WITH FIX BROKEN BALANCES
+// components/super-admin/SystemTools.tsx - COMPLETE FILE (ESLint Compliant)
 "use client";
 
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Database, AlertCircle, CheckCircle, Loader2, Shield, RefreshCw } from "lucide-react";
+import { 
+  Database, 
+  AlertCircle, 
+  CheckCircle, 
+  Loader2, 
+  RefreshCw, 
+  Search, 
+  Wrench 
+} from "lucide-react";
 
-interface ValidationResult {
-  errors: string[];
-  cleaned: string[];
-  details: {
-    invalidHODs: number;
-    invalidRegistrars: number;
-    invalidPrincipals: number;
-  };
+// Types for the broken balance tool
+interface BrokenRequest {
+  id: string;
+  applicantId: string;
+  applicantName: string;
+  leaveType: string;
+  totalDays: number;
+  status: string;
+  hasBalanceDoc: boolean;
+  hasLeaveType: boolean;
+  error?: string;
+}
+
+interface FixedRequest {
+  id: string;
+  applicantId: string;
+  applicantName: string;
+  leaveType: string;
+  totalDays: number;
+  msg: string;
+}
+
+interface FailedRequest {
+  id: string;
+  applicantId: string;
+  applicantName: string;
+  leaveType: string;
+  totalDays: number;
+  error: string;
 }
 
 interface BalanceFixResult {
-  fixedCount: number;
-  brokenCount: number;
-  fixed: {
-    id: string;
-    userId: string;
-    userName: string;
-    leaveType: string;
-    daysRestored: number;
-  }[];
-  broken: {
-    id: string;
-    userId: string;
-    userName: string;
-    leaveType: string;
-    totalDays: number;
-  }[];
+  fixed: number;
+  failed: number;
+  totalFound: number;
+  fixedRequests: FixedRequest[];
+  failedRequests: FailedRequest[];
+  details: string[];
+  message: string;
 }
 
+// ============ SYSTEM TOOLS COMPONENT ============
 export function SystemTools() {
+  // State for Seed Leave Types
   const [isSeeding, setIsSeeding] = useState(false);
   const [hasSeeded, setHasSeeded] = useState(false);
   const [seedResult, setSeedResult] = useState<{ success: boolean; message: string; details?: string[] } | null>(null);
 
+  // State for Validate Assignments
   const [isValidating, setIsValidating] = useState(false);
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [validationResult, setValidationResult] = useState<{
+    errors: string[];
+    cleaned: string[];
+    details: { invalidHODs: number; invalidRegistrars: number; invalidPrincipals: number };
+  } | null>(null);
 
-  const [isFixingBalances, setIsFixingBalances] = useState(false);
-  const [balanceFixResult, setBalanceFixResult] = useState<BalanceFixResult | null>(null);
+  // State for Fix Broken Balances
+  const [isFinding, setIsFinding] = useState(false);
+  const [isFixing, setIsFixing] = useState(false);
+  const [brokenRequests, setBrokenRequests] = useState<BrokenRequest[]>([]);
+  const [fixResult, setFixResult] = useState<BalanceFixResult | null>(null);
+  const [showBrokenList, setShowBrokenList] = useState(false);
 
+  // ============ SEED LEAVE TYPES ============
   const handleSeedLeaveTypes = async () => {
     setIsSeeding(true);
     setSeedResult(null);
@@ -60,7 +92,6 @@ export function SystemTools() {
       const data = await response.json();
 
       if (response.status === 409) {
-        // Already exists
         setSeedResult({
           success: false,
           message: data.message || "Leave types already exist",
@@ -93,6 +124,7 @@ export function SystemTools() {
     }
   };
 
+  // ============ VALIDATE ASSIGNMENTS ============
   const handleValidateAssignments = async () => {
     setIsValidating(true);
     setValidationResult(null);
@@ -129,13 +161,50 @@ export function SystemTools() {
     }
   };
 
-  const handleFixBrokenBalances = async () => {
-    setIsFixingBalances(true);
-    setBalanceFixResult(null);
+  // ============ FIX BROKEN BALANCES ============
+  const handleFindBroken = async () => {
+    setIsFinding(true);
+    setBrokenRequests([]);
+    setFixResult(null);
     
     try {
-      const response = await fetch("/api/admin/fix-broken-balances", {
+      const response = await fetch("/api/super-admin/fix-broken-balances", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "find" }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to find broken requests");
+      }
+      
+      setBrokenRequests(data.brokenRequests || []);
+      setShowBrokenList(true);
+      
+      if (data.count === 0) {
+        toast.success("✅ No broken balances found!");
+      } else {
+        toast.info(`Found ${data.count} broken request(s)`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to find broken requests";
+      toast.error(errorMessage);
+    } finally {
+      setIsFinding(false);
+    }
+  };
+
+  const handleFixBroken = async () => {
+    setIsFixing(true);
+    setFixResult(null);
+    
+    try {
+      const response = await fetch("/api/super-admin/fix-broken-balances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "fix" }),
       });
       
       const data = await response.json();
@@ -144,28 +213,30 @@ export function SystemTools() {
         throw new Error(data.error || "Failed to fix broken balances");
       }
       
-      setBalanceFixResult({
-        fixedCount: data.fixedCount || 0,
-        brokenCount: data.brokenCount || 0,
-        fixed: data.fixed || [],
-        broken: data.broken || [],
-      });
+      setFixResult(data);
       
-      if (data.fixedCount > 0) {
-        toast.success(`Fixed ${data.fixedCount} broken balances`);
-      } else if (data.brokenCount === 0) {
-        toast.success("✅ No broken balances found!");
+      if (data.fixed > 0) {
+        toast.success(`✅ Fixed ${data.fixed} broken balance(s)`);
+      } else if (data.totalFound === 0) {
+        toast.success("✅ No broken balances to fix!");
       } else {
-        toast.warning(`Found ${data.brokenCount} broken balances, fixed ${data.fixedCount}`);
+        toast.warning(`Fixed ${data.fixed}, failed ${data.failed}`);
       }
+      
+      // Refresh the broken list after fixing
+      setTimeout(() => {
+        handleFindBroken();
+      }, 1000);
+      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to fix balances";
       toast.error(errorMessage);
     } finally {
-      setIsFixingBalances(false);
+      setIsFixing(false);
     }
   };
 
+  // ============ RENDER ============
   return (
     <Card>
       <CardHeader>
@@ -178,7 +249,8 @@ export function SystemTools() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
-        {/* Seed Leave Types */}
+        
+        {/* ========== 1. SEED LEAVE TYPES ========== */}
         <div className="space-y-4">
           <div className="flex items-start justify-between">
             <div>
@@ -247,12 +319,12 @@ export function SystemTools() {
           )}
         </div>
 
-        {/* Validate Assignments */}
+        {/* ========== 2. VALIDATE ASSIGNMENTS ========== */}
         <div className="space-y-4 border-t pt-6">
           <div className="flex items-start justify-between">
             <div>
               <h3 className="font-semibold text-lg flex items-center gap-2">
-                <Shield className="h-5 w-5 text-primary" />
+                <RefreshCw className="h-5 w-5 text-primary" />
                 Validate &amp; Clean Assignments
               </h3>
               <p className="text-sm text-muted-foreground">
@@ -367,12 +439,12 @@ export function SystemTools() {
           </div>
         </div>
 
-        {/* Fix Broken Balances */}
+        {/* ========== 3. FIX BROKEN BALANCES ========== */}
         <div className="space-y-4 border-t pt-6">
           <div className="flex items-start justify-between">
             <div>
               <h3 className="font-semibold text-lg flex items-center gap-2">
-                <RefreshCw className="h-5 w-5 text-amber-500" />
+                <Wrench className="h-5 w-5 text-amber-500" />
                 Fix Broken Leave Balances
               </h3>
               <p className="text-sm text-muted-foreground">
@@ -380,84 +452,143 @@ export function SystemTools() {
                 This tool will restore the leave days to the user&apos;s balance.
               </p>
             </div>
-            <Button
-              onClick={handleFixBrokenBalances}
-              disabled={isFixingBalances}
-              variant="outline"
-              className="shrink-0"
-            >
-              {isFixingBalances ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Fixing...
-                </>
-              ) : (
-                "Fix Broken Balances"
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleFindBroken}
+                disabled={isFinding || isFixing}
+                variant="outline"
+                size="sm"
+              >
+                {isFinding ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Finding...
+                  </>
+                ) : (
+                  <>
+                    <Search className="mr-2 h-4 w-4" />
+                    Find Broken
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleFixBroken}
+                disabled={isFixing || brokenRequests.length === 0}
+                variant="default"
+                size="sm"
+                className="bg-amber-500 hover:bg-amber-600"
+              >
+                {isFixing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Fixing...
+                  </>
+                ) : (
+                  <>
+                    <Wrench className="mr-2 h-4 w-4" />
+                    Fix All ({brokenRequests.length})
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
-          {balanceFixResult && (
-            <div className={`rounded-lg p-4 ${
-              balanceFixResult.brokenCount === 0 
-                ? "bg-green-50 border border-green-200"
-                : balanceFixResult.fixedCount > 0
-                ? "bg-blue-50 border border-blue-200"
-                : "bg-amber-50 border border-amber-200"
+          {/* Show broken requests */}
+          {showBrokenList && brokenRequests.length > 0 && (
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <h4 className="font-medium text-sm mb-2">Broken Requests Found:</h4>
+              <div className="max-h-60 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 sticky top-0">
+                    <tr>
+                      <th className="text-left p-2">User</th>
+                      <th className="text-left p-2">Leave Type</th>
+                      <th className="text-left p-2">Days</th>
+                      <th className="text-left p-2">Balance Exists?</th>
+                      <th className="text-left p-2">Leave Type Exists?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {brokenRequests.map((req) => (
+                      <tr key={req.id} className="border-t">
+                        <td className="p-2">{req.applicantName || req.applicantId}</td>
+                        <td className="p-2">{req.leaveType}</td>
+                        <td className="p-2">{req.totalDays}</td>
+                        <td className="p-2">
+                          {req.hasBalanceDoc ? (
+                            <span className="text-green-600">✅ Yes</span>
+                          ) : (
+                            <span className="text-red-600">❌ No</span>
+                          )}
+                        </td>
+                        <td className="p-2">
+                          {req.hasLeaveType ? (
+                            <span className="text-green-600">✅ Yes</span>
+                          ) : (
+                            <span className="text-red-600">❌ No</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Fix Result */}
+          {fixResult && (
+            <div className={`border rounded-lg p-4 ${
+              fixResult.fixed > 0 ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"
             }`}>
-              {/* Summary */}
-              <div className="grid grid-cols-2 gap-4 mb-3">
+              <div className="grid grid-cols-3 gap-4 mb-3">
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Broken Requests Found</p>
-                  <p className={`text-lg font-bold ${
-                    balanceFixResult.brokenCount > 0 ? "text-red-600" : "text-green-600"
-                  }`}>
-                    {balanceFixResult.brokenCount}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Found</p>
+                  <p className="text-lg font-bold">{fixResult.totalFound}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Fixed Successfully</p>
-                  <p className={`text-lg font-bold ${
-                    balanceFixResult.fixedCount > 0 ? "text-green-600" : "text-gray-600"
-                  }`}>
-                    {balanceFixResult.fixedCount}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Fixed</p>
+                  <p className="text-lg font-bold text-green-600">{fixResult.fixed}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground">Failed</p>
+                  <p className="text-lg font-bold text-red-600">{fixResult.failed}</p>
                 </div>
               </div>
 
-              {balanceFixResult.fixed.length > 0 && (
+              {fixResult.fixedRequests.length > 0 && (
                 <div className="mt-2">
-                  <p className="font-medium text-blue-800 flex items-center gap-2">
+                  <p className="font-medium text-green-800 flex items-center gap-2">
                     <CheckCircle className="h-4 w-4" />
-                    Fixed {balanceFixResult.fixed.length} requests:
+                    Fixed {fixResult.fixedRequests.length} requests:
                   </p>
                   <ul className="mt-1 space-y-1 max-h-40 overflow-y-auto">
-                    {balanceFixResult.fixed.map((item, index) => (
-                      <li key={index} className="text-sm text-blue-700">
-                        {item.userName} - {item.leaveType}: {item.daysRestored} day(s) restored
+                    {fixResult.fixedRequests.map((item, index) => (
+                      <li key={index} className="text-sm text-green-700">
+                        {item.msg}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {balanceFixResult.broken.length > 0 && balanceFixResult.fixed.length === 0 && (
+              {fixResult.failedRequests.length > 0 && (
                 <div className="mt-2">
-                  <p className="font-medium text-amber-800 flex items-center gap-2">
+                  <p className="font-medium text-red-800 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4" />
-                    Found {balanceFixResult.broken.length} broken requests but could not fix them:
+                    Failed {fixResult.failedRequests.length} requests:
                   </p>
                   <ul className="mt-1 space-y-1 max-h-40 overflow-y-auto">
-                    {balanceFixResult.broken.map((item, index) => (
-                      <li key={index} className="text-sm text-amber-700">
-                        {item.userName} - {item.leaveType}: {item.totalDays} day(s) (Balance record missing)
+                    {fixResult.failedRequests.map((item, index) => (
+                      <li key={index} className="text-sm text-red-700">
+                        {item.applicantName} - {item.leaveType}: {item.error}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {balanceFixResult.brokenCount === 0 && (
+              {fixResult.totalFound === 0 && (
                 <p className="text-green-800 font-medium flex items-center gap-2">
                   <CheckCircle className="h-4 w-4" />
                   ✅ No broken balances found!
@@ -473,8 +604,9 @@ export function SystemTools() {
               <div>
                 <p className="text-sm font-medium text-amber-800">⚠️ Important</p>
                 <p className="text-sm text-amber-700 mt-1">
-                  This tool only fixes requests that are already marked as &quot;Cancelled&quot; but have
+                  This tool fixes requests that are marked as &quot;Cancelled&quot; but have
                   <strong> balanceRestored: false</strong>. It will restore the leave days to the user&apos;s balance.
+                  If no balance exists, it will create one with default quotas.
                   All actions are logged for audit purposes.
                 </p>
               </div>
@@ -482,11 +614,10 @@ export function SystemTools() {
           </div>
         </div>
 
-        {/* Footer */}
+        {/* ========== FOOTER ========== */}
         <div className="border-t pt-4">
           <p className="text-xs text-muted-foreground">
-            System tools help you quickly set up the application with default data.
-            All operations are logged for audit purposes.
+            System tools help you maintain data integrity. All operations are logged for audit purposes.
           </p>
         </div>
       </CardContent>
