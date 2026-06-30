@@ -1,11 +1,11 @@
-// components/super-admin/SystemTools.tsx - COMPLETE FIXED FILE
+// components/super-admin/SystemTools.tsx - COMPLETE FILE WITH FIX BROKEN BALANCES
 "use client";
 
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Database, AlertCircle, CheckCircle, Loader2, Shield } from "lucide-react";
+import { Database, AlertCircle, CheckCircle, Loader2, Shield, RefreshCw } from "lucide-react";
 
 interface ValidationResult {
   errors: string[];
@@ -17,6 +17,25 @@ interface ValidationResult {
   };
 }
 
+interface BalanceFixResult {
+  fixedCount: number;
+  brokenCount: number;
+  fixed: {
+    id: string;
+    userId: string;
+    userName: string;
+    leaveType: string;
+    daysRestored: number;
+  }[];
+  broken: {
+    id: string;
+    userId: string;
+    userName: string;
+    leaveType: string;
+    totalDays: number;
+  }[];
+}
+
 export function SystemTools() {
   const [isSeeding, setIsSeeding] = useState(false);
   const [hasSeeded, setHasSeeded] = useState(false);
@@ -24,6 +43,9 @@ export function SystemTools() {
 
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+
+  const [isFixingBalances, setIsFixingBalances] = useState(false);
+  const [balanceFixResult, setBalanceFixResult] = useState<BalanceFixResult | null>(null);
 
   const handleSeedLeaveTypes = async () => {
     setIsSeeding(true);
@@ -107,6 +129,43 @@ export function SystemTools() {
     }
   };
 
+  const handleFixBrokenBalances = async () => {
+    setIsFixingBalances(true);
+    setBalanceFixResult(null);
+    
+    try {
+      const response = await fetch("/api/admin/fix-broken-balances", {
+        method: "POST",
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fix broken balances");
+      }
+      
+      setBalanceFixResult({
+        fixedCount: data.fixedCount || 0,
+        brokenCount: data.brokenCount || 0,
+        fixed: data.fixed || [],
+        broken: data.broken || [],
+      });
+      
+      if (data.fixedCount > 0) {
+        toast.success(`Fixed ${data.fixedCount} broken balances`);
+      } else if (data.brokenCount === 0) {
+        toast.success("✅ No broken balances found!");
+      } else {
+        toast.warning(`Found ${data.brokenCount} broken balances, fixed ${data.fixedCount}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to fix balances";
+      toast.error(errorMessage);
+    } finally {
+      setIsFixingBalances(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -115,7 +174,7 @@ export function SystemTools() {
           <CardTitle>System Tools</CardTitle>
         </div>
         <CardDescription>
-          Seed default system data and validate role assignments
+          Seed default system data, validate role assignments, and fix broken leave balances
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
@@ -194,7 +253,7 @@ export function SystemTools() {
             <div>
               <h3 className="font-semibold text-lg flex items-center gap-2">
                 <Shield className="h-5 w-5 text-primary" />
-                Validate & Clean Assignments
+                Validate &amp; Clean Assignments
               </h3>
               <p className="text-sm text-muted-foreground">
                 Check and clean invalid HOD, Registrar, and Principal assignments.
@@ -302,6 +361,121 @@ export function SystemTools() {
                 <p className="text-sm text-amber-700 mt-1">
                   This tool will remove assignments to users who have been deleted or deactivated.
                   This action is logged for audit purposes and cannot be undone.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Fix Broken Balances */}
+        <div className="space-y-4 border-t pt-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <RefreshCw className="h-5 w-5 text-amber-500" />
+                Fix Broken Leave Balances
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Find and fix cancelled leave requests where the balance was not restored.
+                This tool will restore the leave days to the user&apos;s balance.
+              </p>
+            </div>
+            <Button
+              onClick={handleFixBrokenBalances}
+              disabled={isFixingBalances}
+              variant="outline"
+              className="shrink-0"
+            >
+              {isFixingBalances ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Fixing...
+                </>
+              ) : (
+                "Fix Broken Balances"
+              )}
+            </Button>
+          </div>
+
+          {balanceFixResult && (
+            <div className={`rounded-lg p-4 ${
+              balanceFixResult.brokenCount === 0 
+                ? "bg-green-50 border border-green-200"
+                : balanceFixResult.fixedCount > 0
+                ? "bg-blue-50 border border-blue-200"
+                : "bg-amber-50 border border-amber-200"
+            }`}>
+              {/* Summary */}
+              <div className="grid grid-cols-2 gap-4 mb-3">
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground">Broken Requests Found</p>
+                  <p className={`text-lg font-bold ${
+                    balanceFixResult.brokenCount > 0 ? "text-red-600" : "text-green-600"
+                  }`}>
+                    {balanceFixResult.brokenCount}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground">Fixed Successfully</p>
+                  <p className={`text-lg font-bold ${
+                    balanceFixResult.fixedCount > 0 ? "text-green-600" : "text-gray-600"
+                  }`}>
+                    {balanceFixResult.fixedCount}
+                  </p>
+                </div>
+              </div>
+
+              {balanceFixResult.fixed.length > 0 && (
+                <div className="mt-2">
+                  <p className="font-medium text-blue-800 flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4" />
+                    Fixed {balanceFixResult.fixed.length} requests:
+                  </p>
+                  <ul className="mt-1 space-y-1 max-h-40 overflow-y-auto">
+                    {balanceFixResult.fixed.map((item, index) => (
+                      <li key={index} className="text-sm text-blue-700">
+                        {item.userName} - {item.leaveType}: {item.daysRestored} day(s) restored
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {balanceFixResult.broken.length > 0 && balanceFixResult.fixed.length === 0 && (
+                <div className="mt-2">
+                  <p className="font-medium text-amber-800 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    Found {balanceFixResult.broken.length} broken requests but could not fix them:
+                  </p>
+                  <ul className="mt-1 space-y-1 max-h-40 overflow-y-auto">
+                    {balanceFixResult.broken.map((item, index) => (
+                      <li key={index} className="text-sm text-amber-700">
+                        {item.userName} - {item.leaveType}: {item.totalDays} day(s) (Balance record missing)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {balanceFixResult.brokenCount === 0 && (
+                <p className="text-green-800 font-medium flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4" />
+                  ✅ No broken balances found!
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Warning */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">⚠️ Important</p>
+                <p className="text-sm text-amber-700 mt-1">
+                  This tool only fixes requests that are already marked as &quot;Cancelled&quot; but have
+                  <strong> balanceRestored: false</strong>. It will restore the leave days to the user&apos;s balance.
+                  All actions are logged for audit purposes.
                 </p>
               </div>
             </div>

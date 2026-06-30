@@ -1,4 +1,4 @@
-// app/api/leave/request/[id]/cancel/route.ts - COMPLETE FIXED FILE (ESLint warnings fixed)
+// app/api/leave/request/[id]/cancel/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -69,52 +69,138 @@ export async function PUT(
       );
     }
 
-    // ✅ FIX: Always attempt to restore balance with improved error handling
+    // ==========================================
+    // ✅ FIX: BALANCE RESTORATION WITH ERROR HANDLING
+    // ==========================================
     let balanceRestored = false;
 
     if (!leaveRequest.balanceRestored) {
       try {
-        // Always restore balance regardless of leave type config
         const academicYear = getCurrentAcademicYear();
         const balanceKey = `${userId}_${academicYear}`;
         const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
         const balanceSnapshot = await balanceRef.once("value");
         const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
-        if (balanceDoc && balanceDoc.balances) {
-          const currentBalance = balanceDoc.balances[leaveRequest.leaveType];
-          if (currentBalance) {
-            const newPending = Math.max(0, (currentBalance.pending || 0) - leaveRequest.totalDays);
-            const newAvailable = (currentBalance.available || 0) + leaveRequest.totalDays;
-            
-            await balanceRef.update({
-              [`balances.${leaveRequest.leaveType}.pending`]: newPending,
-              [`balances.${leaveRequest.leaveType}.available`]: newAvailable,
-              updatedAt: new Date().toISOString(),
-            });
-            
-            balanceRestored = true;
-            console.log(`✅ Balance restored for user ${userId}, leave type ${leaveRequest.leaveType}`);
-          }
+        // ✅ Check 1: Balance document exists
+        if (!balanceDoc) {
+          console.error(`❌ Balance document not found for user ${userId}`);
+          return NextResponse.json(
+            { 
+              error: "Cannot cancel request: Leave balance record not found. Please contact administrator.",
+              details: "Balance document missing for user"
+            },
+            { status: 500 }
+          );
         }
+
+        // ✅ Check 2: Balance has balances field
+        if (!balanceDoc.balances) {
+          console.error(`❌ Balance data corrupted for user ${userId}`);
+          return NextResponse.json(
+            { 
+              error: "Cannot cancel request: Balance data is corrupted. Please contact administrator.",
+              details: "Balance document has no balances field"
+            },
+            { status: 500 }
+          );
+        }
+
+        // ✅ Check 3: Leave type exists in balance
+        const currentBalance = balanceDoc.balances[leaveRequest.leaveType];
+        if (!currentBalance) {
+          console.error(`❌ Leave type ${leaveRequest.leaveType} not found in balance for user ${userId}`);
+          return NextResponse.json(
+            { 
+              error: `Cannot cancel request: Leave type "${leaveRequest.leaveType}" not found in your balance. Please contact administrator.`,
+              details: "Leave type missing from balance"
+            },
+            { status: 500 }
+          );
+        }
+
+        // ✅ Check 4: Validate pending amount
+        const currentPending = currentBalance.pending || 0;
+        const currentAvailable = currentBalance.available || 0;
+        
+        if (currentPending < leaveRequest.totalDays) {
+          console.error(`❌ Balance inconsistency: Pending (${currentPending}) < Days to restore (${leaveRequest.totalDays})`);
+          return NextResponse.json(
+            { 
+              error: "Balance inconsistency detected. Please contact administrator.",
+              details: `Pending (${currentPending}) < Total days to restore (${leaveRequest.totalDays})`
+            },
+            { status: 500 }
+          );
+        }
+
+        // ✅ Perform the balance update
+        const newPending = currentPending - leaveRequest.totalDays;
+        const newAvailable = currentAvailable + leaveRequest.totalDays;
+        
+        await balanceRef.update({
+          [`balances.${leaveRequest.leaveType}.pending`]: newPending,
+          [`balances.${leaveRequest.leaveType}.available`]: newAvailable,
+          updatedAt: new Date().toISOString(),
+        });
+        
+        balanceRestored = true;
+        console.log(`✅ Balance restored for user ${userId}, leave type ${leaveRequest.leaveType}`);
+        console.log(`   Pending: ${currentPending} → ${newPending}`);
+        console.log(`   Available: ${currentAvailable} → ${newAvailable}`);
+
       } catch (balanceError) {
+        // ✅ FIX: Don't proceed - balance restoration failed
         console.error("❌ Error restoring balance during cancel:", balanceError);
-        // Continue with cancellation even if balance restore fails
+        
+        // ✅ Log the failure for audit
+        const errorLogId = `error_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        await rtdb.ref(`errorLogs/${errorLogId}`).set({
+          id: errorLogId,
+          userId: userId,
+          action: "BALANCE_RESTORE_FAILED",
+          leaveRequestId: id,
+          leaveType: leaveRequest.leaveType,
+          totalDays: leaveRequest.totalDays,
+          error: balanceError instanceof Error ? balanceError.message : String(balanceError),
+          timestamp: new Date().toISOString()
+        });
+        
+        return NextResponse.json(
+          { 
+            error: "Unable to cancel request: Failed to restore leave balance. Please try again or contact administrator.",
+            errorId: errorLogId
+          },
+          { status: 500 }
+        );
       }
     } else {
+      // Balance was already restored (e.g., from a previous attempt)
       balanceRestored = true;
     }
 
-    // ✅ Cancel the request regardless of balance restoration status
+    // ✅ Final check: Only proceed if balance is restored
+    if (!balanceRestored) {
+      return NextResponse.json(
+        { 
+          error: "Cannot cancel request: Balance restoration was not completed. Please contact administrator."
+        },
+        { status: 500 }
+      );
+    }
+
+    // ==========================================
+    // ✅ NOW CANCEL THE REQUEST (only after balance is restored)
+    // ==========================================
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Cancelled",
-      balanceRestored: balanceRestored || leaveRequest.balanceRestored,
+      balanceRestored: true, // ✅ Always true now
       cancelledAt: new Date().toISOString(),
       cancelledBy: userId,
       updatedAt: new Date().toISOString(),
     });
 
-    // Log the cancellation
+    // ✅ Log the cancellation
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -129,7 +215,7 @@ export async function PUT(
       actionAt: new Date().toISOString(),
     });
 
-    // Notify the approver if there is one
+    // ✅ Notify the approver if there is one
     if (leaveRequest.currentApproverId) {
       const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       await rtdb.ref(`notifications/${notificationId}`).set({
@@ -149,9 +235,10 @@ export async function PUT(
 
     return NextResponse.json({ 
       success: true,
-      balanceRestored: balanceRestored,
+      balanceRestored: true,
       message: "Leave request cancelled successfully" 
     });
+    
   } catch (error) {
     console.error("Error cancelling leave request:", error);
     return NextResponse.json(
