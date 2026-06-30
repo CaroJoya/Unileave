@@ -13,8 +13,6 @@ export const LEAVE_TYPE_LABELS: Record<string, string> = {
 
 /**
  * Get the display label for a leave type code
- * @param type - The leave type code (e.g., "CL", "EL", "ML")
- * @returns The human-readable label
  */
 export function getLeaveTypeLabel(type: string): string {
   return LEAVE_TYPE_LABELS[type] || type;
@@ -34,28 +32,8 @@ export const LEAVE_TYPE_COLORS: Record<string, string> = {
   SPL: "#6B7280", // Gray
 };
 
-/**
- * Get CSS color for a leave type
- */
 export function getLeaveTypeColor(type: string): string {
   return LEAVE_TYPE_COLORS[type] || "#6B7280";
-}
-
-/**
- * Get the badge variant for a leave type
- */
-export function getLeaveTypeBadgeVariant(type: string): string {
-  const variants: Record<string, string> = {
-    CL: "default",
-    EL: "secondary",
-    ML: "destructive",
-    CO: "outline",
-    OD: "default",
-    MAT: "secondary",
-    PAT: "destructive",
-    SPL: "outline",
-  };
-  return variants[type] || "default";
 }
 
 /**
@@ -110,6 +88,60 @@ export const LEAVE_TYPE_DEDUCTS_BALANCE: Record<string, boolean> = {
 
 export function doesLeaveTypeDeductBalance(type: string): boolean {
   return LEAVE_TYPE_DEDUCTS_BALANCE[type] || false;
+}
+
+/**
+ * Check if a leave type requires event details (OD specific)
+ */
+export const LEAVE_TYPE_REQUIRES_EVENT_DETAILS: Record<string, boolean> = {
+  CL: false,
+  EL: false,
+  ML: false,
+  CO: false,
+  OD: true,
+  MAT: false,
+  PAT: false,
+  SPL: false,
+};
+
+export function doesLeaveTypeRequireEventDetails(type: string): boolean {
+  return LEAVE_TYPE_REQUIRES_EVENT_DETAILS[type] || false;
+}
+
+/**
+ * Check if a leave type has expiry (CO specific)
+ */
+export const LEAVE_TYPE_HAS_EXPIRY: Record<string, boolean> = {
+  CL: false,
+  EL: false,
+  ML: false,
+  CO: true,
+  OD: false,
+  MAT: false,
+  PAT: false,
+  SPL: false,
+};
+
+export function doesLeaveTypeHaveExpiry(type: string): boolean {
+  return LEAVE_TYPE_HAS_EXPIRY[type] || false;
+}
+
+/**
+ * Get default expiry in days for a leave type
+ */
+export const LEAVE_TYPE_DEFAULT_EXPIRY_DAYS: Record<string, number | null> = {
+  CL: null,
+  EL: null,
+  ML: null,
+  CO: 180,
+  OD: null,
+  MAT: null,
+  PAT: null,
+  SPL: null,
+};
+
+export function getLeaveTypeDefaultExpiryDays(type: string): number | null {
+  return LEAVE_TYPE_DEFAULT_EXPIRY_DAYS[type] || null;
 }
 
 /**

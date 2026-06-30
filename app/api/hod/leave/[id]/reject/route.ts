@@ -1,8 +1,8 @@
-// app/api/hod/leave/[id]/reject/route.ts - COMPLETE FIXED FILE
+// app/api/registrar/leave/[id]/reject/route.ts - COMPLETE UPDATED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
-import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
+import { restoreLeaveBalance, doesLeaveTypeDeductBalance } from "@/lib/services/leave-balance-service";
 import { sendEmail, getLeaveRejectedEmail } from "@/lib/utils/email";
 
 interface LeaveRequest {
@@ -23,15 +23,6 @@ interface User {
   email: string;
   roles: string[];
   departmentId: string;
-}
-
-interface LeaveBalanceDoc {
-  balances: {
-    [key: string]: {
-      pending: number;
-      available: number;
-    };
-  };
 }
 
 export async function POST(
@@ -66,13 +57,13 @@ export async function POST(
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
-    const hodId = decodedToken.uid;
+    const registrarId = decodedToken.uid;
 
-    const hodSnapshot = await rtdb.ref(`users/${hodId}`).once("value");
-    const hodData = hodSnapshot.val() as User | null;
+    const registrarSnapshot = await rtdb.ref(`users/${registrarId}`).once("value");
+    const registrarData = registrarSnapshot.val() as User | null;
 
-    if (!hodData?.roles?.includes("hod")) {
-      return NextResponse.json({ error: "Not authorized - HOD only" }, { status: 403 });
+    if (!registrarData?.roles?.includes("registrar")) {
+      return NextResponse.json({ error: "Not authorized - Registrar only" }, { status: 403 });
     }
 
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
@@ -82,66 +73,80 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    if (leaveRequest.departmentId !== hodData.departmentId) {
-      return NextResponse.json({ error: "Not authorized for this department" }, { status: 403 });
+    if (leaveRequest.status !== "Pending_Registrar") {
+      return NextResponse.json({ error: "Request is not pending registrar approval" }, { status: 400 });
     }
 
-    if (leaveRequest.status !== "Pending_HOD") {
-      return NextResponse.json({ error: "Request is not pending HOD approval" }, { status: 400 });
-    }
-
-    // ✅ ALWAYS restore balance
-    const academicYear = getCurrentAcademicYear();
-    const balanceKey = `${leaveRequest.applicantId}_${academicYear}`;
-    const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
-    const balanceSnapshot = await balanceRef.once("value");
-    const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+    // ============ BALANCE RESTORATION (CONDITIONAL) ============
     
-    if (balanceDoc && balanceDoc.balances[leaveRequest.leaveType]) {
-      const currentPending = balanceDoc.balances[leaveRequest.leaveType].pending || 0;
-      const currentAvailable = balanceDoc.balances[leaveRequest.leaveType].available || 0;
+    const deductsBalance = await doesLeaveTypeDeductBalance(leaveRequest.leaveType);
+    let balanceRestored = false;
+    let balanceError: string | null = null;
+
+    if (deductsBalance) {
+      console.log(`🔄 Restoring balance for ${leaveRequest.leaveType} (deducts balance: true)`);
+      const result = await restoreLeaveBalance(
+        leaveRequest.applicantId,
+        leaveRequest.leaveType,
+        leaveRequest.totalDays
+      );
       
-      await balanceRef.update({
-        [`balances.${leaveRequest.leaveType}.pending`]: Math.max(0, currentPending - leaveRequest.totalDays),
-        [`balances.${leaveRequest.leaveType}.available`]: currentAvailable + leaveRequest.totalDays,
-        updatedAt: new Date().toISOString(),
-      });
-      
-      console.log(`✅ Balance restored for user ${leaveRequest.applicantId}, leave type ${leaveRequest.leaveType}`);
+      if (result.success) {
+        balanceRestored = true;
+        console.log(`✅ Balance restored for user ${leaveRequest.applicantId}`);
+      } else {
+        balanceError = result.error || "Unknown error";
+        console.warn(`⚠️ Could not restore balance: ${balanceError}`);
+      }
     } else {
-      console.warn(`⚠️ Balance not found for user ${leaveRequest.applicantId}, leave type ${leaveRequest.leaveType}`);
+      console.log(`ℹ️ Leave type ${leaveRequest.leaveType} does not deduct balance, skipping restoration`);
     }
+
+    // ============ UPDATE REQUEST ============
 
     await rtdb.ref(`leaveRequests/${id}`).update({
-      status: "Rejected_HOD",
-      balanceRestored: true,
+      status: "Rejected_Registrar",
+      balanceRestored: balanceRestored,
+      balanceRestoreError: balanceError,
       updatedAt: new Date().toISOString(),
     });
+
+    // ============ LOG ACTION ============
 
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
       leaveRequestId: id,
-      actionBy: hodId,
-      actionByName: hodData.name,
-      actionRole: "hod",
+      actionBy: registrarId,
+      actionByName: registrarData.name,
+      actionRole: "registrar",
       action: "REJECT",
       remark: reason,
-      oldStatus: "Pending_HOD",
-      newStatus: "Rejected_HOD",
+      oldStatus: "Pending_Registrar",
+      newStatus: "Rejected_Registrar",
       actionAt: new Date().toISOString(),
     });
+
+    // ============ SEND NOTIFICATION ============
 
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
       userId: leaveRequest.applicantId,
       title: "Leave Request Rejected",
-      message: `Your ${leaveRequest.leaveType} leave request has been rejected by HOD. Reason: ${reason}`,
+      message: `Your ${leaveRequest.leaveType} leave request has been rejected by Registrar. Reason: ${reason}`,
       type: "leave_rejected",
       isRead: false,
+      metadata: JSON.stringify({
+        leaveRequestId: id,
+        leaveType: leaveRequest.leaveType,
+        reason,
+        balanceRestored,
+      }),
       createdAt: new Date().toISOString(),
     });
+
+    // ============ SEND EMAIL ============
 
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as User | null;
@@ -153,10 +158,10 @@ export async function POST(
         leaveRequest.startDate,
         leaveRequest.endDate,
         reason,
-        hodData.name
+        registrarData.name
       );
       
-      sendEmail(
+      await sendEmail(
         applicantData.email,
         `Leave Request Rejected - ${leaveRequest.leaveType}`,
         emailHtml
@@ -165,7 +170,10 @@ export async function POST(
 
     return NextResponse.json({ 
       success: true,
-      balanceRestored: true 
+      balanceRestored,
+      message: balanceRestored 
+        ? `Leave request rejected. Balance restored.` 
+        : `Leave request rejected. ${balanceError ? `Balance not restored: ${balanceError}` : 'Balance not restored.'}`
     });
   } catch (error) {
     console.error("Error rejecting leave request:", error);

@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx - COMPLETE FIXED (ESLint Compliant)
+// app/dashboard/page.tsx - COMPLETE UPDATED VERSION
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -30,6 +30,7 @@ import {
   XCircle,
   LayoutDashboard,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { RoleNavbar } from "@/components/layout/RoleNavbar";
 
@@ -38,6 +39,14 @@ interface LeaveBalance {
   used: number;
   pending: number;
   available: number;
+}
+
+interface CompOffCredit {
+  id: string;
+  creditedDays: number;
+  usedDays: number;
+  status: string;
+  expiryDate: string;
 }
 
 interface DashboardData {
@@ -50,6 +59,9 @@ interface DashboardData {
   totalAllocated: number;
   totalUsed: number;
   utilization: number;
+  compOffBalance: number;
+  compOffCredits: CompOffCredit[];
+  expiringCompOffCredits: CompOffCredit[];
   overworkSummary: {
     totalApprovedHours: number;
     pendingHours: number;
@@ -73,6 +85,9 @@ function DashboardContent() {
     totalAllocated: 0,
     totalUsed: 0,
     utilization: 0,
+    compOffBalance: 0,
+    compOffCredits: [],
+    expiringCompOffCredits: [],
     overworkSummary: {
       totalApprovedHours: 0,
       pendingHours: 0,
@@ -125,7 +140,6 @@ function DashboardContent() {
     }
   }, [user, userRoles, authLoading, router, currentRole, hydrationComplete]);
 
-  // ✅ NEW: Refresh only balance data (faster than full refresh)
   const refreshBalance = useCallback(async () => {
     try {
       const balanceRes = await fetch("/api/leave/balances", {
@@ -187,7 +201,7 @@ function DashboardContent() {
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      // ✅ FIX: Add cache: 'no-store' to prevent cached data
+      // Fetch leave balances
       const balanceRes = await fetch("/api/leave/balances", {
         cache: 'no-store',
         headers: {
@@ -201,6 +215,45 @@ function DashboardContent() {
         console.log("📊 Balance data:", balanceData);
       }
 
+      // ✅ NEW: Fetch Comp-Off balance from credits API
+      let compOffBalance = 0;
+      let compOffCredits: CompOffCredit[] = [];
+      let expiringCompOffCredits: CompOffCredit[] = [];
+      
+      try {
+        const compOffRes = await fetch("/api/comp-off/credits", {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          }
+        });
+        if (compOffRes.ok) {
+          const compOffData = await compOffRes.json();
+          const credits = compOffData.credits || [];
+          compOffCredits = credits;
+          
+          // Calculate total available comp-off days
+          compOffBalance = credits
+            .filter((c: CompOffCredit) => c.status === 'active')
+            .reduce((sum: number, c: CompOffCredit) => sum + (c.creditedDays - c.usedDays), 0);
+          
+          // Find expiring credits (within 30 days)
+          const now = new Date();
+          const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+          expiringCompOffCredits = credits.filter((c: CompOffCredit) => {
+            if (c.status !== 'active') return false;
+            const expiryDate = new Date(c.expiryDate);
+            return expiryDate <= thirtyDaysFromNow && expiryDate > now;
+          });
+          
+          console.log("📊 Comp-off data:", { compOffBalance, compOffCredits: credits.length, expiring: expiringCompOffCredits.length });
+        }
+      } catch {
+        console.warn("Error fetching comp-off credits");
+      }
+
+      // Fetch leave requests
       let requestsData = { requests: [] };
       try {
         const requestsRes = await fetch("/api/leave/my-requests", {
@@ -218,6 +271,7 @@ function DashboardContent() {
         console.warn("Error fetching requests");
       }
 
+      // Fetch overwork summary
       let overworkData = {
         summary: {
           totalApprovedHours: 0,
@@ -243,7 +297,6 @@ function DashboardContent() {
 
       const requests = requestsData.requests || [];
 
-      // ✅ FIX: Only count actual pending requests (not revision)
       const pendingRequests = requests.filter(
         (req: { status: string }) =>
           req.status === "Pending_HOD" ||
@@ -251,7 +304,6 @@ function DashboardContent() {
           req.status === "Pending_Principal"
       ).length;
 
-      // ✅ NEW: Count revision requests separately
       const revisionRequests = requests.filter(
         (req: { status: string }) =>
           req.status === "Pending_Revision"
@@ -270,7 +322,12 @@ function DashboardContent() {
 
       const balances = balanceData.balances || {};
       
-      const totalAvailable = Object.values(balances).reduce(
+      // ✅ FIX: Remove CO from regular balance calculation
+      const regularBalances = Object.entries(balances)
+        .filter(([type]) => type !== 'CO')
+        .reduce((acc, [type, balance]) => ({ ...acc, [type]: balance }), {});
+      
+      const totalAvailable = Object.values(regularBalances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
           return sum + (balance?.available || 0);
@@ -278,7 +335,7 @@ function DashboardContent() {
         0
       );
       
-      const totalAllocated = Object.values(balances).reduce(
+      const totalAllocated = Object.values(regularBalances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
           return sum + (balance?.allocated || 0);
@@ -286,7 +343,7 @@ function DashboardContent() {
         0
       );
       
-      const totalUsed = Object.values(balances).reduce(
+      const totalUsed = Object.values(regularBalances).reduce(
         (sum: number, b: unknown) => {
           const balance = b as LeaveBalance;
           return sum + (balance?.used || 0);
@@ -297,7 +354,7 @@ function DashboardContent() {
       const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
 
       setData({
-        balances,
+        balances: regularBalances,
         pendingRequests,
         approvedRequests,
         rejectedRequests,
@@ -306,13 +363,17 @@ function DashboardContent() {
         totalAllocated,
         totalUsed,
         utilization,
+        compOffBalance,
+        compOffCredits,
+        expiringCompOffCredits,
         overworkSummary: overworkData.summary,
       });
       
       console.log("📊 Dashboard data updated:", {
         pending: pendingRequests,
         revision: revisionRequests,
-        balances: balances,
+        compOffBalance,
+        expiring: expiringCompOffCredits.length,
       });
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -333,14 +394,12 @@ function DashboardContent() {
 
     loadData();
 
-    // Set up auto-refresh
     const interval = setInterval(() => {
       if (isMounted && user) {
-        // ✅ Also refresh balance separately on each interval
         refreshBalance();
         fetchDashboardData();
       }
-    }, 30000); // 30 seconds
+    }, 30000);
 
     return () => {
       isMounted = false;
@@ -415,7 +474,7 @@ function DashboardContent() {
         subtitle={`${user.departmentName} • ${getRoleLabel()}`}
       />
 
-      {/* Refresh Button */}
+      {/* Refresh Buttons */}
       <div className="flex justify-end mb-4 gap-2">
         <Button 
           variant="outline" 
@@ -438,12 +497,13 @@ function DashboardContent() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4 mb-8 mt-6">
+      <div className="grid gap-4 md:grid-cols-5 mb-8 mt-6">
+        {/* Total Balance Card - Excluding CO */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-sm text-muted-foreground">Total Balance</p>
+                <p className="text-sm text-muted-foreground">Total Leave Balance</p>
                 <p className="text-2xl font-bold text-primary">
                   {data.totalAvailable?.toFixed(1) || 0}
                 </p>
@@ -467,6 +527,32 @@ function DashboardContent() {
                 />
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* ✅ NEW: Comp-Off Balance Card */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm text-muted-foreground">Comp-Off Balance</p>
+                <p className="text-2xl font-bold text-teal-600">
+                  {data.compOffBalance?.toFixed(1) || 0}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {data.compOffCredits.length} active credit(s)
+                </p>
+              </div>
+              <div className="h-12 w-12 rounded-full bg-teal-100 flex items-center justify-center">
+                <Award className="h-6 w-6 text-teal-600" />
+              </div>
+            </div>
+            {data.expiringCompOffCredits.length > 0 && (
+              <div className="mt-2 flex items-center gap-1 text-xs text-amber-600">
+                <AlertTriangle className="h-3 w-3" />
+                {data.expiringCompOffCredits.length} credit(s) expiring soon
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -522,7 +608,7 @@ function DashboardContent() {
         </Card>
       </div>
 
-      {/* ✅ NEW: Revision Requests Card (separate from pending) */}
+      {/* Revision Requests Alert */}
       {data.revisionRequests > 0 && (
         <div className="mb-6">
           <Card className="border-purple-300 bg-purple-50">
@@ -553,6 +639,7 @@ function DashboardContent() {
         </div>
       )}
 
+      {/* Quick Actions */}
       <div className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
         <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
@@ -586,12 +673,12 @@ function DashboardContent() {
             </Card>
           </Link>
 
-          <Link href="/vacation">
+          <Link href="/comp-off">
             <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-primary">
               <CardContent className="pt-6 text-center">
-                <Umbrella className="h-8 w-8 mx-auto text-cyan-500 mb-2" />
-                <p className="font-medium">Vacation</p>
-                <p className="text-xs text-muted-foreground">Apply for vacation</p>
+                <Award className="h-8 w-8 mx-auto text-teal-500 mb-2" />
+                <p className="font-medium">Comp Off</p>
+                <p className="text-xs text-muted-foreground">Manage comp-off credits</p>
               </CardContent>
             </Card>
           </Link>
@@ -599,6 +686,7 @@ function DashboardContent() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
+        {/* Leave Balance Details */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Leave Balance Details</CardTitle>
@@ -645,6 +733,7 @@ function DashboardContent() {
           </CardContent>
         </Card>
 
+        {/* Overwork Summary */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -712,6 +801,7 @@ function DashboardContent() {
         </Card>
       </div>
 
+      {/* Resources */}
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Other Resources</h2>
         <div className="grid gap-4 md:grid-cols-3">

@@ -24,3 +24,34 @@ export function formatDateForStorage(date: Date): string {
 export function formatDateForDisplay(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
+
+/**
+ * Get the next academic year
+ */
+export function getNextAcademicYear(currentYear: string): string {
+  const { startYear } = parseAcademicYear(currentYear);
+  return `${startYear + 1}-${startYear + 2}`;
+}
+
+/**
+ * Get previous academic year
+ */
+export function getPreviousAcademicYear(currentYear: string): string {
+  const { startYear } = parseAcademicYear(currentYear);
+  return `${startYear - 1}-${startYear}`;
+}
+
+/**
+ * Check if a date is within an academic year
+ */
+export function isDateInAcademicYear(date: Date, academicYear: string): boolean {
+  const { startYear, endYear } = parseAcademicYear(academicYear);
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  
+  if (month >= 5) {
+    return year === startYear;
+  } else {
+    return year === endYear;
+  }
+}

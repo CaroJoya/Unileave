@@ -1,4 +1,4 @@
-// app/api/admin/seed-leave-types/route.ts - COMPLETE FILE
+// app/api/admin/seed-leave-types/route.ts - COMPLETE UPDATED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -25,13 +25,13 @@ interface LeavePolicy {
   id: string;
   academicYear: string;
   leaveAllocations: {
-    faculty: { CL: number; EL: number; ML: number; CO: number };
-    lab_assistant: { CL: number; EL: number; ML: number; CO: number };
-    office_staff: { CL: number; EL: number; ML: number; CO: number };
-    hod: { CL: number; EL: number; ML: number; CO: number };
-    registrar: { CL: number; EL: number; ML: number; CO: number };
-    principal: { CL: number; EL: number; ML: number; CO: number };
-    head_clerk: { CL: number; EL: number; ML: number; CO: number };
+    faculty: { CL: number; EL: number; ML: number; CO: number; OD: number; MAT: number; PAT: number; SPL: number };
+    lab_assistant: { CL: number; EL: number; ML: number; CO: number; OD: number; MAT: number; PAT: number; SPL: number };
+    office_staff: { CL: number; EL: number; ML: number; CO: number; OD: number; MAT: number; PAT: number; SPL: number };
+    hod: { CL: number; EL: number; ML: number; CO: number; OD: number; MAT: number; PAT: number; SPL: number };
+    registrar: { CL: number; EL: number; ML: number; CO: number; OD: number; MAT: number; PAT: number; SPL: number };
+    principal: { CL: number; EL: number; ML: number; CO: number; OD: number; MAT: number; PAT: number; SPL: number };
+    head_clerk: { CL: number; EL: number; ML: number; CO: number; OD: number; MAT: number; PAT: number; SPL: number };
   };
   effectiveFrom: string;
   applyRule: string;
@@ -108,14 +108,14 @@ const DEFAULT_LEAVE_TYPES: Omit<LeaveType, 'id'>[] = [
   {
     leaveCode: "OD",
     leaveName: "On Duty",
-    description: "Official duty such as conferences, workshops, FDPs",
+    description: "Official duty such as conferences, workshops, FDPs, external exams",
     allowHalfDay: true,
     requiresAttachment: true,
-    deductsBalance: false,
+    deductsBalance: false, // ✅ OD does NOT deduct balance
     hasExpiry: false,
     expiryInDays: null,
-    requiresEventDetails: true,
-    maxConsecutiveDays: null,
+    requiresEventDetails: true, // ✅ OD requires event details
+    maxConsecutiveDays: 10,
     isActive: true,
     createdBy: "system",
     createdAt: new Date().toISOString(),
@@ -188,13 +188,13 @@ function getDefaultPolicy(): LeavePolicy {
     id: academicYear,
     academicYear: academicYear,
     leaveAllocations: {
-      faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
-      lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
-      office_staff: { CL: 20, EL: 10, ML: 15, CO: 8 },
-      hod: { CL: 24, EL: 15, ML: 15, CO: 10 },
-      registrar: { CL: 20, EL: 12, ML: 15, CO: 10 },
-      principal: { CL: 30, EL: 20, ML: 15, CO: 12 },
-      head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
+      faculty: { CL: 24, EL: 12, ML: 15, CO: 10, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+      lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+      office_staff: { CL: 20, EL: 10, ML: 15, CO: 8, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+      hod: { CL: 24, EL: 15, ML: 15, CO: 10, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+      registrar: { CL: 20, EL: 12, ML: 15, CO: 10, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+      principal: { CL: 30, EL: 20, ML: 15, CO: 12, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+      head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
     },
     effectiveFrom: new Date().toISOString(),
     applyRule: "immediate",

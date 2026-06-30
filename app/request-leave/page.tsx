@@ -1,4 +1,4 @@
-// app/request-leave/page.tsx - COMPLETE FINAL VERSION
+// app/request-leave/page.tsx - COMPLETE UPDATED VERSION
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -12,10 +12,11 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CalendarIcon, CheckCircle, Info } from "lucide-react";
+import { CalendarIcon, CheckCircle, Info, Briefcase, MapPin} from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+//import { doesLeaveTypeRequireEventDetails } from "@/lib/constants/leave-types";
 
 interface LeaveType {
   id: string;
@@ -26,6 +27,7 @@ interface LeaveType {
   deductsBalance: boolean;
   isActive: boolean;
   maxConsecutiveDays: number | null;
+  requiresEventDetails?: boolean;
 }
 
 interface LeaveBalance {
@@ -33,6 +35,13 @@ interface LeaveBalance {
   used: number;
   pending: number;
   available: number;
+}
+
+interface ODDetails {
+  eventName: string;
+  organization: string;
+  location: string;
+  purpose: string;
 }
 
 export default function RequestLeavePage() {
@@ -54,6 +63,15 @@ export default function RequestLeavePage() {
   const [alternateFacultyName, setAlternateFacultyName] = useState("");
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  
+  // ✅ NEW: OD specific state
+  const [odDetails, setOdDetails] = useState<ODDetails>({
+    eventName: "",
+    organization: "",
+    location: "",
+    purpose: "",
+  });
+  const [showODFields, setShowODFields] = useState(false);
 
   // Auth check
   useEffect(() => {
@@ -82,6 +100,7 @@ export default function RequestLeavePage() {
         console.error("Failed to fetch leave types:", typesData.error);
       }
 
+      // ✅ FIX: Fetch comp-off balance separately for CO
       const balanceResponse = await fetch("/api/leave/balances");
       const balanceData = await balanceResponse.json();
       if (balanceResponse.ok && balanceData.balances) {
@@ -138,6 +157,21 @@ export default function RequestLeavePage() {
     setSelectedLeaveTypeConfig(config || null);
     setIsHalfDay(false);
     setEndDate(undefined);
+    
+    // ✅ Check if this leave type requires event details (OD)
+    const requiresEventDetails = config?.requiresEventDetails || 
+                                 (config?.leaveCode === 'OD');
+    setShowODFields(requiresEventDetails);
+    
+    // Reset OD details if not required
+    if (!requiresEventDetails) {
+      setOdDetails({
+        eventName: "",
+        organization: "",
+        location: "",
+        purpose: "",
+      });
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -174,8 +208,30 @@ export default function RequestLeavePage() {
       return;
     }
 
+    // ✅ NEW: Validate OD details
+    if (showODFields) {
+      if (!odDetails.eventName.trim() || odDetails.eventName.trim().length < 3) {
+        toast.error("Event name is required (minimum 3 characters)");
+        return;
+      }
+      if (!odDetails.organization.trim() || odDetails.organization.trim().length < 2) {
+        toast.error("Organization name is required");
+        return;
+      }
+      if (!odDetails.location.trim() || odDetails.location.trim().length < 2) {
+        toast.error("Location is required");
+        return;
+      }
+      if (!odDetails.purpose.trim() || odDetails.purpose.trim().length < 5) {
+        toast.error("Purpose description is required (minimum 5 characters)");
+        return;
+      }
+    }
+
     const leaveTypeCode = selectedLeaveTypeConfig?.leaveCode || "";
-    if (selectedLeaveTypeConfig?.deductsBalance) {
+    
+    // ✅ FIX: For CO, check comp-off balance (handled by backend)
+    if (selectedLeaveTypeConfig?.deductsBalance && leaveTypeCode !== 'CO') {
       const balance = balances[leaveTypeCode];
       if (balance && balance.available < totalDays) {
         toast.error(
@@ -210,7 +266,18 @@ export default function RequestLeavePage() {
         }
       }
 
-      const requestBody = {
+      const requestBody: {
+        leaveType: string;
+        startDate: string;
+        endDate: string;
+        totalDays: number;
+        isHalfDay: boolean;
+        halfDaySession: string | null;
+        reason: string;
+        alternateFacultyName: string;
+        attachmentUrl: string | null;
+        odDetails?: ODDetails;
+      } = {
         leaveType: leaveTypeCode,
         startDate: startDate.toISOString(),
         endDate: (endDate || startDate).toISOString(),
@@ -221,6 +288,11 @@ export default function RequestLeavePage() {
         alternateFacultyName: alternateFacultyName.trim(),
         attachmentUrl,
       };
+
+      // ✅ NEW: Add OD details if present
+      if (showODFields) {
+        requestBody.odDetails = odDetails;
+      }
 
       console.log("📤 Submitting leave request:", requestBody);
 
@@ -241,8 +313,9 @@ export default function RequestLeavePage() {
         return;
       }
 
+      const leaveTypeLabel = selectedLeaveTypeConfig?.leaveName || leaveTypeCode;
       toast.success(
-        `Leave request submitted successfully! Status: ${data.status || "Pending"}`
+        `✅ ${leaveTypeLabel} request submitted successfully! Status: ${data.status || "Pending"}`
       );
 
       setSelectedLeaveType("");
@@ -254,6 +327,13 @@ export default function RequestLeavePage() {
       setAlternateFacultyName("");
       setAttachmentFile(null);
       setIsHalfDay(false);
+      setShowODFields(false);
+      setOdDetails({
+        eventName: "",
+        organization: "",
+        location: "",
+        purpose: "",
+      });
 
       await fetchData();
 
@@ -292,7 +372,15 @@ export default function RequestLeavePage() {
       return true;
     }
 
-    if (selectedLeaveTypeConfig?.deductsBalance && selectedBalance) {
+    // ✅ OD validation
+    if (showODFields) {
+      if (!odDetails.eventName.trim() || odDetails.eventName.trim().length < 3) return true;
+      if (!odDetails.organization.trim() || odDetails.organization.trim().length < 2) return true;
+      if (!odDetails.location.trim() || odDetails.location.trim().length < 2) return true;
+      if (!odDetails.purpose.trim() || odDetails.purpose.trim().length < 5) return true;
+    }
+
+    if (selectedLeaveTypeConfig?.deductsBalance && selectedBalance && selectedLeaveTypeConfig.leaveCode !== 'CO') {
       if (selectedBalance.available < totalDays) {
         return true;
       }
@@ -332,6 +420,7 @@ export default function RequestLeavePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Leave Type Selection */}
           <div className="space-y-2">
             <Label htmlFor="leaveType">Leave Type *</Label>
             <Select value={selectedLeaveType} onValueChange={handleLeaveTypeChange}>
@@ -341,7 +430,9 @@ export default function RequestLeavePage() {
               <SelectContent>
                 {leaveTypes.map((type) => {
                   const balance = balances[type.leaveCode];
-                  const isAvailable = !type.deductsBalance || (balance && balance.available > 0);
+                  const isAvailable = !type.deductsBalance || 
+                                     (balance && balance.available > 0) ||
+                                     type.leaveCode === 'CO'; // CO uses comp-off credits
                   return (
                     <SelectItem
                       key={type.id}
@@ -349,12 +440,12 @@ export default function RequestLeavePage() {
                       disabled={!isAvailable}
                     >
                       {type.leaveName} ({type.leaveCode})
-                      {type.deductsBalance && balance && (
+                      {type.deductsBalance && balance && type.leaveCode !== 'CO' && (
                         <span className="text-xs text-muted-foreground ml-2">
                           - {balance.available} days available
                         </span>
                       )}
-                      {!isAvailable && type.deductsBalance && (
+                      {!isAvailable && type.deductsBalance && type.leaveCode !== 'CO' && (
                         <span className="text-xs text-red-500 ml-2">- Insufficient balance</span>
                       )}
                     </SelectItem>
@@ -377,6 +468,7 @@ export default function RequestLeavePage() {
             )}
           </div>
 
+          {/* Leave Duration */}
           <div className="space-y-2">
             <Label>Leave Duration *</Label>
             <div className="grid gap-4 md:grid-cols-2">
@@ -451,6 +543,7 @@ export default function RequestLeavePage() {
             )}
           </div>
 
+          {/* Half Day Toggle */}
           {selectedLeaveTypeConfig?.allowHalfDay && (
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
@@ -507,6 +600,65 @@ export default function RequestLeavePage() {
             </div>
           )}
 
+          {/* ✅ NEW: OD Event Details */}
+          {showODFields && (
+            <div className="space-y-4 border rounded-lg p-4 bg-blue-50 border-blue-200">
+              <div className="flex items-center gap-2 text-blue-800 font-medium">
+                <Briefcase className="h-5 w-5" />
+                <h4>On Duty Event Details</h4>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="eventName">Event Name *</Label>
+                <Input
+                  id="eventName"
+                  placeholder="e.g., AI Faculty Development Program"
+                  value={odDetails.eventName}
+                  onChange={(e) => setOdDetails({ ...odDetails, eventName: e.target.value })}
+                  className="border-blue-300 focus:border-blue-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="organization">Organization *</Label>
+                <Input
+                  id="organization"
+                  placeholder="e.g., IIT Bombay"
+                  value={odDetails.organization}
+                  onChange={(e) => setOdDetails({ ...odDetails, organization: e.target.value })}
+                  className="border-blue-300 focus:border-blue-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="location">Location *</Label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="location"
+                    placeholder="e.g., Mumbai"
+                    value={odDetails.location}
+                    onChange={(e) => setOdDetails({ ...odDetails, location: e.target.value })}
+                    className="pl-9 border-blue-300 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="purpose">Purpose *</Label>
+                <Textarea
+                  id="purpose"
+                  placeholder="Describe the purpose of this duty (e.g., Faculty Training, Research Collaboration, etc.)"
+                  value={odDetails.purpose}
+                  onChange={(e) => setOdDetails({ ...odDetails, purpose: e.target.value })}
+                  rows={3}
+                  className="border-blue-300 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Reason */}
           <div className="space-y-2">
             <Label htmlFor="reason">Reason</Label>
             <Textarea
@@ -518,6 +670,7 @@ export default function RequestLeavePage() {
             />
           </div>
 
+          {/* Alternate Faculty */}
           <div className="space-y-2">
             <Label htmlFor="alternateFaculty">
               Alternate Faculty Name *
@@ -537,6 +690,7 @@ export default function RequestLeavePage() {
             )}
           </div>
 
+          {/* Attachment */}
           {selectedLeaveTypeConfig?.requiresAttachment && (
             <div className="space-y-2">
               <Label htmlFor="attachment">
@@ -561,6 +715,7 @@ export default function RequestLeavePage() {
             </div>
           )}
 
+          {/* Submit Buttons */}
           <div className="flex gap-4 pt-4 border-t">
             <Button
               variant="outline"
@@ -585,6 +740,7 @@ export default function RequestLeavePage() {
             </Button>
           </div>
 
+          {/* Info Box */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
               <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -598,6 +754,11 @@ export default function RequestLeavePage() {
                     <li>
                       This leave type deducts from your balance. Make sure you have enough
                       days available.
+                    </li>
+                  )}
+                  {showODFields && (
+                    <li className="text-blue-800 font-medium">
+                      📋 On Duty leave does not deduct from your leave balance.
                     </li>
                   )}
                 </ul>
