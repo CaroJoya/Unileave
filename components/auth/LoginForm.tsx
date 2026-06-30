@@ -106,17 +106,28 @@ export function LoginForm() {
       const success = await login(email, password);
       
       if (success) {
-        // Wait a moment for Zustand to update
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // ✅ CRITICAL FIX: Wait for Zustand to update and persist
+        await new Promise(resolve => setTimeout(resolve, 300));
         
         // Get the updated state
         const finalState = useAuthStore.getState();
         const finalRoles = finalState.userRoles || [];
         const finalUser = finalState.user;
         
-        console.log("🔍 Final user roles:", finalRoles);
+        console.log("🔍 Final user after login:", {
+          uid: finalUser?.uid,
+          roles: finalRoles,
+          status: finalUser?.status
+        });
         
-        if (finalUser?.status === "deleted") {
+        if (!finalUser) {
+          console.error("❌ No user found after login!");
+          toast.error("Login succeeded but user data not found. Please try again.");
+          setLoading(false);
+          return;
+        }
+        
+        if (finalUser.status === "deleted") {
           toast.error("Account is deactivated. Please restore your account.");
           setLoading(false);
           return;
@@ -129,19 +140,19 @@ export function LoginForm() {
           return;
         }
         
-        // Redirect based on role
+        // ✅ Use replace for cleaner navigation
         if (finalRoles.includes("super_admin")) {
-          router.push("/super-admin/dashboard");
+          router.replace("/super-admin/dashboard");
         } else if (finalRoles.includes("head_clerk")) {
-          router.push("/headclerk/dashboard");
+          router.replace("/headclerk/dashboard");
         } else if (finalRoles.includes("principal")) {
-          router.push("/principal/dashboard");
+          router.replace("/principal/dashboard");
         } else if (finalRoles.includes("registrar")) {
-          router.push("/registrar/dashboard");
+          router.replace("/registrar/dashboard");
         } else if (finalRoles.includes("hod")) {
-          router.push("/hod/dashboard");
+          router.replace("/hod/dashboard");
         } else {
-          router.push("/dashboard");
+          router.replace("/dashboard");
         }
       } else {
         // Login failed - error is already set in store

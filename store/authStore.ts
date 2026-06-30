@@ -97,7 +97,7 @@ export const useAuthStore = create<AuthState>()(
       hydrationComplete: false,
 
       setUser: (user) => {
-        console.log("🔑 setUser called with:", user);
+        console.log("🔑 setUser called with:", user ? { uid: user.uid, roles: user.roles } : null);
         set({ 
           user, 
           userRoles: user?.roles || [],
@@ -110,7 +110,7 @@ export const useAuthStore = create<AuthState>()(
       setError: (error) => set({ error }),
       
       setHydrationComplete: () => {
-        console.log("💧 setHydrationComplete called, setting hydrationComplete to true");
+        console.log("💧 setHydrationComplete called");
         set({ hydrationComplete: true });
       },
 
@@ -165,7 +165,6 @@ export const useAuthStore = create<AuthState>()(
             console.error("Firebase Auth error:", {
               code: error?.code || "unknown",
               message: error?.message || "Authentication failed",
-              error: authError
             });
             
             // Check if user exists in RTDB but not in Auth
@@ -178,7 +177,7 @@ export const useAuthStore = create<AuthState>()(
                 const data = userData as { email: string };
                 if (data.email === email) {
                   foundInDB = true;
-                  console.log("User found in RTDB but not in Auth. Need to recreate Auth user.");
+                  console.log("User found in RTDB but not in Auth.");
                   break;
                 }
               }
@@ -189,7 +188,6 @@ export const useAuthStore = create<AuthState>()(
               throw new Error("Account not found. Please check your email or register.");
             }
             
-            // Use the error mapper for all other errors
             throw new Error(getAuthErrorMessage(error));
           }
           
@@ -263,7 +261,16 @@ export const useAuthStore = create<AuthState>()(
             error: null
           });
           
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // ✅ CRITICAL FIX: Wait for Zustand to persist the state
+          await new Promise(resolve => setTimeout(resolve, 150));
+          
+          // Verify state was set correctly
+          const verifyState = get();
+          console.log("🔍 Verifying state after login:", {
+            hasUser: !!verifyState.user,
+            userRoles: verifyState.userRoles,
+            isAuthenticated: verifyState.isAuthenticated
+          });
           
           console.log("9️⃣ Login complete");
           return true;
