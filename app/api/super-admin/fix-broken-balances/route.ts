@@ -108,48 +108,72 @@ export async function POST(request: Request) {
     const { action } = body;
     console.log(`🔧 FixBrokenBalances: Action = ${action}, College = ${adminCollegeId}`);
 
+    // Get all leave requests
     const requestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = requestsSnapshot.val() as Record<string, LeaveRequest> | null || {};
+    console.log(`📊 Total leave requests: ${Object.keys(allRequests).length}`);
 
+    // Get all users for filtering
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, UserData> | null || {};
 
+    // Filter: Only requests from users in the same college
     const collegeUserIds = Object.entries(users)
       .filter(([, user]) => user.collegeId === adminCollegeId)
       .map(([uid]) => uid);
+    console.log(`👥 Users in college: ${collegeUserIds.length}`);
 
-    const brokenRequests: LeaveRequest[] = [];
+    const academicYear = getCurrentAcademicYear();
+    console.log(`📅 Academic Year: ${academicYear}`);
+
+    // Find broken requests
+    const brokenRequests: (LeaveRequest & { hasBalanceDoc: boolean; hasLeaveType: boolean })[] = [];
 
     for (const [id, req] of Object.entries(allRequests)) {
-      if (req.status === "Cancelled" && req.balanceRestored !== true) {
+      // Check if status is "Cancelled"
+      if (req.status === "Cancelled") {
+        // Check if the applicant is in the same college
         if (collegeUserIds.includes(req.applicantId)) {
-          brokenRequests.push({
-            ...req,
-            id,
-          });
+          // Check if balance exists
+          const balanceKey = `${req.applicantId}_${academicYear}`;
+          const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
+          const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+          
+          const hasBalanceDoc = !!balanceDoc;
+          const hasLeaveType = balanceDoc?.balances?.[req.leaveType] ? true : false;
+          
+          // Consider broken if:
+          // 1. balanceRestored is not true, OR
+          // 2. balance document is missing, OR
+          // 3. the specific leave type is missing from balance
+          const isBroken = req.balanceRestored !== true || !hasBalanceDoc || !hasLeaveType;
+          
+          if (isBroken) {
+            brokenRequests.push({
+              ...req,
+              id,
+              hasBalanceDoc,
+              hasLeaveType,
+            });
+            console.log(`🔍 Found broken request: ${id}, user: ${req.applicantName || req.applicantId}, type: ${req.leaveType}, days: ${req.totalDays}, balanceRestored: ${req.balanceRestored}, hasBalanceDoc: ${hasBalanceDoc}, hasLeaveType: ${hasLeaveType}`);
+          } else {
+            console.log(`✅ Request ${id} is fine - balanceRestored: true, hasBalanceDoc: true, hasLeaveType: true`);
+          }
         } else {
-          console.log(`⏭️ Skipping request ${id} - user not in college`);
+          console.log(`⏭️ Skipping request ${id} - user not in college (user: ${req.applicantId}, admin college: ${adminCollegeId})`);
         }
       }
     }
 
     console.log(`🔍 Found ${brokenRequests.length} broken requests`);
 
+    // If action is "find", just return the list
     if (action === "find") {
-      const academicYear = getCurrentAcademicYear();
-      const requestsWithDetails = [];
-
-      for (const req of brokenRequests) {
-        const balanceKey = `${req.applicantId}_${academicYear}`;
-        const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
-        const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
-
-        requestsWithDetails.push({
-          ...req,
-          hasBalanceDoc: !!balanceDoc,
-          hasLeaveType: balanceDoc?.balances?.[req.leaveType] ? true : false,
-        });
-      }
+      const requestsWithDetails = brokenRequests.map(req => ({
+        ...req,
+        hasBalanceDoc: req.hasBalanceDoc,
+        hasLeaveType: req.hasLeaveType,
+      }));
 
       return NextResponse.json({
         success: true,
@@ -159,7 +183,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const academicYear = getCurrentAcademicYear();
+    // If action is "fix", restore the balances
     let fixed = 0;
     let failed = 0;
     const details: string[] = [];
@@ -168,7 +192,7 @@ export async function POST(request: Request) {
 
     for (const req of brokenRequests) {
       try {
-        console.log(`📝 Processing request ${req.id} for user ${req.applicantId}`);
+        console.log(`📝 Processing request ${req.id} for user ${req.applicantId} (${req.applicantName})`);
         console.log(`   Leave Type: ${req.leaveType}, Days: ${req.totalDays}`);
 
         const balanceKey = `${req.applicantId}_${academicYear}`;
@@ -176,6 +200,7 @@ export async function POST(request: Request) {
         const balanceSnapshot = await balanceRef.once("value");
         const existingBalanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
+        // STEP 1: Create balance if missing
         if (!existingBalanceDoc) {
           console.log(`⚠️ Balance not found for user ${req.applicantId}, creating...`);
           
@@ -227,6 +252,7 @@ export async function POST(request: Request) {
           });
           fixed++;
         } else {
+          // STEP 2: Update existing balance
           const balanceDoc = existingBalanceDoc;
           
           if (!balanceDoc.balances) {
@@ -271,6 +297,7 @@ export async function POST(request: Request) {
           fixed++;
         }
 
+        // STEP 3: Mark the request as balance restored
         await rtdb.ref(`leaveRequests/${req.id}`).update({
           balanceRestored: true,
           balanceRestoredAt: new Date().toISOString(),
@@ -297,6 +324,7 @@ export async function POST(request: Request) {
       }
     }
 
+    // Log the action
     await createAuditLog({
       userId: decodedToken.uid,
       userName: adminData.name || "Super Admin",
