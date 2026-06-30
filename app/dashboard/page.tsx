@@ -45,6 +45,7 @@ interface DashboardData {
   pendingRequests: number;
   approvedRequests: number;
   rejectedRequests: number;
+  revisionRequests: number; // ✅ NEW
   totalAvailable: number;
   totalAllocated: number;
   totalUsed: number;
@@ -67,6 +68,7 @@ function DashboardContent() {
     pendingRequests: 0,
     approvedRequests: 0,
     rejectedRequests: 0,
+    revisionRequests: 0, // ✅ NEW
     totalAvailable: 0,
     totalAllocated: 0,
     totalUsed: 0,
@@ -137,9 +139,9 @@ function DashboardContent() {
       let balanceData = { balances: {} };
       if (balanceRes.ok) {
         balanceData = await balanceRes.json();
+        console.log("📊 Balance data:", balanceData);
       }
 
-      // ✅ FIX: Add cache: 'no-store' to prevent cached data
       let requestsData = { requests: [] };
       try {
         const requestsRes = await fetch("/api/leave/my-requests", {
@@ -151,12 +153,12 @@ function DashboardContent() {
         });
         if (requestsRes.ok) {
           requestsData = await requestsRes.json();
+          console.log("📋 Requests data:", requestsData.requests?.length || 0);
         }
       } catch {
         console.warn("Error fetching requests");
       }
 
-      // ✅ FIX: Add cache: 'no-store' to prevent cached data
       let overworkData = {
         summary: {
           totalApprovedHours: 0,
@@ -182,11 +184,17 @@ function DashboardContent() {
 
       const requests = requestsData.requests || [];
 
+      // ✅ FIX: Only count actual pending requests (not revision)
       const pendingRequests = requests.filter(
         (req: { status: string }) =>
           req.status === "Pending_HOD" ||
           req.status === "Pending_Registrar" ||
-          req.status === "Pending_Principal" ||
+          req.status === "Pending_Principal"
+      ).length;
+
+      // ✅ NEW: Count revision requests separately
+      const revisionRequests = requests.filter(
+        (req: { status: string }) =>
           req.status === "Pending_Revision"
       ).length;
 
@@ -234,11 +242,18 @@ function DashboardContent() {
         pendingRequests,
         approvedRequests,
         rejectedRequests,
+        revisionRequests, // ✅ NEW
         totalAvailable,
         totalAllocated,
         totalUsed,
         utilization,
         overworkSummary: overworkData.summary,
+      });
+      
+      console.log("📊 Dashboard data updated:", {
+        pending: pendingRequests,
+        revision: revisionRequests,
+        balances: balances,
       });
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -388,7 +403,7 @@ function DashboardContent() {
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-sm text-muted-foreground">Pending Requests</p>
+                <p className="text-sm text-muted-foreground">Pending Approval</p>
                 <p className="text-2xl font-bold text-amber-600">
                   {data.pendingRequests || 0}
                 </p>
@@ -435,6 +450,37 @@ function DashboardContent() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ✅ NEW: Revision Requests Card (separate from pending) */}
+      {data.revisionRequests > 0 && (
+        <div className="mb-6">
+          <Card className="border-purple-300 bg-purple-50">
+            <CardContent className="pt-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-purple-700 font-medium">Needs Revision</p>
+                  <p className="text-2xl font-bold text-purple-700">
+                    {data.revisionRequests}
+                  </p>
+                  <p className="text-xs text-purple-600">
+                    {data.revisionRequests} request(s) require your attention
+                  </p>
+                </div>
+                <div className="h-12 w-12 rounded-full bg-purple-200 flex items-center justify-center">
+                  <Clock className="h-6 w-6 text-purple-700" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <Link href="/status">
+                  <Button variant="outline" size="sm" className="w-full border-purple-300 text-purple-700 hover:bg-purple-100">
+                    Review Revision Requests
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>

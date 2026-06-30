@@ -1,9 +1,11 @@
-// app/api/leave/balances/route.ts - COMPLETE FORCE REFRESH
+// app/api/leave/balances/route.ts - COMPLETE FULL FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import type { LeaveBalancesDoc, LeaveBalance } from "@/types/leave";
+
+// ============ CONSTANTS ============
 
 const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
   faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
@@ -14,6 +16,8 @@ const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
   principal: { CL: 30, EL: 20, ML: 15, CO: 12 },
   head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
 };
+
+// ============ HELPER FUNCTIONS ============
 
 async function getRoleQuotas(role: string, academicYear: string): Promise<Record<string, number>> {
   const rtdb = getRTDB();
@@ -56,10 +60,10 @@ async function initializeBalance(
   const quotas = await getRoleQuotas(userRole, academicYear);
   
   const balances: Record<string, LeaveBalance> = {
-    CL: { allocated: quotas.CL, used: 0, pending: 0, available: quotas.CL },
-    EL: { allocated: quotas.EL, used: 0, pending: 0, available: quotas.EL },
-    ML: { allocated: quotas.ML, used: 0, pending: 0, available: quotas.ML },
-    CO: { allocated: quotas.CO, used: 0, pending: 0, available: quotas.CO },
+    CL: { allocated: quotas.CL || 0, used: 0, pending: 0, available: quotas.CL || 0 },
+    EL: { allocated: quotas.EL || 0, used: 0, pending: 0, available: quotas.EL || 0 },
+    ML: { allocated: quotas.ML || 0, used: 0, pending: 0, available: quotas.ML || 0 },
+    CO: { allocated: quotas.CO || 0, used: 0, pending: 0, available: quotas.CO || 0 },
   };
   
   const balanceDoc: LeaveBalancesDoc = {
@@ -72,6 +76,8 @@ async function initializeBalance(
   await rtdb.ref(`leaveBalances/${userId}_${academicYear}`).set(balanceDoc);
   return balanceDoc;
 }
+
+// ============ GET: Fetch user's leave balance ============
 
 export async function GET() {
   try {
@@ -95,24 +101,33 @@ export async function GET() {
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
+    const academicYear = getCurrentAcademicYear();
 
-    const [userSnapshot, balanceSnapshot] = await Promise.all([
-      rtdb.ref(`users/${userId}`).once("value"),
-      rtdb.ref(`leaveBalances/${userId}_${getCurrentAcademicYear()}`).once("value"),
-    ]);
+    console.log(`📊 GET /api/leave/balances - User: ${userId}, Year: ${academicYear}`);
 
+    // Get user data first
+    const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val();
-    let balanceDoc = balanceSnapshot.val();
 
     if (!userData) {
+      console.error(`❌ User not found: ${userId}`);
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Get balance
+    const balanceKey = `${userId}_${academicYear}`;
+    const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
+    let balanceDoc = balanceSnapshot.val() as LeaveBalancesDoc | null;
+
+    // Initialize if missing
     if (!balanceDoc) {
-      const academicYear = getCurrentAcademicYear();
+      console.log(`⚠️ No balance found for user ${userId}, initializing...`);
       const userRole = userData.roles?.[0] || "faculty";
       balanceDoc = await initializeBalance(userId, userRole, academicYear);
+      console.log(`✅ Balance initialized for user ${userId}`);
     }
+
+    console.log(`📊 Balance data for ${userId}:`, JSON.stringify(balanceDoc.balances, null, 2));
 
     // ✅ FORCE NO CACHE - Maximum cache prevention
     const response = NextResponse.json({
@@ -129,13 +144,15 @@ export async function GET() {
     
     return response;
   } catch (error) {
-    console.error("Error fetching leave balances:", error);
+    console.error("❌ Error fetching leave balances:", error);
     return NextResponse.json(
       { error: "Failed to fetch leave balances" },
       { status: 500 }
     );
   }
 }
+
+// ============ PUT: Update user's leave balance ============
 
 export async function PUT(request: Request) {
   try {
@@ -162,6 +179,8 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
     const { leaveType, daysUsed, operation } = body;
+
+    console.log(`📝 PUT /api/leave/balances - User: ${userId}, Type: ${leaveType}, Days: ${daysUsed}, Op: ${operation}`);
 
     if (!leaveType || !daysUsed || !operation) {
       return NextResponse.json(
@@ -210,12 +229,15 @@ export async function PUT(request: Request) {
         pending: (currentBalance.pending || 0) + daysUsed,
         available: currentBalance.available - daysUsed,
       };
+      console.log(`📊 Deduct: pending ${currentBalance.pending} → ${updatedBalance.pending}, available ${currentBalance.available} → ${updatedBalance.available}`);
     } else {
+      // restore
       updatedBalance = {
         ...currentBalance,
         pending: Math.max(0, (currentBalance.pending || 0) - daysUsed),
         available: currentBalance.available + daysUsed,
       };
+      console.log(`📊 Restore: pending ${currentBalance.pending} → ${updatedBalance.pending}, available ${currentBalance.available} → ${updatedBalance.available}`);
     }
 
     const updateData = {
@@ -225,21 +247,24 @@ export async function PUT(request: Request) {
 
     await balanceRef.update(updateData);
 
+    // Fetch updated balance to return
+    const updatedSnapshot = await balanceRef.once("value");
+    const updatedDoc = updatedSnapshot.val() as LeaveBalancesDoc;
+
     return NextResponse.json({
       success: true,
-      balances: {
-        ...balanceDoc.balances,
-        [leaveType]: updatedBalance,
-      },
+      balances: updatedDoc.balances,
     });
   } catch (error) {
-    console.error("Error updating leave balances:", error);
+    console.error("❌ Error updating leave balances:", error);
     return NextResponse.json(
       { error: "Failed to update leave balances" },
       { status: 500 }
     );
   }
 }
+
+// ============ POST: Admin bulk fetch balances ============
 
 export async function POST(request: Request) {
   try {
@@ -288,6 +313,9 @@ export async function POST(request: Request) {
 
     const year = academicYear || getCurrentAcademicYear();
     
+    console.log(`📊 POST /api/leave/balances - Admin fetching ${userIds.length} users for year ${year}`);
+
+    // Fetch all balances in parallel
     const balancePromises = userIds.map((uid: string) =>
       rtdb.ref(`leaveBalances/${uid}_${year}`).once("value")
     );
@@ -306,7 +334,7 @@ export async function POST(request: Request) {
       academicYear: year,
     });
   } catch (error) {
-    console.error("Error fetching bulk balances:", error);
+    console.error("❌ Error fetching bulk balances:", error);
     return NextResponse.json(
       { error: "Failed to fetch balances" },
       { status: 500 }

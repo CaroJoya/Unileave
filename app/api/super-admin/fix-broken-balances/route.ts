@@ -35,6 +35,7 @@ interface UserData {
   name: string;
   email: string;
   roles: string[];
+  collegeId?: string;
   [key: string]: unknown;
 }
 
@@ -95,23 +96,48 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authorized - Super Admin only" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { action } = body; // "find" or "fix"
+    // ✅ Get the admin's college ID for filtering
+    const adminCollegeId = adminData.collegeId;
+    
+    // ✅ Parse the request body
+    let body: { action?: string };
+    try {
+      body = await request.json();
+    } catch {
+      body = { action: "find" }; // Default to find if no body
+    }
+    
+    const { action } = body;
+    console.log(`🔧 FixBrokenBalances: Action = ${action}, College = ${adminCollegeId}`);
 
-    // Get all leave requests
+    // ✅ Get all leave requests
     const requestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = requestsSnapshot.val() as Record<string, LeaveRequest> | null || {};
 
-    // Find broken requests: Cancelled but balanceRestored is NOT true
+    // ✅ Get all users for filtering
+    const usersSnapshot = await rtdb.ref("users").once("value");
+    const users = usersSnapshot.val() as Record<string, UserData> | null || {};
+
+    // ✅ Filter: Only requests from users in the same college
+    const collegeUserIds = Object.entries(users)
+      .filter(([, user]) => user.collegeId === adminCollegeId)
+      .map(([uid]) => uid);
+
+    // ✅ Find broken requests: Cancelled but balanceRestored is NOT true
     const brokenRequests: LeaveRequest[] = [];
 
     for (const [id, req] of Object.entries(allRequests)) {
       // ✅ Check if status is "Cancelled" and balanceRestored is NOT true
       if (req.status === "Cancelled" && req.balanceRestored !== true) {
-        brokenRequests.push({
-          ...req,
-          id,
-        });
+        // ✅ Only process if the applicant is in the same college
+        if (collegeUserIds.includes(req.applicantId)) {
+          brokenRequests.push({
+            ...req,
+            id,
+          });
+        } else {
+          console.log(`⏭️ Skipping request ${id} - user not in college`);
+        }
       }
     }
 
@@ -142,7 +168,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // If action is "fix", restore the balances and CREATE if missing
+    // If action is "fix", restore the balances
     const academicYear = getCurrentAcademicYear();
     let fixed = 0;
     let failed = 0;
@@ -152,7 +178,8 @@ export async function POST(request: Request) {
 
     for (const req of brokenRequests) {
       try {
-        console.log(`📝 Processing request ${req.id} for user ${req.applicantId}`);
+        console.log(`📝 Processing request ${req.id} for user ${req.applicantId} (${req.applicantName})`);
+        console.log(`   Leave Type: ${req.leaveType}, Days: ${req.totalDays}`);
 
         const balanceKey = `${req.applicantId}_${academicYear}`;
         const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
@@ -163,8 +190,7 @@ export async function POST(request: Request) {
         if (!existingBalanceDoc) {
           console.log(`⚠️ Balance not found for user ${req.applicantId}, creating...`);
           
-          const userSnapshot = await rtdb.ref(`users/${req.applicantId}`).once("value");
-          const userData = userSnapshot.val() as { roles?: string[]; name?: string } | null;
+          const userData = users[req.applicantId];
           const userRole = userData?.roles?.[0] || "faculty";
           
           const quotas = DEFAULT_QUOTAS[userRole] || DEFAULT_QUOTAS.faculty;
@@ -179,6 +205,7 @@ export async function POST(request: Request) {
             };
           }
           
+          // Ensure the leave type exists
           if (!newBalances[req.leaveType]) {
             newBalances[req.leaveType] = {
               allocated: 0,
@@ -232,9 +259,15 @@ export async function POST(request: Request) {
           const currentBalance = balanceDoc.balances[req.leaveType];
           
           // ✅ CRITICAL FIX: Update both pending and available
+          const newPending = Math.max(0, (currentBalance.pending || 0) - req.totalDays);
+          const newAvailable = (currentBalance.available || 0) + req.totalDays;
+          
+          console.log(`   Current: pending=${currentBalance.pending}, available=${currentBalance.available}`);
+          console.log(`   New: pending=${newPending}, available=${newAvailable}`);
+          
           await balanceRef.update({
-            [`balances.${req.leaveType}.pending`]: Math.max(0, (currentBalance.pending || 0) - req.totalDays),
-            [`balances.${req.leaveType}.available`]: (currentBalance.available || 0) + req.totalDays,
+            [`balances.${req.leaveType}.pending`]: newPending,
+            [`balances.${req.leaveType}.available`]: newAvailable,
             updatedAt: new Date().toISOString(),
           });
           
@@ -265,6 +298,8 @@ export async function POST(request: Request) {
       } catch (error) {
         failed++;
         const errorMsg = error instanceof Error ? error.message : "Unknown error";
+        console.error(`❌ Error fixing request ${req.id}:`, errorMsg);
+        
         const msg = `❌ ${req.applicantName || req.applicantId} - ${req.leaveType}: Failed - ${errorMsg}`;
         details.push(msg);
         failedRequests.push({ 
@@ -275,7 +310,6 @@ export async function POST(request: Request) {
           totalDays: req.totalDays,
           error: errorMsg 
         });
-        console.error(`❌ Error fixing request ${req.id}:`, error);
       }
     }
 
@@ -292,6 +326,7 @@ export async function POST(request: Request) {
         failed,
         details,
         academicYear,
+        collegeId: adminCollegeId,
         timestamp: new Date().toISOString(),
       },
     });
