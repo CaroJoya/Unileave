@@ -1,4 +1,4 @@
-// app/api/super-admin/fix-broken-balances/route.ts - COMPLETE FIXED FILE
+// app/api/super-admin/fix-broken-balances/route.ts - COMPLETE FIXED FILE (ESLint Compliant)
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -28,6 +28,14 @@ interface LeaveBalanceDoc {
   academicYear: string;
   balances: Record<string, LeaveBalance>;
   updatedAt: string;
+}
+
+interface UserData {
+  uid: string;
+  name: string;
+  email: string;
+  roles: string[];
+  [key: string]: unknown;
 }
 
 const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
@@ -62,10 +70,10 @@ export async function POST(request: Request) {
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
-    const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val();
+    const adminSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
+    const adminData = adminSnapshot.val() as UserData | null;
     
-    if (!userData?.roles?.includes("super_admin")) {
+    if (!adminData?.roles?.includes("super_admin")) {
       return NextResponse.json({ error: "Not authorized - Super Admin only" }, { status: 403 });
     }
 
@@ -123,10 +131,10 @@ export async function POST(request: Request) {
         const balanceKey = `${req.applicantId}_${academicYear}`;
         const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
         const balanceSnapshot = await balanceRef.once("value");
-        const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+        const existingBalanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
         // STEP 1: If balance doesn't exist, CREATE IT!
-        if (!balanceDoc) {
+        if (!existingBalanceDoc) {
           console.log(`⚠️ Balance not found for user ${req.applicantId}, creating...`);
           
           // Get user data to determine role
@@ -177,6 +185,8 @@ export async function POST(request: Request) {
           
         } else {
           // STEP 2: Balance exists, restore the days
+          const balanceDoc = existingBalanceDoc;
+          
           if (!balanceDoc.balances) {
             balanceDoc.balances = {};
           }
@@ -221,12 +231,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // Log the action - using a valid AuditAction
+    // Log the action
     await createAuditLog({
       userId: decodedToken.uid,
-      userName: userData.name || "Super Admin",
+      userName: adminData.name || "Super Admin",
       userRole: "super_admin",
-      action: "ASSIGNMENTS_VALIDATED", // Using existing action type
+      action: "ASSIGNMENTS_VALIDATED",
       module: "leaveRequests",
       details: {
         action: "BROKEN_BALANCES_FIXED",
