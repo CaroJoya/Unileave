@@ -1,7 +1,9 @@
+// app/api/super-admin/users/[uid]/deactivate/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getAuth, getRTDB } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { createAuditLog } from "@/lib/services/audit-service";
+import { unassignAllRoles } from "@/lib/utils/role-unassignment";
 
 export async function POST(
   request: Request,
@@ -33,12 +35,12 @@ export async function POST(
     // Verify admin session
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const adminId = decodedToken.uid;
-    
+
     // Get admin user data
-    const adminSnapshot = await rtdb.ref(`users/${adminId}`).once('value');
+    const adminSnapshot = await rtdb.ref(`users/${adminId}`).once("value");
     const adminData = adminSnapshot.val();
-    
-    if (!adminData || !adminData.roles?.includes('super_admin')) {
+
+    if (!adminData || !adminData.roles?.includes("super_admin")) {
       return NextResponse.json(
         { error: "Unauthorized: Super Admin access required" },
         { status: 403 }
@@ -46,7 +48,7 @@ export async function POST(
     }
 
     // Get target user data
-    const targetSnapshot = await rtdb.ref(`users/${uid}`).once('value');
+    const targetSnapshot = await rtdb.ref(`users/${uid}`).once("value");
     const targetUserData = targetSnapshot.val();
 
     if (!targetUserData) {
@@ -63,6 +65,10 @@ export async function POST(
       );
     }
 
+    // ✅ Unassign all roles before deactivation
+    const userRoles = targetUserData.roles || [];
+    const { unassignments } = await unassignAllRoles(uid, userRoles, targetUserData);
+
     // Deactivate the user
     const deletedAt = new Date().toISOString();
     await rtdb.ref(`users/${uid}`).update({
@@ -72,7 +78,7 @@ export async function POST(
       updatedAt: new Date().toISOString(),
     });
 
-    // Create audit log
+    // Create audit log for deactivation
     await createAuditLog({
       userId: adminId,
       userName: adminData.name || "Unknown Admin",
@@ -83,15 +89,37 @@ export async function POST(
       targetUser: targetUserData.email,
       oldData: { status: targetUserData.status },
       newData: { status: "deleted", deletedAt },
-      details: { deletedBy: adminId },
+      details: {
+        deletedBy: adminId,
+        unassignments: unassignments,
+        unassignedCount: unassignments.length,
+      },
     });
+
+    // Log each unassignment
+    for (const logMessage of unassignments) {
+      await createAuditLog({
+        userId: adminId,
+        userName: adminData.name || "Unknown Admin",
+        userRole: "super_admin",
+        action: "ROLE_UNASSIGNED",
+        module: "departments",
+        targetId: uid,
+        targetUser: targetUserData.email,
+        details: {
+          action: logMessage,
+          deactivatedUser: targetUserData.name,
+          deactivatedBy: adminId,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
-      message: "User deactivated successfully",
+      message: `User deactivated successfully.${unassignments.length > 0 ? ` ${unassignments.length} role(s) unassigned.` : ''}`,
       deletedAt,
+      unassignments: unassignments,
     });
-
   } catch (error) {
     console.error("Error deactivating user:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to deactivate user";

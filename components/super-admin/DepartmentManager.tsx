@@ -1,4 +1,4 @@
-// components/super-admin/DepartmentManager.tsx - COMPLETE FIXED
+// components/super-admin/DepartmentManager.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -30,12 +30,15 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { AlertTriangle } from "lucide-react";
 
 interface Department {
   id: string;
   name: string;
   hodId: string | null;
   hodName: string | null;
+  registrarId: string | null;
+  registrarName: string | null;
   isActive: boolean;
 }
 
@@ -89,7 +92,7 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
       const hodData = await hodResponse.json();
       setHodCandidates(hodData.candidates || []);
 
-      // Fetch Registrar candidates (users with registrar role)
+      // Fetch Registrar candidates
       const registrarResponse = await fetch("/api/super-admin/users?role=registrar");
       const registrarData = await registrarResponse.json();
       setRegistrarCandidates(registrarData.users || []);
@@ -202,10 +205,7 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
       return;
     }
 
-    console.log("📝 Assigning Registrar to Department:", departmentId, "Registrar ID:", selectedRegistrarId);
-
     try {
-      // ✅ FIXED: Use the correct API endpoint with department ID in the path
       const response = await fetch(`/api/super-admin/departments/${departmentId}/assign-registrar`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -232,8 +232,23 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
     }
   };
 
-  // Check if a department is Office
-  const isOffice = (name: string) => name.toLowerCase() === "office";
+  // Helper to check if a user assignment is valid
+  const isValidAssignment = (userId: string | null, userList: Candidate[]): boolean => {
+    if (!userId) return true;
+    return userList.some(u => u.uid === userId);
+  };
+
+  const isOffice = (name: string) => name?.toLowerCase() === "office";
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <div className="text-center py-8">Loading departments...</div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -247,9 +262,7 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
         </div>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="text-center py-8">Loading departments...</div>
-        ) : departments.length === 0 ? (
+        {departments.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             No departments found. Create your first department.
           </div>
@@ -259,53 +272,68 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Department Name</TableHead>
-                  <TableHead>Managed By</TableHead>
+                  <TableHead>HOD</TableHead>
+                  <TableHead>Registrar</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {departments.map((dept) => (
-                  <TableRow key={dept.id}>
-                    <TableCell className="font-medium">{dept.name}</TableCell>
-                    <TableCell>
-                      {isOffice(dept.name) ? (
-                        dept.hodName ? (
-                          <span className="text-sm text-blue-600">Registrar: {dept.hodName}</span>
+                {departments.map((dept) => {
+                  const isHODValid = isValidAssignment(dept.hodId, hodCandidates);
+                  const isRegistrarValid = isValidAssignment(dept.registrarId, registrarCandidates);
+                  const isOfficeDept = isOffice(dept.name);
+
+                  return (
+                    <TableRow key={dept.id}>
+                      <TableCell className="font-medium">{dept.name}</TableCell>
+                      <TableCell>
+                        {dept.hodName ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">HOD: {dept.hodName}</span>
+                            {!isHODValid && dept.hodId && (
+                              <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded">
+                                <AlertTriangle className="h-3 w-3" />
+                                Invalid
+                              </span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="text-sm text-muted-foreground">No Registrar assigned</span>
-                        )
-                      ) : dept.hodName ? (
-                        <span className="text-sm">HOD: {dept.hodName}</span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">No HOD assigned</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          dept.isActive
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {dept.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        {isOffice(dept.name) ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setShowAssignRegistrarDialog(dept.id);
-                              setSelectedRegistrarId(dept.hodId || "");
-                            }}
-                          >
-                            Assign Registrar
-                          </Button>
+                          <span className="text-sm text-muted-foreground">No HOD assigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isOfficeDept ? (
+                          dept.registrarName ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-blue-600">Registrar: {dept.registrarName}</span>
+                              {!isRegistrarValid && dept.registrarId && (
+                                <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  Invalid
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">No Registrar assigned</span>
+                          )
                         ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            dept.isActive
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {dept.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
                           <Button
                             size="sm"
                             variant="outline"
@@ -316,18 +344,30 @@ export function DepartmentManager({ onRefresh }: DepartmentManagerProps) {
                           >
                             Assign HOD
                           </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => setShowDeleteConfirm(dept.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {isOfficeDept && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setShowAssignRegistrarDialog(dept.id);
+                                setSelectedRegistrarId(dept.registrarId || "");
+                              }}
+                            >
+                              Assign Registrar
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setShowDeleteConfirm(dept.id)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

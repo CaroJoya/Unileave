@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx scripts/seed-leave-types.ts"
+    "seed": "tsx scripts/seed-leave-types.ts",
+    "migrate-departments": "tsx scripts/migrate-departments.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

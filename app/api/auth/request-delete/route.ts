@@ -1,8 +1,9 @@
-// app/api/auth/request-delete/route.ts - COMPLETE FILE
+// app/api/auth/request-delete/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { createAuditLog } from "@/lib/services/audit-service";
+import { unassignAllRoles } from "@/lib/utils/role-unassignment";
 
 export async function POST() {
   try {
@@ -40,54 +41,9 @@ export async function POST() {
       );
     }
 
-    // ============ ROLE UNASSIGNMENT LOGIC (SELF-DELETION) ============
-    const unassignmentLogs: string[] = [];
+    // ✅ Use the shared utility to unassign all roles
     const userRoles = userData.roles || [];
-
-    // 1. Check if user is HOD
-    if (userRoles.includes("hod") && userData.departmentId) {
-      const deptSnapshot = await rtdb.ref(`departments/${userData.departmentId}`).once("value");
-      const dept = deptSnapshot.val();
-      
-      if (dept && dept.hodId === userId) {
-        await rtdb.ref(`departments/${userData.departmentId}`).update({
-          hodId: null,
-          hodName: null,
-          updatedAt: new Date().toISOString(),
-        });
-        unassignmentLogs.push(`Unassigned HOD from department "${dept.name || userData.departmentId}"`);
-      }
-    }
-
-    // 2. Check if user is Registrar
-    if (userRoles.includes("registrar") && userData.departmentId) {
-      const deptSnapshot = await rtdb.ref(`departments/${userData.departmentId}`).once("value");
-      const dept = deptSnapshot.val();
-      
-      if (dept && dept.hodId === userId) {
-        await rtdb.ref(`departments/${userData.departmentId}`).update({
-          hodId: null,
-          hodName: null,
-          updatedAt: new Date().toISOString(),
-        });
-        unassignmentLogs.push(`Unassigned Registrar from department "${dept.name || userData.departmentId}"`);
-      }
-    }
-
-    // 3. Check if user is Principal
-    if (userRoles.includes("principal") && userData.collegeId) {
-      const collegeSnapshot = await rtdb.ref(`colleges/${userData.collegeId}`).once("value");
-      const college = collegeSnapshot.val();
-      
-      if (college && college.principalId === userId) {
-        await rtdb.ref(`colleges/${userData.collegeId}`).update({
-          principalId: null,
-          principalName: null,
-          updatedAt: new Date().toISOString(),
-        });
-        unassignmentLogs.push(`Unassigned Principal from college "${college.name || userData.collegeId}"`);
-      }
-    }
+    const { unassignments } = await unassignAllRoles(userId, userRoles, userData);
 
     const deletedAt = new Date().toISOString();
 
@@ -109,14 +65,14 @@ export async function POST() {
       targetUser: userData.email,
       oldData: { status: userData.status },
       newData: { status: "deleted", deletedAt },
-      details: { 
+      details: {
         selfDeletion: true,
-        unassignments: unassignmentLogs,
+        unassignments: unassignments,
       },
     });
 
     // Log each unassignment
-    for (const logMessage of unassignmentLogs) {
+    for (const logMessage of unassignments) {
       await createAuditLog({
         userId,
         userName: userData.name || "Unknown User",
@@ -134,9 +90,9 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      message: `Account deactivated. You have 30 days to restore.${unassignmentLogs.length > 0 ? ` ${unassignmentLogs.length} role(s) unassigned.` : ''}`,
+      message: `Account deactivated. You have 30 days to restore.${unassignments.length > 0 ? ` ${unassignments.length} role(s) unassigned.` : ''}`,
       deletedAt,
-      unassignments: unassignmentLogs,
+      unassignments: unassignments,
     });
   } catch (error) {
     console.error("Account deletion error:", error);
