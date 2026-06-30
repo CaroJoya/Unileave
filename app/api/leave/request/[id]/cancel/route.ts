@@ -5,16 +5,20 @@ import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import type { LeaveRequest, LeaveStatus } from "@/types/leave";
 
-interface LeaveBalanceDoc {
-  balances: {
-    [key: string]: {
-      pending: number;
-      available: number;
-    };
-  };
+// ✅ FIXED: Proper interface with all fields
+interface LeaveBalance {
+  allocated: number;
+  used: number;
+  pending: number;
+  available: number;
 }
 
-// ❌ REMOVED: LeaveBalanceResponse interface (not used)
+interface LeaveBalanceDoc {
+  userId: string;
+  academicYear: string;
+  balances: Record<string, LeaveBalance>;
+  updatedAt: string;
+}
 
 const CANCELLABLE_STATUSES: LeaveStatus[] = [
   "Pending_HOD",
@@ -23,6 +27,7 @@ const CANCELLABLE_STATUSES: LeaveStatus[] = [
   "Pending_Revision",
 ];
 
+// ✅ FIXED: Proper return type
 async function restoreLeaveBalance(
   userId: string,
   leaveType: string,
@@ -38,18 +43,77 @@ async function restoreLeaveBalance(
     const balanceKey = `${userId}_${academicYear}`;
     const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
     const balanceSnapshot = await balanceRef.once("value");
-    const balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
+    let balanceDoc = balanceSnapshot.val() as LeaveBalanceDoc | null;
 
+    // ✅ If balance doesn't exist, create it with default values
     if (!balanceDoc) {
-      console.warn(`⚠️ No balance document found for ${userId} in ${academicYear}`);
-      return { success: false, error: "Balance document not found" };
+      console.log(`⚠️ Balance not found for user ${userId}, creating new balance...`);
+      
+      // Get user data to determine role
+      const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
+      const userData = userSnapshot.val() as { roles?: string[] } | null;
+      const userRole = userData?.roles?.[0] || "faculty";
+      
+      // Default quotas
+      const defaultQuotas: Record<string, Record<string, number>> = {
+        faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
+        lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
+        office_staff: { CL: 20, EL: 10, ML: 15, CO: 8 },
+        hod: { CL: 24, EL: 15, ML: 15, CO: 10 },
+        registrar: { CL: 20, EL: 12, ML: 15, CO: 10 },
+        principal: { CL: 30, EL: 20, ML: 15, CO: 12 },
+        head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
+      };
+      
+      const quotas = defaultQuotas[userRole] || defaultQuotas.faculty;
+      const newBalances: Record<string, LeaveBalance> = {};
+      
+      for (const [type, quota] of Object.entries(quotas)) {
+        newBalances[type] = {
+          allocated: quota,
+          used: 0,
+          pending: 0,
+          available: quota,
+        };
+      }
+      
+      // Create the balance document
+      balanceDoc = {
+        userId,
+        academicYear,
+        balances: newBalances,
+        updatedAt: new Date().toISOString(),
+      };
+      
+      await balanceRef.set(balanceDoc);
+      console.log(`✅ New balance created for user ${userId}`);
     }
 
-    if (!balanceDoc.balances || !balanceDoc.balances[leaveType]) {
-      console.warn(`⚠️ No balance for leave type ${leaveType} for user ${userId}`);
-      return { success: false, error: `Balance for ${leaveType} not found` };
+    // ✅ Now balanceDoc is definitely not null
+    // Check if the leave type exists in balances
+    if (!balanceDoc.balances) {
+      balanceDoc.balances = {};
     }
 
+    if (!balanceDoc.balances[leaveType]) {
+      // Create the leave type entry if it doesn't exist
+      balanceDoc.balances[leaveType] = {
+        allocated: 0,
+        used: 0,
+        pending: 0,
+        available: 0,
+      };
+      
+      // Save the updated balance
+      await balanceRef.update({
+        balances: balanceDoc.balances,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      console.log(`✅ Created ${leaveType} entry in balance for user ${userId}`);
+    }
+
+    // ✅ Now we know the leave type exists
     const currentBalance = balanceDoc.balances[leaveType];
     const newPending = Math.max(0, (currentBalance.pending || 0) - totalDays);
     const newAvailable = (currentBalance.available || 0) + totalDays;
@@ -122,9 +186,9 @@ export async function PUT(
       );
     }
 
-    // Try to restore balance
+    // ✅ ALWAYS restore balance - this will create balance if missing
     let balanceRestored = false;
-    let balanceError = null;
+    let balanceError: string | null = null;
 
     if (!leaveRequest.balanceRestored) {
       const result = await restoreLeaveBalance(
@@ -134,7 +198,7 @@ export async function PUT(
       );
       
       balanceRestored = result.success;
-      balanceError = result.error;
+      balanceError = result.error || null;
 
       if (result.success) {
         console.log(`✅ Balance restored for cancelled request ${id}`);
