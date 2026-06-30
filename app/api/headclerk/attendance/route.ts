@@ -1,4 +1,4 @@
-// app/api/headclerk/attendance/route.ts - COMPLETE FILE WITH PAGINATION
+// app/api/headclerk/attendance/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -30,6 +30,8 @@ interface UserRecord {
   status: string;
   isEmployed: boolean;
   dateOfJoining?: string;
+  collegeId: string;
+  collegeName: string;
 }
 
 interface DepartmentRecord {
@@ -38,6 +40,7 @@ interface DepartmentRecord {
   hodId: string | null;
   hodName: string | null;
   isActive: boolean;
+  collegeId: string;
 }
 
 export async function GET(request: Request) {
@@ -69,6 +72,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
+    // ✅ Get the Head Clerk's college ID
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+    }
+
     const { searchParams } = new URL(request.url);
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString());
     const month = parseInt(searchParams.get("month") || (new Date().getMonth() + 1).toString());
@@ -85,8 +95,18 @@ export async function GET(request: Request) {
     const attendanceSnapshot = await rtdb.ref("attendance").once("value");
     const allAttendance = attendanceSnapshot.val() as Record<string, AttendanceRecord> | null || {};
     
+    // ✅ Get ALL users in the SAME college
+    const usersSnapshot = await rtdb.ref("users").once("value");
+    const allUsers = usersSnapshot.val() as Record<string, UserRecord> | null || {};
+    
+    const collegeUserIds = Object.entries(allUsers)
+      .filter(([, user]) => user.collegeId === collegeId)
+      .map(([uid]) => uid);
+    
+    // ✅ Filter attendance records by college users
     let results = Object.values(allAttendance).filter((record: AttendanceRecord) => {
       if (!record.date) return false;
+      if (!collegeUserIds.includes(record.userId)) return false;
       const recordDate = new Date(record.date);
       return recordDate >= startDate && recordDate <= endDate;
     });
@@ -102,15 +122,15 @@ export async function GET(request: Request) {
     const paginatedResults = results.slice(offset, offset + limit);
     const hasMore = offset + limit < totalResults;
 
-    const usersSnapshot = await rtdb.ref("users").once("value");
-    const users = usersSnapshot.val() as Record<string, UserRecord> | null || {};
-    
-    const staffUsers = Object.entries(users)
+    // ✅ Filter staff users by college
+    const staffUsers = Object.entries(allUsers)
       .filter(([, user]: [string, UserRecord]) => {
         const roles = user.roles || [];
-        return roles.includes("faculty") || 
-               roles.includes("lab_assistant") || 
-               roles.includes("office_staff");
+        return (roles.includes("faculty") || 
+                roles.includes("lab_assistant") || 
+                roles.includes("office_staff")) &&
+                user.collegeId === collegeId &&
+                user.status !== "deleted";
       })
       .map(([uid, user]: [string, UserRecord]) => ({
         uid,
@@ -121,13 +141,16 @@ export async function GET(request: Request) {
         roles: user.roles,
       }));
 
+    // ✅ Filter departments by college
     const deptsSnapshot = await rtdb.ref("departments").once("value");
     const departments = deptsSnapshot.val() as Record<string, DepartmentRecord> | null || {};
 
-    const departmentsList = Object.entries(departments).map(([id, data]: [string, DepartmentRecord]) => ({
-      id,
-      name: data.name,
-    }));
+    const departmentsList = Object.entries(departments)
+      .filter(([, data]: [string, DepartmentRecord]) => data.collegeId === collegeId)
+      .map(([id, data]: [string, DepartmentRecord]) => ({
+        id,
+        name: data.name,
+      }));
 
     const summary = {
       totalRecords: totalResults,

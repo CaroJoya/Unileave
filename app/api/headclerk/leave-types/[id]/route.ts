@@ -1,21 +1,27 @@
-// app/api/headclerk/vacation-periods/[id]/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
+// app/api/headclerk/leave-types/[id]/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 
-interface VacationPeriod {
+interface LeaveType {
   id: string;
-  vacationType: "Summer Vacation" | "Winter Vacation";
-  year: number;
-  startDate: string;
-  endDate: string;
-  totalDays: number;
-  paidLeaveQuota: number;
+  leaveCode: string;
+  leaveName: string;
+  description: string;
+  allowHalfDay: boolean;
+  requiresAttachment: boolean;
+  deductsBalance: boolean;
+  hasExpiry: boolean;
+  expiryInDays: number | null;
+  maxConsecutiveDays: number | null;
   isActive: boolean;
-  collegeId: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  collegeId?: string;
 }
 
-interface UserRecord {
+interface UserData {
   uid: string;
   name: string;
   email: string;
@@ -51,10 +57,10 @@ export async function PUT(
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val() as UserRecord | null;
+    const userData = userSnapshot.val() as UserData | null;
     
     if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
     // ✅ Get the Head Clerk's college ID
@@ -65,62 +71,71 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { vacationType, year, startDate, endDate, paidLeaveQuota, isActive } = body;
+    const { 
+      leaveName, 
+      description, 
+      allowHalfDay, 
+      requiresAttachment, 
+      deductsBalance,
+      hasExpiry,
+      expiryInDays,
+      maxConsecutiveDays,
+      isActive 
+    } = body;
 
-    const vacationRef = rtdb.ref(`vacationPeriods/${id}`);
-    const snapshot = await vacationRef.once("value");
-    const existing = snapshot.val() as VacationPeriod | null;
+    const leaveTypeRef = rtdb.ref(`leaveTypes/${id}`);
+    const snapshot = await leaveTypeRef.once("value");
+    const existing = snapshot.val() as LeaveType | null;
 
     if (!existing) {
-      return NextResponse.json({ error: "Vacation period not found" }, { status: 404 });
+      return NextResponse.json({ error: "Leave type not found" }, { status: 404 });
     }
 
-    // ✅ Verify vacation belongs to this college
+    // ✅ Verify leave type belongs to this college
     if (existing.collegeId && existing.collegeId !== collegeId) {
       return NextResponse.json({ 
-        error: "You are not authorized to modify vacation periods from other colleges" 
+        error: "You are not authorized to modify leave types from other colleges" 
       }, { status: 403 });
     }
 
     const updatedData = {
       ...existing,
-      vacationType: vacationType || existing.vacationType,
-      year: year || existing.year,
-      startDate: startDate ? new Date(startDate).toISOString() : existing.startDate,
-      endDate: endDate ? new Date(endDate).toISOString() : existing.endDate,
-      paidLeaveQuota: paidLeaveQuota !== undefined ? paidLeaveQuota : existing.paidLeaveQuota,
+      leaveName: leaveName || existing.leaveName,
+      description: description !== undefined ? description : existing.description,
+      allowHalfDay: allowHalfDay !== undefined ? allowHalfDay : existing.allowHalfDay,
+      requiresAttachment: requiresAttachment !== undefined ? requiresAttachment : existing.requiresAttachment,
+      deductsBalance: deductsBalance !== undefined ? deductsBalance : existing.deductsBalance,
+      hasExpiry: hasExpiry !== undefined ? hasExpiry : existing.hasExpiry,
+      expiryInDays: expiryInDays !== undefined ? expiryInDays : existing.expiryInDays,
+      maxConsecutiveDays: maxConsecutiveDays !== undefined ? maxConsecutiveDays : existing.maxConsecutiveDays,
       isActive: isActive !== undefined ? isActive : existing.isActive,
+      collegeId: collegeId, // ✅ Ensure collegeId is set
       updatedAt: new Date().toISOString(),
     };
 
-    if (startDate || endDate) {
-      const start = new Date(updatedData.startDate);
-      const end = new Date(updatedData.endDate);
-      updatedData.totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    }
+    await leaveTypeRef.update(updatedData);
 
-    await vacationRef.update(updatedData);
-
+    // ✅ Log the action with college ID
     await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",
       userRole: "head_clerk",
-      action: "VACATION_PERIOD_UPDATED",
-      module: "vacationPeriods",
+      action: "LEAVE_TYPE_UPDATED",
+      module: "leaveTypes",
       targetId: id,
       details: JSON.stringify({
-        vacationType: updatedData.vacationType,
-        year: updatedData.year,
+        leaveCode: existing.leaveCode,
+        leaveName: updatedData.leaveName,
         isActive: updatedData.isActive,
         collegeId: collegeId,
       }),
       createdAt: new Date().toISOString(),
     });
 
-    return NextResponse.json({ success: true, vacation: updatedData });
+    return NextResponse.json({ success: true, leaveType: updatedData });
   } catch (error) {
-    console.error("Error updating vacation period:", error);
-    return NextResponse.json({ error: "Failed to update vacation period" }, { status: 500 });
+    console.error("Error updating leave type:", error);
+    return NextResponse.json({ error: "Failed to update leave type" }, { status: 500 });
   }
 }
 
@@ -151,10 +166,10 @@ export async function DELETE(
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val() as UserRecord | null;
+    const userData = userSnapshot.val() as UserData | null;
     
     if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
     // ✅ Get the Head Clerk's college ID
@@ -164,36 +179,38 @@ export async function DELETE(
       return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
     }
 
-    const vacationRef = rtdb.ref(`vacationPeriods/${id}`);
-    const snapshot = await vacationRef.once("value");
-    const existing = snapshot.val() as VacationPeriod | null;
+    const leaveTypeRef = rtdb.ref(`leaveTypes/${id}`);
+    const snapshot = await leaveTypeRef.once("value");
+    const existing = snapshot.val() as LeaveType | null;
 
     if (!existing) {
-      return NextResponse.json({ error: "Vacation period not found" }, { status: 404 });
+      return NextResponse.json({ error: "Leave type not found" }, { status: 404 });
     }
 
-    // ✅ Verify vacation belongs to this college
+    // ✅ Verify leave type belongs to this college
     if (existing.collegeId && existing.collegeId !== collegeId) {
       return NextResponse.json({ 
-        error: "You are not authorized to modify vacation periods from other colleges" 
+        error: "You are not authorized to modify leave types from other colleges" 
       }, { status: 403 });
     }
 
-    await vacationRef.update({
+    // Soft delete (deactivate) instead of hard delete
+    await leaveTypeRef.update({
       isActive: false,
       updatedAt: new Date().toISOString(),
     });
 
+    // ✅ Log the action with college ID
     await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",
       userRole: "head_clerk",
-      action: "VACATION_PERIOD_DELETED",
-      module: "vacationPeriods",
+      action: "LEAVE_TYPE_DELETED",
+      module: "leaveTypes",
       targetId: id,
       details: JSON.stringify({
-        vacationType: existing.vacationType,
-        year: existing.year,
+        leaveCode: existing.leaveCode,
+        leaveName: existing.leaveName,
         collegeId: collegeId,
       }),
       createdAt: new Date().toISOString(),
@@ -201,7 +218,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error deactivating vacation period:", error);
-    return NextResponse.json({ error: "Failed to deactivate vacation period" }, { status: 500 });
+    console.error("Error deactivating leave type:", error);
+    return NextResponse.json({ error: "Failed to deactivate leave type" }, { status: 500 });
   }
 }

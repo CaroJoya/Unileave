@@ -1,7 +1,34 @@
-// app/api/headclerk/leave-types/route.ts - FIXED
+// app/api/headclerk/leave-types/route.ts - FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+
+interface LeaveType {
+  id: string;
+  leaveCode: string;
+  leaveName: string;
+  description: string;
+  allowHalfDay: boolean;
+  requiresAttachment: boolean;
+  deductsBalance: boolean;
+  hasExpiry: boolean;
+  expiryInDays: number | null;
+  maxConsecutiveDays: number | null;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  collegeId?: string;
+}
+
+interface UserRecord {
+  uid: string;
+  name: string;
+  email: string;
+  roles: string[];
+  collegeId: string;
+  collegeName: string;
+}
 
 export async function GET() {
   try {
@@ -26,19 +53,46 @@ export async function GET() {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val();
+    const userData = userSnapshot.val() as UserRecord | null;
     
     if (!userData?.roles?.includes("head_clerk")) {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
     }
 
-    const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
-    const leaveTypes = leaveTypesSnapshot.val() || {};
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+    }
 
-    const leaveTypesList = Object.entries(leaveTypes).map(([id, data]) => ({
-      id,
-      ...(data as object),
-    }));
+    const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
+    const leaveTypes = leaveTypesSnapshot.val() as Record<string, LeaveType> | null || {};
+
+    // ✅ FIXED: Don't use spread with id - use explicit mapping
+    const leaveTypesList = Object.entries(leaveTypes)
+      .filter(([, data]) => {
+        if (data.collegeId) {
+          return data.collegeId === collegeId;
+        }
+        return data.collegeId === undefined || data.collegeId === collegeId;
+      })
+      .map(([id, data]) => ({
+        id, // ✅ Explicitly set id first
+        leaveCode: data.leaveCode,
+        leaveName: data.leaveName,
+        description: data.description,
+        allowHalfDay: data.allowHalfDay,
+        requiresAttachment: data.requiresAttachment,
+        deductsBalance: data.deductsBalance,
+        hasExpiry: data.hasExpiry,
+        expiryInDays: data.expiryInDays,
+        maxConsecutiveDays: data.maxConsecutiveDays,
+        isActive: data.isActive,
+        createdBy: data.createdBy,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        collegeId: data.collegeId,
+      }));
 
     return NextResponse.json({ leaveTypes: leaveTypesList });
   } catch (error) {
@@ -70,10 +124,16 @@ export async function POST(request: Request) {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val();
+    const userData = userSnapshot.val() as UserRecord | null;
     
     if (!userData?.roles?.includes("head_clerk")) {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    }
+
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -106,6 +166,7 @@ export async function POST(request: Request) {
       expiryInDays: expiryInDays || null,
       maxConsecutiveDays: maxConsecutiveDays || null,
       isActive: true,
+      collegeId: collegeId,
       createdBy: decodedToken.uid,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

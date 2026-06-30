@@ -1,4 +1,4 @@
-// app/api/headclerk/faculty/route.ts - FIXED
+// app/api/headclerk/faculty/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -14,6 +14,8 @@ interface UserRecord {
   status: string;
   isEmployed: boolean;
   dateOfJoining?: string;
+  collegeId: string;
+  collegeName: string;
 }
 
 export async function GET(request: Request) {
@@ -45,6 +47,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
+    // ✅ Get the Head Clerk's college ID
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+    }
+
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
     const departmentId = searchParams.get("departmentId") || "";
@@ -54,8 +63,10 @@ export async function GET(request: Request) {
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, UserRecord> | null || {};
 
+    // ✅ Filter users by college
     let facultyList = Object.entries(users)
       .filter(([, user]: [string, UserRecord]) => {
+        if (user.collegeId !== collegeId) return false;
         const roles = user.roles || [];
         return roles.includes("faculty") || 
                roles.includes("lab_assistant") || 

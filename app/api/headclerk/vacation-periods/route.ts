@@ -1,4 +1,4 @@
-// app/api/headclerk/vacation-periods/route.ts - FIXED
+// app/api/headclerk/vacation-periods/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -14,6 +14,16 @@ interface VacationPeriod {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  collegeId: string; // ✅ Add collegeId field
+}
+
+interface UserRecord {
+  uid: string;
+  name: string;
+  email: string;
+  roles: string[];
+  collegeId: string;
+  collegeName: string;
 }
 
 export async function GET() {
@@ -39,19 +49,34 @@ export async function GET() {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val() as { roles?: string[] } | null;
+    const userData = userSnapshot.val() as UserRecord | null;
     
     if (!userData?.roles?.includes("head_clerk")) {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
     }
 
+    // ✅ Get the Head Clerk's college ID
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+    }
+
     const vacationsSnapshot = await rtdb.ref("vacationPeriods").once("value");
     const vacationsData = vacationsSnapshot.val() as Record<string, VacationPeriod> | null || {};
 
-    const vacationsList = Object.entries(vacationsData).map(([id, data]) => ({
-      ...data,
-      id,
-    }));
+    // ✅ Filter vacation periods by college
+    const vacationsList = Object.entries(vacationsData)
+      .filter(([, data]) => {
+        if (data.collegeId) {
+          return data.collegeId === collegeId;
+        }
+        return data.collegeId === undefined || data.collegeId === collegeId;
+      })
+      .map(([id, data]) => ({
+        ...data,
+        id,
+      }));
 
     return NextResponse.json({ vacations: vacationsList });
   } catch (error) {
@@ -83,10 +108,17 @@ export async function POST(request: Request) {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val() as { roles?: string[]; name?: string } | null;
+    const userData = userSnapshot.val() as UserRecord | null;
     
     if (!userData?.roles?.includes("head_clerk")) {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    }
+
+    // ✅ Get the Head Clerk's college ID
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -111,13 +143,17 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
+    // ✅ Check for existing vacation in same college
     const vacationsSnapshot = await rtdb.ref("vacationPeriods").once("value");
     const existingVacations = vacationsSnapshot.val() as Record<string, VacationPeriod> | null || {};
     
     for (const [, vacation] of Object.entries(existingVacations)) {
-      if (vacation.vacationType === vacationType && vacation.year === year && vacation.isActive) {
+      if (vacation.vacationType === vacationType && 
+          vacation.year === year && 
+          vacation.isActive && 
+          vacation.collegeId === collegeId) {
         return NextResponse.json({ 
-          error: `An active ${vacationType} for ${year} already exists. Deactivate it first.` 
+          error: `An active ${vacationType} for ${year} already exists in your college. Deactivate it first.` 
         }, { status: 400 });
       }
     }
@@ -132,6 +168,7 @@ export async function POST(request: Request) {
       totalDays,
       paidLeaveQuota: paidLeaveQuota || maxQuota,
       isActive: true,
+      collegeId: collegeId, // ✅ Store college ID
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -150,6 +187,7 @@ export async function POST(request: Request) {
         year,
         totalDays,
         paidLeaveQuota,
+        collegeId,
       }),
       createdAt: new Date().toISOString(),
     };

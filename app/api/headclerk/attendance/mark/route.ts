@@ -1,4 +1,4 @@
-// app/api/headclerk/attendance/mark/route.ts - FIXED
+// app/api/headclerk/attendance/mark/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -14,6 +14,8 @@ interface UserRecord {
   status: string;
   isEmployed: boolean;
   dateOfJoining?: string;
+  collegeId: string;
+  collegeName: string;
 }
 
 interface AttendanceRecord {
@@ -61,6 +63,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
+    // ✅ Get the Head Clerk's college ID
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+    }
+
     const body = await request.json();
     const { userId, date, status, remarks, halfDaySession } = body;
 
@@ -77,6 +86,13 @@ export async function POST(request: Request) {
 
     if (!targetUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // ✅ Verify the target user is in the same college
+    if (targetUser.collegeId !== collegeId) {
+      return NextResponse.json({ 
+        error: "Not authorized to mark attendance for users from other colleges" 
+      }, { status: 403 });
     }
 
     const attendanceSnapshot = await rtdb.ref("attendance").once("value");

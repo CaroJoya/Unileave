@@ -1,7 +1,27 @@
-// app/api/headclerk/overwork-config/route.ts - FIXED
+// app/api/headclerk/overwork-config/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+
+interface OverworkConfig {
+  id: string;
+  conversionHours: number;
+  minHoursPerEntry: number;
+  maxHoursPerDay: number;
+  autoConversionEnabled: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  collegeId: string; // ✅ Add collegeId field
+}
+
+interface UserRecord {
+  uid: string;
+  name: string;
+  email: string;
+  roles: string[];
+  collegeId: string;
+  collegeName: string;
+}
 
 export async function GET() {
   try {
@@ -26,15 +46,25 @@ export async function GET() {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
 
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val();
+    const userData = userSnapshot.val() as UserRecord | null;
 
     if (!userData?.roles?.includes("head_clerk")) {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
     }
 
-    const configSnapshot = await rtdb.ref("overworkConfig/overwork_config").once("value");
-    let config = configSnapshot.val();
+    // ✅ Get the Head Clerk's college ID
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+    }
 
+    // ✅ Store config under college path
+    const configRef = rtdb.ref(`colleges/${collegeId}/overworkConfig/overwork_config`);
+    const snapshot = await configRef.once("value");
+    let config = snapshot.val() as OverworkConfig | null;
+
+    // If no config exists, create default
     if (!config) {
       config = {
         id: "overwork_config",
@@ -44,7 +74,9 @@ export async function GET() {
         autoConversionEnabled: true,
         updatedAt: null,
         updatedBy: null,
+        collegeId: collegeId,
       };
+      await configRef.set(config);
     }
 
     return NextResponse.json({ config });
@@ -77,10 +109,17 @@ export async function PUT(request: Request) {
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
 
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
-    const userData = userSnapshot.val();
+    const userData = userSnapshot.val() as UserRecord | null;
 
     if (!userData?.roles?.includes("head_clerk")) {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    }
+
+    // ✅ Get the Head Clerk's college ID
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -98,9 +137,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Maximum hours per day must be between 0.5 and 24" }, { status: 400 });
     }
 
-    const configRef = rtdb.ref("overworkConfig/overwork_config");
+    // ✅ Store config under college path
+    const configRef = rtdb.ref(`colleges/${collegeId}/overworkConfig/overwork_config`);
     const snapshot = await configRef.once("value");
-    const existingConfig = snapshot.val();
+    const existingConfig = snapshot.val() as OverworkConfig | null;
 
     const updatedConfig = {
       id: "overwork_config",
@@ -110,6 +150,7 @@ export async function PUT(request: Request) {
       autoConversionEnabled: autoConversionEnabled !== undefined ? autoConversionEnabled : (existingConfig?.autoConversionEnabled !== false),
       updatedBy: decodedToken.uid,
       updatedAt: new Date().toISOString(),
+      collegeId: collegeId,
     };
 
     await configRef.set(updatedConfig);
