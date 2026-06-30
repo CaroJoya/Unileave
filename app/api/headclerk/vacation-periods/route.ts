@@ -1,4 +1,4 @@
-// app/api/headclerk/vacation-periods/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
+// app/api/headclerk/vacation-periods/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -14,7 +14,7 @@ interface VacationPeriod {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-  collegeId: string; // ✅ Add collegeId field
+  collegeId: string;
 }
 
 interface UserRecord {
@@ -55,7 +55,6 @@ export async function GET() {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
@@ -67,12 +66,7 @@ export async function GET() {
 
     // ✅ Filter vacation periods by college
     const vacationsList = Object.entries(vacationsData)
-      .filter(([, data]) => {
-        if (data.collegeId) {
-          return data.collegeId === collegeId;
-        }
-        return data.collegeId === undefined || data.collegeId === collegeId;
-      })
+      .filter(([, data]) => data.collegeId === collegeId)
       .map(([id, data]) => ({
         ...data,
         id,
@@ -114,7 +108,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
@@ -143,15 +136,16 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // ✅ Check for existing vacation in same college
+    // ✅ Check for existing vacation in SAME college only
     const vacationsSnapshot = await rtdb.ref("vacationPeriods").once("value");
     const existingVacations = vacationsSnapshot.val() as Record<string, VacationPeriod> | null || {};
     
     for (const [, vacation] of Object.entries(existingVacations)) {
-      if (vacation.vacationType === vacationType && 
+      // ✅ Only check if same college
+      if (vacation.collegeId === collegeId && 
+          vacation.vacationType === vacationType && 
           vacation.year === year && 
-          vacation.isActive && 
-          vacation.collegeId === collegeId) {
+          vacation.isActive) {
         return NextResponse.json({ 
           error: `An active ${vacationType} for ${year} already exists in your college. Deactivate it first.` 
         }, { status: 400 });

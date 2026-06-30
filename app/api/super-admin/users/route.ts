@@ -1,4 +1,4 @@
-// app/api/super-admin/users/route.ts - COMPLETE FILE WITH EMAIL FEATURE
+// app/api/super-admin/users/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -15,6 +15,12 @@ interface User {
   status: string;
   collegeId?: string;
   [key: string]: unknown;
+}
+
+interface Department {
+  id: string;
+  name: string;
+  collegeId: string;
 }
 
 export async function GET(request: Request) {
@@ -66,6 +72,7 @@ export async function GET(request: Request) {
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, User> | null || {};
 
+    // ✅ CRITICAL FIX: Only show users from the SAME college
     let usersList = Object.entries(users)
       .filter(([, user]) => {
         return user.collegeId === adminCollegeId;
@@ -164,17 +171,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Admin has no college assigned" }, { status: 400 });
     }
 
-    // Get college name
-    const collegeSnapshot = await rtdb.ref(`colleges/${adminCollegeId}`).once("value");
-    const college = collegeSnapshot.val() as { name: string } | null;
-
-    // Get department name
+    // ✅ CRITICAL FIX: Validate department belongs to this college
     const deptSnapshot = await rtdb.ref(`departments/${departmentId}`).once("value");
-    const department = deptSnapshot.val() as { name: string } | null;
+    const department = deptSnapshot.val() as Department | null;
     
     if (!department) {
       return NextResponse.json({ error: "Department not found" }, { status: 404 });
     }
+    
+    // ✅ Check if department belongs to admin's college
+    if (department.collegeId !== adminCollegeId) {
+      return NextResponse.json({ 
+        error: "Department does not belong to your college. Please select a department from your college." 
+      }, { status: 403 });
+    }
+
+    // Get college name
+    const collegeSnapshot = await rtdb.ref(`colleges/${adminCollegeId}`).once("value");
+    const college = collegeSnapshot.val() as { name: string } | null;
 
     // Create Firebase Auth user
     let userRecord;
@@ -220,7 +234,6 @@ export async function POST(request: Request) {
       await rtdb.ref(`users/${userRecord.uid}`).set(userData);
     } catch (rtdbError) {
       console.error("RTDB save error:", rtdbError);
-      // Clean up: delete auth user
       try {
         await auth.deleteUser(userRecord.uid);
       } catch {
@@ -232,16 +245,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ --- NEW CODE: Send welcome email with credentials ---
+    // Send welcome email
     try {
       const emailSent = await sendEmail(
-        userData.email, // To: the new user's email
-        `🎉 Welcome to UniLeave!`, // Subject
+        userData.email,
+        `🎉 Welcome to UniLeave!`,
         getNewAccountCredentialsEmail(
-          userData.name, // New user's name
-          userData.email, // New user's email
-          password, // The temporary password
-          adminData.name || "Super Admin" // The admin who created them
+          userData.name,
+          userData.email,
+          password,
+          adminData.name || "Super Admin"
         )
       );
 
@@ -251,7 +264,6 @@ export async function POST(request: Request) {
         console.log(`⚠️ Welcome email not sent to ${userData.email} (SMTP might not be configured)`);
       }
     } catch (emailError) {
-      // Log the error but don't fail the user creation process
       console.error(`❌ Failed to send welcome email to ${userData.email}:`, emailError);
     }
 
@@ -270,6 +282,7 @@ export async function POST(request: Request) {
         email,
         roles,
         departmentName: department.name,
+        collegeId: adminCollegeId,
         emailSent: true,
       }),
       createdAt: new Date().toISOString(),

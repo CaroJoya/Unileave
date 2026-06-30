@@ -1,4 +1,4 @@
-// app/api/headclerk/leave-types/route.ts - FIXED VERSION
+// app/api/headclerk/leave-types/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -18,7 +18,7 @@ interface LeaveType {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-  collegeId?: string;
+  collegeId?: string; // ✅ Added collegeId
 }
 
 interface UserRecord {
@@ -68,16 +68,20 @@ export async function GET() {
     const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
     const leaveTypes = leaveTypesSnapshot.val() as Record<string, LeaveType> | null || {};
 
-    // ✅ FIXED: Don't use spread with id - use explicit mapping
+    // ✅ Filter leave types by college
     const leaveTypesList = Object.entries(leaveTypes)
       .filter(([, data]) => {
+        // If collegeId is set, match it; if not, treat as global (or belonging to this college for backward compatibility)
         if (data.collegeId) {
           return data.collegeId === collegeId;
         }
-        return data.collegeId === undefined || data.collegeId === collegeId;
+        // For backward compatibility: leave types without collegeId are treated as belonging to all colleges
+        // OR: you can decide they belong to the first college
+        // For safety, we'll include them only if they don't have collegeId (legacy data)
+        return data.collegeId === undefined || data.collegeId === null || data.collegeId === collegeId;
       })
       .map(([id, data]) => ({
-        id, // ✅ Explicitly set id first
+        id,
         leaveCode: data.leaveCode,
         leaveName: data.leaveName,
         description: data.description,
@@ -91,7 +95,7 @@ export async function GET() {
         createdBy: data.createdBy,
         createdAt: data.createdAt,
         updatedAt: data.updatedAt,
-        collegeId: data.collegeId,
+        collegeId: data.collegeId || collegeId, // Set the collegeId if not present
       }));
 
     return NextResponse.json({ leaveTypes: leaveTypesList });
@@ -166,7 +170,7 @@ export async function POST(request: Request) {
       expiryInDays: expiryInDays || null,
       maxConsecutiveDays: maxConsecutiveDays || null,
       isActive: true,
-      collegeId: collegeId,
+      collegeId: collegeId, // ✅ Store college ID
       createdBy: decodedToken.uid,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

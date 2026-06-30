@@ -16,7 +16,7 @@ interface LeaveRequest {
   totalDays: number;
   status: string;
   approvedBy?: string;
-  collegeId?: string;
+  collegeId?: string; // ✅ Added collegeId
 }
 
 interface User {
@@ -106,6 +106,18 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
+    // ✅ CRITICAL FIX: Validate leave request belongs to Principal's college
+    const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
+    const applicantData = applicantSnapshot.val() as { collegeId: string } | null;
+    const leaveCollegeId = applicantData?.collegeId || leaveRequest.collegeId;
+
+    if (leaveCollegeId !== principalData.collegeId) {
+      return NextResponse.json(
+        { error: "Not authorized to override requests from other colleges" },
+        { status: 403 }
+      );
+    }
+
     const validLeaveTypes = ["CL", "EL", "ML"];
     if (!validLeaveTypes.includes(leaveRequest.leaveType)) {
       return NextResponse.json({ error: "This leave type cannot be overridden" }, { status: 400 });
@@ -125,9 +137,7 @@ export async function POST(
       return NextResponse.json({ error: "Cannot override leave that has already started" }, { status: 400 });
     }
 
-    const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
-    const applicantData = applicantSnapshot.val() as { collegeId: string } | null;
-    const collegeId = applicantData?.collegeId || principalData.collegeId || "";
+    const collegeId = leaveCollegeId || principalData.collegeId || "";
 
     // ✅ ALWAYS restore balance
     const academicYear = getCurrentAcademicYear();
@@ -187,6 +197,7 @@ export async function POST(
         totalDays: leaveRequest.totalDays,
         originalApprover: leaveRequest.approvedBy,
         overrideReason: reason,
+        collegeId: collegeId,
       }),
       createdAt: new Date().toISOString(),
     });

@@ -1,4 +1,4 @@
-// app/api/hod/comp-off/route.ts - FIXED
+// app/api/hod/comp-off/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -22,6 +22,7 @@ interface User {
   departmentId: string;
   status: string;
   isEmployed: boolean;
+  collegeId: string; // ✅ Added collegeId
 }
 
 export async function GET() {
@@ -55,13 +56,16 @@ export async function GET() {
     }
 
     const departmentId = hodData.departmentId;
+    const collegeId = hodData.collegeId; // ✅ Get HOD's college
 
+    // ✅ CRITICAL FIX: Get users from the SAME college AND department
     const usersSnapshot = await rtdb.ref("users").once("value");
     const users = usersSnapshot.val() as Record<string, User> | null || {};
     
     const departmentUserIds = Object.entries(users)
       .filter(([, user]) => 
         user.departmentId === departmentId && 
+        user.collegeId === collegeId && // ✅ Add college check
         (user.roles?.includes("faculty") || user.roles?.includes("lab_assistant"))
       )
       .map(([uid]) => uid);

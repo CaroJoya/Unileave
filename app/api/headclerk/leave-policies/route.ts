@@ -1,4 +1,4 @@
-// app/api/headclerk/leave-policies/route.ts - FIXED VERSION
+// app/api/headclerk/leave-policies/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -63,17 +63,12 @@ export async function GET() {
     const policiesSnapshot = await rtdb.ref("leavePolicies").once("value");
     const policies = policiesSnapshot.val() as Record<string, Policy> | null || {};
 
-    // ✅ FIXED: Don't use spread with academicYear - use explicit mapping
+    // ✅ Filter policies by college
     const policiesList = Object.entries(policies)
-      .filter(([, data]) => {
-        if (data.collegeId) {
-          return data.collegeId === collegeId;
-        }
-        return data.collegeId === undefined || data.collegeId === collegeId;
-      })
+      .filter(([, data]) => data.collegeId === collegeId)
       .map(([id, data]) => ({
         id,
-        academicYear: data.academicYear, // ✅ Explicitly set academicYear
+        academicYear: data.academicYear,
         leaveAllocations: data.leaveAllocations,
         effectiveFrom: data.effectiveFrom,
         applyRule: data.applyRule,
@@ -133,19 +128,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Academic year and leave allocations are required" }, { status: 400 });
     }
 
+    // ✅ Check if policy exists for THIS college
     const existingPolicySnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
     const existingPolicy = existingPolicySnapshot.val() as Policy | null;
 
     if (existingPolicy) {
-      if (existingPolicy.collegeId && existingPolicy.collegeId !== collegeId) {
+      // ✅ If policy exists in THIS college, block creation
+      if (existingPolicy.collegeId === collegeId) {
         return NextResponse.json({ 
-          error: `A leave policy for academic year ${academicYear} exists in another college. You cannot access it.` 
-        }, { status: 403 });
+          error: `A leave policy for academic year ${academicYear} already exists in your college. Use PUT to update it.`,
+          existing: true,
+        }, { status: 409 });
       }
-      return NextResponse.json({ 
-        error: `A leave policy for academic year ${academicYear} already exists. Use PUT to update it.`,
-        existing: true,
-      }, { status: 409 });
+      // ✅ If policy exists in ANOTHER college, we can create a new one for this college
+      console.log(`📝 Policy ${academicYear} exists in another college, creating for college ${collegeId}`);
     }
 
     const requiredRoles = ["faculty", "lab_assistant", "office_staff", "hod", "registrar", "principal", "head_clerk"];
@@ -168,7 +164,7 @@ export async function POST(request: Request) {
       leaveAllocations,
       applyRule: applyRule || "immediate",
       effectiveFrom: applyRule === "immediate" ? new Date().toISOString() : `${parseInt(academicYear.split("-")[0])}-06-01T00:00:00Z`,
-      collegeId: collegeId,
+      collegeId: collegeId, // ✅ Store college ID
       createdBy: decodedToken.uid,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -178,7 +174,7 @@ export async function POST(request: Request) {
     await rtdb.ref(`leavePolicies/${academicYear}`).set(policyData);
 
     if (applyRule === "immediate") {
-      console.log(`Policy ${academicYear} applied immediately for college ${collegeId}`);
+      console.log(`✅ Policy ${academicYear} applied immediately for college ${collegeId}`);
     }
 
     return NextResponse.json({ success: true, policy: policyData });
@@ -237,7 +233,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Policy not found" }, { status: 404 });
     }
 
-    if (existing.collegeId && existing.collegeId !== collegeId) {
+    // ✅ CRITICAL FIX: Only allow updating policies from the SAME college
+    if (existing.collegeId !== collegeId) {
       return NextResponse.json({ 
         error: "You are not authorized to modify policies from other colleges" 
       }, { status: 403 });

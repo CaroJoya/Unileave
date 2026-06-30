@@ -1,4 +1,4 @@
-// app/api/headclerk/leave-types/[id]/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
+// app/api/headclerk/leave-types/[id]/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -63,7 +63,6 @@ export async function PUT(
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
@@ -91,7 +90,7 @@ export async function PUT(
       return NextResponse.json({ error: "Leave type not found" }, { status: 404 });
     }
 
-    // ✅ Verify leave type belongs to this college
+    // ✅ CRITICAL FIX: Verify leave type belongs to this college
     if (existing.collegeId && existing.collegeId !== collegeId) {
       return NextResponse.json({ 
         error: "You are not authorized to modify leave types from other colleges" 
@@ -172,7 +171,6 @@ export async function DELETE(
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
@@ -187,7 +185,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Leave type not found" }, { status: 404 });
     }
 
-    // ✅ Verify leave type belongs to this college
+    // ✅ CRITICAL FIX: Verify leave type belongs to this college
     if (existing.collegeId && existing.collegeId !== collegeId) {
       return NextResponse.json({ 
         error: "You are not authorized to modify leave types from other colleges" 

@@ -1,4 +1,4 @@
-// app/api/super-admin/departments/route.ts - FIXED
+// app/api/super-admin/departments/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -81,7 +81,6 @@ export async function GET(request: Request) {
     // ✅ CRITICAL FIX: Only show departments from the SAME college
     const departmentsList = Object.entries(departments)
       .filter(([, data]) => {
-        // ✅ This is the fix - filter by collegeId
         return data.collegeId === collegeId;
       })
       .map(([id, data]) => ({
@@ -142,7 +141,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Department name is required" }, { status: 400 });
     }
 
-    // ✅ Get college ID from the admin's data
+    // ✅ CRITICAL FIX: Get college ID from the admin's data (NOT hardcoded)
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
@@ -158,7 +157,7 @@ export async function POST(request: Request) {
     const departmentData: DepartmentData = {
       id: deptId,
       name,
-      collegeId: collegeId, // ✅ CRITICAL: Set collegeId
+      collegeId: collegeId, // ✅ CRITICAL: Use authenticated user's collegeId
       collegeName: college?.name || "",
       hodId: null,
       hodName: null,
