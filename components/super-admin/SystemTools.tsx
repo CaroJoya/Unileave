@@ -1,4 +1,4 @@
-// components/super-admin/SystemTools.tsx - COMPLETE FILE (ESLint Compliant)
+// components/super-admin/SystemTools.tsx - COMPLETE FILE (FIXED CACHING)
 "use client";
 
 import { useState } from "react";
@@ -77,6 +77,8 @@ export function SystemTools() {
   const [brokenRequests, setBrokenRequests] = useState<BrokenRequest[]>([]);
   const [fixResult, setFixResult] = useState<BalanceFixResult | null>(null);
   const [showBrokenList, setShowBrokenList] = useState(false);
+  // ✅ ADDED: Force re-render key for cache busting
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // ============ SEED LEAVE TYPES ============
   const handleSeedLeaveTypes = async () => {
@@ -161,28 +163,35 @@ export function SystemTools() {
     }
   };
 
-  // ============ FIX BROKEN BALANCES ============
+  // ============ FIX BROKEN BALANCES - FIND ============
   const handleFindBroken = async () => {
     setIsFinding(true);
     setBrokenRequests([]);
     setFixResult(null);
-    
+    setShowBrokenList(false); // ✅ Reset the list first
+    setRefreshKey(prev => prev + 1); // ✅ Force re-render
+
     try {
+      // ✅ ADDED: Force no cache with headers
       const response = await fetch("/api/super-admin/fix-broken-balances", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
+        },
         body: JSON.stringify({ action: "find" }),
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || "Failed to find broken requests");
       }
-      
+
       setBrokenRequests(data.brokenRequests || []);
-      setShowBrokenList(true);
-      
+      setShowBrokenList(true); // ✅ Only show after data is loaded
+
       if (data.count === 0) {
         toast.success("✅ No broken balances found!");
       } else {
@@ -191,30 +200,38 @@ export function SystemTools() {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to find broken requests";
       toast.error(errorMessage);
+      setBrokenRequests([]);
+      setShowBrokenList(false);
     } finally {
       setIsFinding(false);
     }
   };
 
+  // ============ FIX BROKEN BALANCES - FIX ============
   const handleFixBroken = async () => {
     setIsFixing(true);
     setFixResult(null);
-    
+
     try {
+      // ✅ ADDED: Force no cache with headers
       const response = await fetch("/api/super-admin/fix-broken-balances", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
+        },
         body: JSON.stringify({ action: "fix" }),
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || "Failed to fix broken balances");
       }
-      
+
       setFixResult(data);
-      
+
       if (data.fixed > 0) {
         toast.success(`✅ Fixed ${data.fixed} broken balance(s)`);
       } else if (data.totalFound === 0) {
@@ -222,12 +239,12 @@ export function SystemTools() {
       } else {
         toast.warning(`Fixed ${data.fixed}, failed ${data.failed}`);
       }
-      
-      // Refresh the broken list after fixing
+
+      // ✅ Refresh the broken list after fixing (with fresh data)
       setTimeout(() => {
         handleFindBroken();
       }, 1000);
-      
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to fix balances";
       toast.error(errorMessage);
@@ -495,7 +512,7 @@ export function SystemTools() {
 
           {/* Show broken requests */}
           {showBrokenList && brokenRequests.length > 0 && (
-            <div className="border rounded-lg p-4 bg-gray-50">
+            <div key={refreshKey} className="border rounded-lg p-4 bg-gray-50">
               <h4 className="font-medium text-sm mb-2">Broken Requests Found:</h4>
               <div className="max-h-60 overflow-y-auto">
                 <table className="w-full text-sm">
@@ -533,6 +550,16 @@ export function SystemTools() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* Show "No broken found" message */}
+          {showBrokenList && brokenRequests.length === 0 && !isFinding && (
+            <div className="border rounded-lg p-4 bg-green-50 border-green-200">
+              <p className="text-green-800 font-medium flex items-center gap-2">
+                <CheckCircle className="h-5 w-5" />
+                ✅ No broken balances found!
+              </p>
             </div>
           )}
 
