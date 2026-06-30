@@ -14,13 +14,51 @@ import {
 import { ref, get as firebaseGet } from "firebase/database";
 import { auth, rtdb } from "@/lib/firebase/client";
 import { User } from "@/types/user";
-import { Role} from "@/types/roles";
+import { Role } from "@/types/roles";
 
 // Define Firebase Auth error type
 interface FirebaseAuthError {
   code?: string;
   message?: string;
   name?: string;
+}
+
+// Helper to map Firebase error codes to user-friendly messages
+function getAuthErrorMessage(error: FirebaseAuthError): string {
+  const errorCode = error.code;
+  
+  if (!errorCode) {
+    return error.message || "Authentication failed";
+  }
+
+  switch (errorCode) {
+    case "auth/user-not-found":
+      return "Account not found. Please check your email or register.";
+    case "auth/wrong-password":
+      return "Incorrect password. Please try again.";
+    case "auth/invalid-email":
+      return "Invalid email address. Please check and try again.";
+    case "auth/invalid-credential":
+      return "Invalid email or password. Please try again.";
+    case "auth/too-many-requests":
+      return "Too many failed attempts. Please try again later.";
+    case "auth/network-request-failed":
+      return "Network error. Please check your internet connection.";
+    case "auth/user-disabled":
+      return "Account has been disabled. Please contact administrator.";
+    case "auth/email-already-in-use":
+      return "This email is already registered. Please sign in instead.";
+    case "auth/weak-password":
+      return "Password is too weak. Please use at least 6 characters.";
+    case "auth/operation-not-allowed":
+      return "Sign-in with email and password is not enabled. Please contact administrator.";
+    case "auth/requires-recent-login":
+      return "Please sign in again to continue with this action.";
+    case "auth/account-exists-with-different-credential":
+      return "An account already exists with the same email but different sign-in credentials.";
+    default:
+      return error.message || "Authentication failed";
+  }
 }
 
 interface AuthState {
@@ -59,37 +97,43 @@ export const useAuthStore = create<AuthState>()(
       hydrationComplete: false,
 
       setUser: (user) => {
-    console.log("🔑 setUser called with:", user);
-    set({ 
-      user, 
-      userRoles: user?.roles || [],
-      isAuthenticated: !!user 
-    });
-  },
+        console.log("🔑 setUser called with:", user);
+        set({ 
+          user, 
+          userRoles: user?.roles || [],
+          isAuthenticated: !!user 
+        });
+      },
       
       setIsLoading: (loading) => set({ isLoading: loading }),
+      
       setError: (error) => set({ error }),
+      
       setHydrationComplete: () => {
-    console.log("💧 setHydrationComplete called, setting hydrationComplete to true");
-    set({ hydrationComplete: true });
-  },
+        console.log("💧 setHydrationComplete called, setting hydrationComplete to true");
+        set({ hydrationComplete: true });
+      },
 
-  initialize: async () => {
-    const state = get();
-    console.log("🏁 initialize called, current state:", { hydrationComplete: state.hydrationComplete, user: !!state.user, isLoading: state.isLoading });
-    
-    if (state.hydrationComplete && state.user) {
-      console.log("🔄 Checking session validity on startup...");
-      const isValid = await state.checkSession();
-      if (!isValid) {
-        console.log("🔄 Session invalid, logging out...");
-        await state.logout();
-      }
-    }
-    
-    set({ isLoading: false });
-    console.log("✅ Auth store initialized, isLoading set to false");
-  },
+      initialize: async () => {
+        const state = get();
+        console.log("🏁 initialize called, current state:", { 
+          hydrationComplete: state.hydrationComplete, 
+          user: !!state.user, 
+          isLoading: state.isLoading 
+        });
+        
+        if (state.hydrationComplete && state.user) {
+          console.log("🔄 Checking session validity on startup...");
+          const isValid = await state.checkSession();
+          if (!isValid) {
+            console.log("🔄 Session invalid, logging out...");
+            await state.logout();
+          }
+        }
+        
+        set({ isLoading: false });
+        console.log("✅ Auth store initialized, isLoading set to false");
+      },
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -97,23 +141,35 @@ export const useAuthStore = create<AuthState>()(
         try {
           console.log("1️⃣ Attempting login with email:", email);
           
+          // Basic validation
           if (!email || !password) {
             throw new Error("Email and password are required");
+          }
+          
+          // Validate email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(email)) {
+            throw new Error("Please enter a valid email address");
+          }
+          
+          // Validate password length
+          if (password.length < 6) {
+            throw new Error("Password must be at least 6 characters");
           }
           
           let userCredential;
           try {
             userCredential = await signInWithEmailAndPassword(auth, email, password);
           } catch (authError) {
-            const error = authError as FirebaseAuthError | null;
+            const error = authError as FirebaseAuthError;
             console.error("Firebase Auth error:", {
               code: error?.code || "unknown",
               message: error?.message || "Authentication failed",
               error: authError
             });
             
-            const errorCode = error?.code;
-            if (errorCode === "auth/user-not-found") {
+            // Check if user exists in RTDB but not in Auth
+            if (error.code === "auth/user-not-found") {
               const userRef = ref(rtdb, `users`);
               const snapshot = await firebaseGet(userRef);
               const users = snapshot.val();
@@ -130,27 +186,11 @@ export const useAuthStore = create<AuthState>()(
               if (foundInDB) {
                 throw new Error("Account exists in database but not in authentication. Please contact admin.");
               }
-              throw new Error("User not found. Please check your email.");
+              throw new Error("Account not found. Please check your email or register.");
             }
-            if (errorCode === "auth/wrong-password") {
-              throw new Error("Incorrect password. Please try again.");
-            }
-            if (errorCode === "auth/invalid-email") {
-              throw new Error("Invalid email address.");
-            }
-            if (errorCode === "auth/invalid-credential") {
-              throw new Error("Invalid credentials. Please check your email and password.");
-            }
-            if (errorCode === "auth/too-many-requests") {
-              throw new Error("Too many failed attempts. Please try again later.");
-            }
-            if (errorCode === "auth/network-request-failed") {
-              throw new Error("Network error. Please check your internet connection.");
-            }
-            if (errorCode === "auth/user-disabled") {
-              throw new Error("Account has been disabled. Please contact admin.");
-            }
-            throw new Error(error?.message || "Authentication failed");
+            
+            // Use the error mapper for all other errors
+            throw new Error(getAuthErrorMessage(error));
           }
           
           console.log("2️⃣ Firebase sign-in successful, UID:", userCredential.user.uid);
@@ -251,14 +291,14 @@ export const useAuthStore = create<AuthState>()(
         } finally {
           localStorage.removeItem("unileave-auth");
 
-            set({
-              user: null,
-              userRoles: [],
-              isAuthenticated: false,
-              isLoading: false,
-              error: null,
-      });
-      }
+          set({
+            user: null,
+            userRoles: [],
+            isAuthenticated: false,
+            isLoading: false,
+            error: null,
+          });
+        }
       },
 
       forgotPassword: async (email: string) => {
@@ -270,8 +310,13 @@ export const useAuthStore = create<AuthState>()(
           return true;
         } catch (error) {
           console.error("Forgot password error:", error);
-          set({ isLoading: false });
-          return true;
+          const err = error as FirebaseAuthError;
+          const errorMessage = getAuthErrorMessage(err);
+          set({ 
+            error: errorMessage,
+            isLoading: false 
+          });
+          return false;
         }
       },
 
@@ -285,9 +330,10 @@ export const useAuthStore = create<AuthState>()(
           return true;
         } catch (error) {
           console.error("Reset password error:", error);
-          const err = error as { message?: string };
+          const err = error as FirebaseAuthError;
+          const errorMessage = err.message || "Invalid or expired reset link";
           set({ 
-            error: err.message || "Invalid or expired reset link",
+            error: errorMessage,
             isLoading: false 
           });
           return false;
@@ -311,9 +357,10 @@ export const useAuthStore = create<AuthState>()(
           return true;
         } catch (error) {
           console.error("Change password error:", error);
-          const err = error as { message?: string };
+          const err = error as FirebaseAuthError;
+          const errorMessage = getAuthErrorMessage(err) || "Failed to change password";
           set({ 
-            error: err.message || "Failed to change password",
+            error: errorMessage,
             isLoading: false 
           });
           return false;
@@ -474,12 +521,12 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated 
       }),
       onRehydrateStorage: () => (state) => {
-    console.log("🔄 Zustand onRehydrateStorage called, state:", state ? { user: !!state.user } : null);
-    if (state) {
-      state.setHydrationComplete();
-      state.initialize();
-    }
-  },
+        console.log("🔄 Zustand onRehydrateStorage called, state:", state ? { user: !!state.user } : null);
+        if (state) {
+          state.setHydrationComplete();
+          state.initialize();
+        }
+      },
     }
   )
 );

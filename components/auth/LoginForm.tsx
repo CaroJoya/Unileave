@@ -11,17 +11,20 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { SuperAdminRegistration } from "./SuperAdminRegistration";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, AlertCircle } from "lucide-react";
 
 export function LoginForm() {
   const router = useRouter();
-  const { login } = useAuthStore();
+  const { login, error, setError } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasSuperAdmin, setHasSuperAdmin] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(true);
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [touched, setTouched] = useState({ email: false, password: false });
 
   useEffect(() => {
     async function checkSuperAdmin() {
@@ -39,8 +42,64 @@ export function LoginForm() {
     checkSuperAdmin();
   }, []);
 
+  // Clear error when user types
+  useEffect(() => {
+    if (error) {
+      setError(null);
+    }
+  }, [email, password, error, setError]);
+
+  // Validate email
+  const validateEmail = (value: string) => {
+    if (!value) {
+      setEmailError("Email is required");
+      return false;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(value)) {
+      setEmailError("Please enter a valid email address");
+      return false;
+    }
+    setEmailError("");
+    return true;
+  };
+
+  // Validate password
+  const validatePassword = (value: string) => {
+    if (!value) {
+      setPasswordError("Password is required");
+      return false;
+    }
+    if (value.length < 6) {
+      setPasswordError("Password must be at least 6 characters");
+      return false;
+    }
+    setPasswordError("");
+    return true;
+  };
+
+  const handleEmailBlur = () => {
+    setTouched(prev => ({ ...prev, email: true }));
+    if (email) validateEmail(email);
+  };
+
+  const handlePasswordBlur = () => {
+    setTouched(prev => ({ ...prev, password: true }));
+    if (password) validatePassword(password);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate both fields
+    const isEmailValid = validateEmail(email);
+    const isPasswordValid = validatePassword(password);
+    
+    if (!isEmailValid || !isPasswordValid) {
+      setTouched({ email: true, password: true });
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -84,6 +143,31 @@ export function LoginForm() {
         } else {
           router.push("/dashboard");
         }
+      } else {
+        // Login failed - error is already set in store
+        const stateError = useAuthStore.getState().error;
+        if (stateError) {
+          // Parse the error message for better UX
+          if (stateError.includes("user-not-found") || stateError.includes("User not found") || stateError.includes("Account exists in database but not in authentication")) {
+            toast.error("Account not found. Please check your email or contact your administrator.");
+          } else if (stateError.includes("wrong-password") || stateError.includes("Incorrect password")) {
+            toast.error("Incorrect password. Please try again.");
+          } else if (stateError.includes("invalid-email")) {
+            toast.error("Invalid email address. Please check and try again.");
+          } else if (stateError.includes("too-many-requests")) {
+            toast.error("Too many failed attempts. Please try again later.");
+          } else if (stateError.includes("network-request-failed") || stateError.includes("Network error")) {
+            toast.error("Network error. Please check your internet connection.");
+          } else if (stateError.includes("user-disabled")) {
+            toast.error("Account has been disabled. Please contact administrator.");
+          } else if (stateError.includes("invalid-credential")) {
+            toast.error("Invalid email or password. Please try again.");
+          } else {
+            toast.error(stateError);
+          }
+        } else {
+          toast.error("Invalid email or password. Please try again.");
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Login failed";
@@ -123,10 +207,19 @@ export function LoginForm() {
               placeholder="name@college.edu"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={handleEmailBlur}
               required
               autoComplete="email"
+              className={emailError && touched.email ? "border-red-500 focus-visible:ring-red-500" : ""}
             />
+            {emailError && touched.email && (
+              <div className="flex items-center gap-1 text-sm text-red-500">
+                <AlertCircle className="h-4 w-4" />
+                <span>{emailError}</span>
+              </div>
+            )}
           </div>
+          
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
@@ -135,9 +228,10 @@ export function LoginForm() {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onBlur={handlePasswordBlur}
                 required
                 autoComplete="current-password"
-                className="pr-10"
+                className={passwordError && touched.password ? "border-red-500 focus-visible:ring-red-500 pr-10" : "pr-10"}
               />
               <Button
                 type="button"
@@ -154,7 +248,14 @@ export function LoginForm() {
                 )}
               </Button>
             </div>
+            {passwordError && touched.password && (
+              <div className="flex items-center gap-1 text-sm text-red-500">
+                <AlertCircle className="h-4 w-4" />
+                <span>{passwordError}</span>
+              </div>
+            )}
           </div>
+          
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Signing in..." : "Sign In"}
           </Button>

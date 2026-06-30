@@ -1,3 +1,4 @@
+// components/super-admin/CreateUserModal.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { Eye, EyeOff } from "lucide-react";
 
 interface CreateUserModalProps {
   open: boolean;
@@ -57,6 +59,8 @@ export function CreateUserModal({
 }: CreateUserModalProps) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -68,6 +72,8 @@ export function CreateUserModal({
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       setFormData(INITIAL_FORM_STATE);
+      setShowPassword(false);
+      setShowConfirmPassword(false);
     }
     onOpenChange(newOpen);
   };
@@ -128,6 +134,8 @@ export function CreateUserModal({
 
       toast.success("User created successfully!");
       setFormData(INITIAL_FORM_STATE);
+      setShowPassword(false);
+      setShowConfirmPassword(false);
       onSuccess();
       handleOpenChange(false);
     } catch (error) {
@@ -182,7 +190,6 @@ export function CreateUserModal({
             <Select
               value={formData.departmentId || "none"}
               onValueChange={(value) => {
-                // ✅ Only set if not "none"
                 if (value !== "none") {
                   setFormData({ ...formData, departmentId: value });
                 }
@@ -199,7 +206,6 @@ export function CreateUserModal({
                     </SelectItem>
                   ))
                 ) : (
-                  // ✅ FIX: Use non-empty string value
                   <SelectItem value="none" disabled>
                     ⚠️ No departments found. Please create one first.
                   </SelectItem>
@@ -229,27 +235,76 @@ export function CreateUserModal({
               ))}
             </div>
           </div>
+          
+          {/* Password Field with Toggle */}
           <div className="space-y-2">
             <Label htmlFor="password">Password *</Label>
-            <Input
-              id="password"
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              required
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
+                className="pr-10"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground hover:text-primary"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Password must be at least 6 characters
+            </p>
           </div>
+
+          {/* Confirm Password Field with Toggle */}
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Confirm Password *</Label>
-            <Input
-              id="confirmPassword"
-              type="password"
-              value={formData.confirmPassword}
-              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-              required
-            />
+            <div className="relative">
+              <Input
+                id="confirmPassword"
+                type={showConfirmPassword ? "text" : "password"}
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                required
+                className="pr-10"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground hover:text-primary"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+              >
+                {showConfirmPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
+              <p className="text-xs text-red-500">Passwords do not match</p>
+            )}
           </div>
-          <Button type="submit" className="w-full" disabled={loading || !hasDepartments}>
+
+          <Button 
+            type="submit" 
+            className="w-full" 
+            disabled={loading || !hasDepartments}
+          >
             {loading ? "Creating..." : "Create User"}
           </Button>
         </form>
