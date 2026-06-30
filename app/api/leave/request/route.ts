@@ -197,7 +197,6 @@ async function getOrCreateBalance(
     return existingBalance;
   }
 
-  // Create new balance if it doesn't exist
   return await initializeBalance(userId, userRole, academicYear);
 }
 
@@ -253,7 +252,6 @@ export async function POST(request: Request) {
       attachmentUrl,
     } = body;
 
-    // ✅ DETAILED VALIDATION WITH FIELD NAMES
     if (!leaveType) {
       console.error("❌ Missing leaveType");
       return NextResponse.json(
@@ -324,7 +322,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check for overlapping requests
     const existingRequestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const existingRequests = existingRequestsSnapshot.val() as Record<string, ExistingLeaveRequest> | null || {};
 
@@ -353,7 +350,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ FIX: Get or create balance - this is the key fix
     const academicYear = getCurrentAcademicYear();
     let balanceDoc: LeaveBalancesDoc;
     
@@ -369,7 +365,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check balance if leave type deducts from balance
     if (leaveTypeConfig.deductsBalance) {
       const currentBalance = balanceDoc.balances[leaveType]?.available || 0;
       if (currentBalance < totalDays) {
@@ -383,7 +378,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Determine approver
     const userRoles = userData.roles as Role[];
     const route = determineApprover(userRoles, leaveType);
     const approverRole = route.firstApproverRole;
@@ -404,7 +398,6 @@ export async function POST(request: Request) {
     const status = getStatusForApprover(approverRole) as LeaveStatus;
     const requestId = `leave_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
-    // Update balance
     if (leaveTypeConfig.deductsBalance) {
       const currentBalance = balanceDoc.balances[leaveType] || { pending: 0, available: 0 };
       const updateData = {
@@ -424,7 +417,6 @@ export async function POST(request: Request) {
       console.log(`✅ Balance updated for user ${userId}, leave type ${leaveType}`);
     }
 
-    // Create leave request
     const leaveRequest: LeaveRequest = {
       id: requestId,
       applicantId: userId,
@@ -456,7 +448,6 @@ export async function POST(request: Request) {
     await rtdb.ref(`leaveRequests/${requestId}`).set(leaveRequest);
     console.log(`✅ Leave request created: ${requestId}`);
 
-    // Create approval log
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -471,7 +462,6 @@ export async function POST(request: Request) {
       actionAt: new Date().toISOString(),
     });
 
-    // Create notification for approver
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
@@ -489,12 +479,10 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // ✅ SEND EMAIL TO APPROVER
     const approverSnapshot = await rtdb.ref(`users/${approverUserId}`).once("value");
     const approverData = approverSnapshot.val() as { email: string; name: string } | null;
 
     if (approverData?.email) {
-      //const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard`;
       const emailHtml = getLeaveSubmittedEmail(
         userData.name,
         leaveType,

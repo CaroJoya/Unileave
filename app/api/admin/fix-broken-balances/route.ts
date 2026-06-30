@@ -57,7 +57,6 @@ export async function POST() {
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     
-    // ✅ Only Super Admin can run this
     const adminSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const adminData = adminSnapshot.val() as UserData | null;
     
@@ -65,7 +64,6 @@ export async function POST() {
       return NextResponse.json({ error: "Not authorized - Super Admin only" }, { status: 403 });
     }
 
-    // ✅ Find all cancelled requests where balance was NOT restored
     const requestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = requestsSnapshot.val() as Record<string, LeaveRequest> | null || {};
     
@@ -79,9 +77,7 @@ export async function POST() {
     }[] = [];
     
     for (const [requestId, request] of Object.entries(allRequests)) {
-      // Check if cancelled and balance not restored
       if (request.status === "Cancelled" && request.balanceRestored !== true) {
-        // ✅ FIX: Don't use spread with id - manually construct the object
         brokenRequests.push({
           id: requestId,
           applicantId: request.applicantId,
@@ -92,7 +88,6 @@ export async function POST() {
           balanceRestored: request.balanceRestored
         });
         
-        // ✅ Attempt to fix
         try {
           const academicYear = getCurrentAcademicYear();
           const balanceKey = `${request.applicantId}_${academicYear}`;
@@ -111,7 +106,6 @@ export async function POST() {
               updatedAt: new Date().toISOString(),
             });
             
-            // ✅ Mark as fixed
             await rtdb.ref(`leaveRequests/${requestId}`).update({
               balanceRestored: true,
               fixedAt: new Date().toISOString(),
@@ -132,7 +126,6 @@ export async function POST() {
       }
     }
 
-    // ✅ Log the fix
     const logId = `fix_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     await rtdb.ref(`auditLogs/${logId}`).set({
       id: logId,

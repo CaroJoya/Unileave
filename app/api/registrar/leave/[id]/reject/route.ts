@@ -86,7 +86,7 @@ export async function POST(
       return NextResponse.json({ error: "Request is not pending registrar approval" }, { status: 400 });
     }
 
-    // ✅ FIX: Always restore balance
+    // ✅ ALWAYS restore balance
     const academicYear = getCurrentAcademicYear();
     const balanceKey = `${leaveRequest.applicantId}_${academicYear}`;
     const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
@@ -137,7 +137,6 @@ export async function POST(
       createdAt: new Date().toISOString(),
     });
 
-    // ✅ SEND EMAIL TO APPLICANT
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as User | null;
 

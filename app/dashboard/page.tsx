@@ -45,7 +45,7 @@ interface DashboardData {
   pendingRequests: number;
   approvedRequests: number;
   rejectedRequests: number;
-  revisionRequests: number; // ✅ NEW
+  revisionRequests: number;
   totalAvailable: number;
   totalAllocated: number;
   totalUsed: number;
@@ -68,7 +68,7 @@ function DashboardContent() {
     pendingRequests: 0,
     approvedRequests: 0,
     rejectedRequests: 0,
-    revisionRequests: 0, // ✅ NEW
+    revisionRequests: 0,
     totalAvailable: 0,
     totalAllocated: 0,
     totalUsed: 0,
@@ -124,6 +124,65 @@ function DashboardContent() {
       }
     }
   }, [user, userRoles, authLoading, router, currentRole, hydrationComplete]);
+
+  // ✅ NEW: Refresh only balance data (faster than full refresh)
+  const refreshBalance = useCallback(async () => {
+    try {
+      const balanceRes = await fetch("/api/leave/balances", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        }
+      });
+      if (balanceRes.ok) {
+        const balanceData = await balanceRes.json();
+        const balances = balanceData.balances || {};
+        
+        const totalAvailable = Object.values(balances).reduce(
+          (sum: number, b: unknown) => {
+            const balance = b as LeaveBalance;
+            return sum + (balance?.available || 0);
+          },
+          0
+        );
+        
+        const totalAllocated = Object.values(balances).reduce(
+          (sum: number, b: unknown) => {
+            const balance = b as LeaveBalance;
+            return sum + (balance?.allocated || 0);
+          },
+          0
+        );
+        
+        const totalUsed = Object.values(balances).reduce(
+          (sum: number, b: unknown) => {
+            const balance = b as LeaveBalance;
+            return sum + (balance?.used || 0);
+          },
+          0
+        );
+        
+        const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
+        
+        setData(prev => ({
+          ...prev,
+          balances: balances,
+          totalAvailable,
+          totalAllocated,
+          totalUsed,
+          utilization,
+        }));
+        
+        console.log("🔄 Balance refreshed:", { totalAvailable, totalAllocated, totalUsed });
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error refreshing balance:", error);
+      return false;
+    }
+  }, []);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
@@ -242,7 +301,7 @@ function DashboardContent() {
         pendingRequests,
         approvedRequests,
         rejectedRequests,
-        revisionRequests, // ✅ NEW
+        revisionRequests,
         totalAvailable,
         totalAllocated,
         totalUsed,
@@ -277,6 +336,8 @@ function DashboardContent() {
     // Set up auto-refresh
     const interval = setInterval(() => {
       if (isMounted && user) {
+        // ✅ Also refresh balance separately on each interval
+        refreshBalance();
         fetchDashboardData();
       }
     }, 30000); // 30 seconds
@@ -285,7 +346,7 @@ function DashboardContent() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [user, fetchDashboardData, hydrationComplete]);
+  }, [user, fetchDashboardData, hydrationComplete, refreshBalance]);
 
   if (!hydrationComplete || authLoading || loading) {
     return (
@@ -355,7 +416,7 @@ function DashboardContent() {
       />
 
       {/* Refresh Button */}
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end mb-4 gap-2">
         <Button 
           variant="outline" 
           size="sm" 
@@ -363,7 +424,17 @@ function DashboardContent() {
           disabled={loading}
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Refreshing...' : 'Refresh Data'}
+          {loading ? 'Refreshing...' : 'Refresh All'}
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => refreshBalance()}
+          disabled={loading}
+          className="text-green-600 border-green-300 hover:bg-green-50"
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Refresh Balance
         </Button>
       </div>
 

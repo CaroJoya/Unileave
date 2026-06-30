@@ -271,31 +271,49 @@ export default function StatusPage() {
   }, [requests, activeTab, leaveTypeFilter, dateRange]);
 
   // ============ CANCEL HANDLER ============
-  const handleCancelRequest = async () => {
-    if (!cancellingRequest) return;
+// app/status/page.tsx - Updated handleCancelRequest function
+// Find the existing handleCancelRequest function and replace it with this:
+
+const handleCancelRequest = async () => {
+  if (!cancellingRequest) return;
+  
+  setEditLoading(true);
+  try {
+    const response = await fetch(`/api/leave/request/${cancellingRequest.id}/cancel`, {
+      method: "PUT",
+    });
     
-    setEditLoading(true);
-    try {
-      const response = await fetch(`/api/leave/request/${cancellingRequest.id}/cancel`, {
-        method: "PUT",
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.error || "Failed to cancel request");
-      }
-      
-      toast.success("Leave request cancelled successfully");
-      setCancelDialogOpen(false);
-      setCancellingRequest(null);
-      await fetchRequests();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to cancel";
-      toast.error(errorMessage);
-    } finally {
-      setEditLoading(false);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+      throw new Error(errorData.error || "Failed to cancel request");
     }
-  };
+    
+    const result = await response.json();
+    
+    // Show detailed success message with balance info
+    if (result.balanceRestored) {
+      toast.success(`✅ ${result.message}`);
+    } else {
+      toast.warning(`⚠️ ${result.message}`);
+    }
+    
+    setCancelDialogOpen(false);
+    setCancellingRequest(null);
+    
+    // Refresh both requests AND balances
+    await fetchRequests();
+    await fetchLeaveTypesAndBalances();
+    
+    // Force a UI update
+    toast.success("📊 Dashboard balance updated");
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to cancel";
+    toast.error(errorMessage);
+  } finally {
+    setEditLoading(false);
+  }
+};
 
 // ============ EDIT HANDLER - FIXED ============
 const handleEditRequest = async () => {

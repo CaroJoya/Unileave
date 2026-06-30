@@ -1,4 +1,4 @@
-// app/api/leave/request/[id]/cancel/route.ts - COMPLETE FIXED FILE (with enhanced logging)
+// app/api/leave/request/[id]/cancel/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -26,12 +26,11 @@ const CANCELLABLE_STATUSES: LeaveStatus[] = [
   "Pending_Revision",
 ];
 
-// ✅ FIXED: Proper return type with enhanced logging
 async function restoreLeaveBalance(
   userId: string,
   leaveType: string,
   totalDays: number
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; balanceBefore?: LeaveBalance; balanceAfter?: LeaveBalance }> {
   const rtdb = getRTDB();
   if (!rtdb) {
     return { success: false, error: "Database not initialized" };
@@ -48,7 +47,6 @@ async function restoreLeaveBalance(
     console.log(`📊 Balance key: ${balanceKey}`);
     console.log(`📊 Balance exists: ${!!balanceDoc}`);
 
-    // ✅ If balance doesn't exist, create it with default values
     if (!balanceDoc) {
       console.log(`⚠️ Balance not found for user ${userId}, creating new balance...`);
       
@@ -78,7 +76,6 @@ async function restoreLeaveBalance(
         };
       }
       
-      // Ensure the leave type exists
       if (!newBalances[leaveType]) {
         newBalances[leaveType] = {
           allocated: 0,
@@ -88,8 +85,8 @@ async function restoreLeaveBalance(
         };
       }
       
-      // Add the restored days
       newBalances[leaveType].available += totalDays;
+      newBalances[leaveType].pending = Math.max(0, (newBalances[leaveType].pending || 0) - totalDays);
       
       balanceDoc = {
         userId,
@@ -100,9 +97,13 @@ async function restoreLeaveBalance(
       
       await balanceRef.set(balanceDoc);
       console.log(`✅ New balance created for user ${userId}`);
+      return { 
+        success: true, 
+        balanceBefore: undefined, 
+        balanceAfter: newBalances[leaveType] 
+      };
     }
 
-    // ✅ Now balanceDoc is definitely not null
     if (!balanceDoc.balances) {
       balanceDoc.balances = {};
     }
@@ -118,6 +119,8 @@ async function restoreLeaveBalance(
     }
 
     const currentBalance = balanceDoc.balances[leaveType];
+    const balanceBefore = { ...currentBalance };
+    
     const newPending = Math.max(0, (currentBalance.pending || 0) - totalDays);
     const newAvailable = (currentBalance.available || 0) + totalDays;
 
@@ -130,8 +133,10 @@ async function restoreLeaveBalance(
       updatedAt: new Date().toISOString(),
     });
 
+    const balanceAfter = { ...currentBalance, pending: newPending, available: newAvailable };
+
     console.log(`✅ Balance restored for user ${userId}, leave type ${leaveType}`);
-    return { success: true };
+    return { success: true, balanceBefore, balanceAfter };
   } catch (error) {
     console.error("❌ Error restoring balance:", error);
     return { 
@@ -168,7 +173,6 @@ export async function PUT(
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const userId = decodedToken.uid;
 
-    // Get the leave request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const leaveRequest = requestSnapshot.val() as LeaveRequest | null;
 
@@ -176,7 +180,6 @@ export async function PUT(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // Authorization check
     if (leaveRequest.applicantId !== userId) {
       return NextResponse.json(
         { error: "Not authorized to cancel this request" },
@@ -184,7 +187,6 @@ export async function PUT(
       );
     }
 
-    // Status check
     if (!CANCELLABLE_STATUSES.includes(leaveRequest.status)) {
       return NextResponse.json(
         { error: "This request cannot be cancelled at this stage" },
@@ -192,35 +194,26 @@ export async function PUT(
       );
     }
 
-    // ✅ ALWAYS restore balance - this will create balance if missing
-    let balanceRestored = false;
-    let balanceError: string | null = null;
+    console.log(`🔄 Cancelling request ${id}, restoring balance...`);
+    
+    const result = await restoreLeaveBalance(
+      userId,
+      leaveRequest.leaveType,
+      leaveRequest.totalDays
+    );
+    
+    const balanceRestored = result.success;
+    const balanceError = result.error || null;
 
-    if (!leaveRequest.balanceRestored) {
-      const result = await restoreLeaveBalance(
-        userId,
-        leaveRequest.leaveType,
-        leaveRequest.totalDays
-      );
-      
-      balanceRestored = result.success;
-      balanceError = result.error || null;
-
-      if (result.success) {
-        console.log(`✅ Balance restored for cancelled request ${id}`);
-      } else {
-        console.warn(`⚠️ Could not restore balance for cancelled request ${id}: ${result.error}`);
-        // Continue with cancellation even if balance restore fails
-      }
+    if (result.success) {
+      console.log(`✅ Balance restored for cancelled request ${id}`);
     } else {
-      balanceRestored = true;
-      console.log(`✅ Balance already marked as restored for request ${id}`);
+      console.warn(`⚠️ Could not restore balance for cancelled request ${id}: ${result.error}`);
     }
 
-    // Update the leave request status
     const updateData: Record<string, unknown> = {
       status: "Cancelled",
-      balanceRestored: balanceRestored,
+      balanceRestored: true,
       cancelledAt: new Date().toISOString(),
       cancelledBy: userId,
       updatedAt: new Date().toISOString(),
@@ -230,9 +223,13 @@ export async function PUT(
       updateData.balanceRestoreError = balanceError;
     }
 
+    if (result.balanceBefore && result.balanceAfter) {
+      updateData.balanceBeforeCancel = result.balanceBefore;
+      updateData.balanceAfterCancel = result.balanceAfter;
+    }
+
     await rtdb.ref(`leaveRequests/${id}`).update(updateData);
 
-    // Log the cancellation
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -241,39 +238,42 @@ export async function PUT(
       actionByName: leaveRequest.applicantName,
       actionRole: leaveRequest.applicantRoles?.[0] || "staff",
       action: "CANCEL",
-      remark: balanceRestored ? null : `Balance restore failed: ${balanceError}`,
+      remark: balanceRestored ? `Balance restored: ${leaveRequest.totalDays} days returned to ${leaveRequest.leaveType}` : `Balance restore failed: ${balanceError}`,
       oldStatus: leaveRequest.status,
       newStatus: "Cancelled",
       actionAt: new Date().toISOString(),
     });
 
-    // Notify the approver if there is one
     if (leaveRequest.currentApproverId) {
       const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       await rtdb.ref(`notifications/${notificationId}`).set({
         id: notificationId,
         userId: leaveRequest.currentApproverId,
         title: "Leave Request Cancelled",
-        message: `${leaveRequest.applicantName} has cancelled their ${leaveRequest.leaveType} leave request.`,
+        message: `${leaveRequest.applicantName} has cancelled their ${leaveRequest.leaveType} leave request. Balance has been ${balanceRestored ? 'restored' : 'NOT restored'}.`,
         type: "leave_cancelled",
         isRead: false,
         metadata: JSON.stringify({
           leaveRequestId: id,
           leaveType: leaveRequest.leaveType,
           balanceRestored: balanceRestored,
+          totalDays: leaveRequest.totalDays,
         }),
         createdAt: new Date().toISOString(),
       });
     }
 
-    // Return response
     const responseMessage = balanceRestored 
-      ? "Leave request cancelled successfully" 
+      ? `Leave request cancelled. ${leaveRequest.totalDays} days restored to ${leaveRequest.leaveType} balance.` 
       : `Leave request cancelled but balance could not be restored: ${balanceError || 'Unknown error'}`;
 
     return NextResponse.json({
       success: true,
       balanceRestored: balanceRestored,
+      totalDaysRestored: balanceRestored ? leaveRequest.totalDays : 0,
+      leaveType: leaveRequest.leaveType,
+      balanceBefore: result.balanceBefore,
+      balanceAfter: result.balanceAfter,
       message: responseMessage,
       ...(balanceError && { balanceError }),
     });

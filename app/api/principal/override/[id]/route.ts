@@ -129,7 +129,7 @@ export async function POST(
     const applicantData = applicantSnapshot.val() as { collegeId: string } | null;
     const collegeId = applicantData?.collegeId || principalData.collegeId || "";
 
-    // ✅ FIX: Always restore balance - removed dependency on leaveTypeConfig
+    // ✅ ALWAYS restore balance
     const academicYear = getCurrentAcademicYear();
     const balanceKey = `${leaveRequest.applicantId}_${academicYear}`;
     const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);

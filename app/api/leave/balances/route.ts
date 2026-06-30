@@ -5,8 +5,6 @@ import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import type { LeaveBalancesDoc, LeaveBalance } from "@/types/leave";
 
-// ============ CONSTANTS ============
-
 const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
   faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
   lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
@@ -16,8 +14,6 @@ const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
   principal: { CL: 30, EL: 20, ML: 15, CO: 12 },
   head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
 };
-
-// ============ HELPER FUNCTIONS ============
 
 async function getRoleQuotas(role: string, academicYear: string): Promise<Record<string, number>> {
   const rtdb = getRTDB();
@@ -77,8 +73,6 @@ async function initializeBalance(
   return balanceDoc;
 }
 
-// ============ GET: Fetch user's leave balance ============
-
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -105,7 +99,6 @@ export async function GET() {
 
     console.log(`📊 GET /api/leave/balances - User: ${userId}, Year: ${academicYear}`);
 
-    // Get user data first
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val();
 
@@ -114,12 +107,10 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Get balance
     const balanceKey = `${userId}_${academicYear}`;
     const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
     let balanceDoc = balanceSnapshot.val() as LeaveBalancesDoc | null;
 
-    // Initialize if missing
     if (!balanceDoc) {
       console.log(`⚠️ No balance found for user ${userId}, initializing...`);
       const userRole = userData.roles?.[0] || "faculty";
@@ -129,14 +120,12 @@ export async function GET() {
 
     console.log(`📊 Balance data for ${userId}:`, JSON.stringify(balanceDoc.balances, null, 2));
 
-    // ✅ FORCE NO CACHE - Maximum cache prevention
     const response = NextResponse.json({
       success: true,
       balances: balanceDoc.balances,
       academicYear: balanceDoc.academicYear,
     });
 
-    // Remove all caching
     response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');
@@ -151,8 +140,6 @@ export async function GET() {
     );
   }
 }
-
-// ============ PUT: Update user's leave balance ============
 
 export async function PUT(request: Request) {
   try {
@@ -231,7 +218,6 @@ export async function PUT(request: Request) {
       };
       console.log(`📊 Deduct: pending ${currentBalance.pending} → ${updatedBalance.pending}, available ${currentBalance.available} → ${updatedBalance.available}`);
     } else {
-      // restore
       updatedBalance = {
         ...currentBalance,
         pending: Math.max(0, (currentBalance.pending || 0) - daysUsed),
@@ -247,7 +233,6 @@ export async function PUT(request: Request) {
 
     await balanceRef.update(updateData);
 
-    // Fetch updated balance to return
     const updatedSnapshot = await balanceRef.once("value");
     const updatedDoc = updatedSnapshot.val() as LeaveBalancesDoc;
 
@@ -263,8 +248,6 @@ export async function PUT(request: Request) {
     );
   }
 }
-
-// ============ POST: Admin bulk fetch balances ============
 
 export async function POST(request: Request) {
   try {
@@ -315,7 +298,6 @@ export async function POST(request: Request) {
     
     console.log(`📊 POST /api/leave/balances - Admin fetching ${userIds.length} users for year ${year}`);
 
-    // Fetch all balances in parallel
     const balancePromises = userIds.map((uid: string) =>
       rtdb.ref(`leaveBalances/${uid}_${year}`).once("value")
     );

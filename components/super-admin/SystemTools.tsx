@@ -15,7 +15,6 @@ import {
   Wrench 
 } from "lucide-react";
 
-// Types for the broken balance tool
 interface BrokenRequest {
   id: string;
   applicantId: string;
@@ -56,14 +55,11 @@ interface BalanceFixResult {
   message: string;
 }
 
-// ============ SYSTEM TOOLS COMPONENT ============
 export function SystemTools() {
-  // State for Seed Leave Types
   const [isSeeding, setIsSeeding] = useState(false);
   const [hasSeeded, setHasSeeded] = useState(false);
   const [seedResult, setSeedResult] = useState<{ success: boolean; message: string; details?: string[] } | null>(null);
 
-  // State for Validate Assignments
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{
     errors: string[];
@@ -71,16 +67,13 @@ export function SystemTools() {
     details: { invalidHODs: number; invalidRegistrars: number; invalidPrincipals: number };
   } | null>(null);
 
-  // State for Fix Broken Balances
   const [isFinding, setIsFinding] = useState(false);
   const [isFixing, setIsFixing] = useState(false);
   const [brokenRequests, setBrokenRequests] = useState<BrokenRequest[]>([]);
   const [fixResult, setFixResult] = useState<BalanceFixResult | null>(null);
   const [showBrokenList, setShowBrokenList] = useState(false);
-  // ✅ ADDED: Force re-render key for cache busting
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // ============ SEED LEAVE TYPES ============
   const handleSeedLeaveTypes = async () => {
     setIsSeeding(true);
     setSeedResult(null);
@@ -126,7 +119,6 @@ export function SystemTools() {
     }
   };
 
-  // ============ VALIDATE ASSIGNMENTS ============
   const handleValidateAssignments = async () => {
     setIsValidating(true);
     setValidationResult(null);
@@ -163,16 +155,14 @@ export function SystemTools() {
     }
   };
 
-  // ============ FIX BROKEN BALANCES - FIND ============
   const handleFindBroken = async () => {
     setIsFinding(true);
     setBrokenRequests([]);
     setFixResult(null);
-    setShowBrokenList(false); // ✅ Reset the list first
-    setRefreshKey(prev => prev + 1); // ✅ Force re-render
+    setShowBrokenList(false);
+    setRefreshKey(prev => prev + 1);
 
     try {
-      // ✅ ADDED: Force no cache with headers
       const response = await fetch("/api/super-admin/fix-broken-balances", {
         method: "POST",
         headers: { 
@@ -190,7 +180,7 @@ export function SystemTools() {
       }
 
       setBrokenRequests(data.brokenRequests || []);
-      setShowBrokenList(true); // ✅ Only show after data is loaded
+      setShowBrokenList(true);
 
       if (data.count === 0) {
         toast.success("✅ No broken balances found!");
@@ -207,13 +197,11 @@ export function SystemTools() {
     }
   };
 
-  // ============ FIX BROKEN BALANCES - FIX ============
   const handleFixBroken = async () => {
     setIsFixing(true);
     setFixResult(null);
 
     try {
-      // ✅ ADDED: Force no cache with headers
       const response = await fetch("/api/super-admin/fix-broken-balances", {
         method: "POST",
         headers: { 
@@ -240,7 +228,6 @@ export function SystemTools() {
         toast.warning(`Fixed ${data.fixed}, failed ${data.failed}`);
       }
 
-      // ✅ Refresh the broken list after fixing (with fresh data)
       setTimeout(() => {
         handleFindBroken();
       }, 500);
@@ -253,7 +240,6 @@ export function SystemTools() {
     }
   };
 
-  // ============ RENDER ============
   return (
     <Card>
       <CardHeader>
@@ -267,7 +253,7 @@ export function SystemTools() {
       </CardHeader>
       <CardContent className="space-y-8">
         
-        {/* ========== 1. SEED LEAVE TYPES ========== */}
+        {/* SEED LEAVE TYPES */}
         <div className="space-y-4">
           <div className="flex items-start justify-between">
             <div>
@@ -298,7 +284,6 @@ export function SystemTools() {
             </Button>
           </div>
 
-          {/* Seed Result */}
           {seedResult && (
             <div
               className={`rounded-lg p-4 ${
@@ -336,7 +321,7 @@ export function SystemTools() {
           )}
         </div>
 
-        {/* ========== 2. VALIDATE ASSIGNMENTS ========== */}
+        {/* VALIDATE ASSIGNMENTS */}
         <div className="space-y-4 border-t pt-6">
           <div className="flex items-start justify-between">
             <div>
@@ -376,7 +361,6 @@ export function SystemTools() {
                   : "bg-yellow-50 border border-yellow-200"
               }`}
             >
-              {/* Summary */}
               <div className="grid grid-cols-3 gap-4 mb-3">
                 <div className="text-center">
                   <p className="text-xs text-muted-foreground">Invalid HODs</p>
@@ -441,7 +425,6 @@ export function SystemTools() {
             </div>
           )}
 
-          {/* Warning */}
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
@@ -456,7 +439,7 @@ export function SystemTools() {
           </div>
         </div>
 
-        {/* ========== 3. FIX BROKEN BALANCES ========== */}
+        {/* FIX BROKEN BALANCES */}
         <div className="space-y-4 border-t pt-6">
           <div className="flex items-start justify-between">
             <div>
@@ -510,7 +493,6 @@ export function SystemTools() {
             </div>
           </div>
 
-          {/* Show broken requests */}
           {showBrokenList && brokenRequests.length > 0 && (
             <div key={refreshKey} className="border rounded-lg p-4 bg-gray-50">
               <h4 className="font-medium text-sm mb-2">Broken Requests Found:</h4>
@@ -553,7 +535,6 @@ export function SystemTools() {
             </div>
           )}
 
-          {/* Show "No broken found" message */}
           {showBrokenList && brokenRequests.length === 0 && !isFinding && (
             <div className="border rounded-lg p-4 bg-green-50 border-green-200">
               <p className="text-green-800 font-medium flex items-center gap-2">
@@ -563,7 +544,6 @@ export function SystemTools() {
             </div>
           )}
 
-          {/* Fix Result */}
           {fixResult && (
             <div className={`border rounded-lg p-4 ${
               fixResult.fixed > 0 ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"
@@ -624,7 +604,6 @@ export function SystemTools() {
             </div>
           )}
 
-          {/* Warning */}
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
@@ -641,7 +620,6 @@ export function SystemTools() {
           </div>
         </div>
 
-        {/* ========== FOOTER ========== */}
         <div className="border-t pt-4">
           <p className="text-xs text-muted-foreground">
             System tools help you maintain data integrity. All operations are logged for audit purposes.
