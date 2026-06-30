@@ -1,4 +1,4 @@
-// components/super-admin/SystemTools.tsx - COMPLETE FILE (FIXED CACHING)
+// components/super-admin/SystemTools.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { useState } from "react";
@@ -243,7 +243,7 @@ export function SystemTools() {
       // ✅ Refresh the broken list after fixing (with fresh data)
       setTimeout(() => {
         handleFindBroken();
-      }, 1000);
+      }, 500);
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to fix balances";
