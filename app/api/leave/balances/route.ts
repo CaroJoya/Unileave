@@ -1,4 +1,4 @@
-// app/api/leave/balances/route.ts - COMPLETE FIXED FILE
+// app/api/leave/balances/route.ts - COMPLETE FIXED FILE (No Cache)
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -120,7 +120,11 @@ export async function GET() {
       academicYear: balanceDoc.academicYear,
     });
 
-    response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
+    // ✅ FIX: Remove caching to always show fresh data
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    
     return response;
   } catch (error) {
     console.error("Error fetching leave balances:", error);
@@ -235,7 +239,6 @@ export async function PUT(request: Request) {
   }
 }
 
-// ✅ FIXED POST handler
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();

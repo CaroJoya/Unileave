@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx - COMPLETE FIXED
+// app/dashboard/page.tsx - COMPLETE FIXED (ESLint Compliant)
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -28,7 +28,8 @@ import {
   ChevronRight,
   CheckCircle,
   XCircle,
-  LayoutDashboard
+  LayoutDashboard,
+  RefreshCw,
 } from "lucide-react";
 import { RoleNavbar } from "@/components/layout/RoleNavbar";
 
@@ -125,15 +126,29 @@ function DashboardContent() {
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const balanceRes = await fetch("/api/leave/balances");
+      // ✅ FIX: Add cache: 'no-store' to prevent cached data
+      const balanceRes = await fetch("/api/leave/balances", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        }
+      });
       let balanceData = { balances: {} };
       if (balanceRes.ok) {
         balanceData = await balanceRes.json();
       }
 
+      // ✅ FIX: Add cache: 'no-store' to prevent cached data
       let requestsData = { requests: [] };
       try {
-        const requestsRes = await fetch("/api/leave/my-requests");
+        const requestsRes = await fetch("/api/leave/my-requests", {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          }
+        });
         if (requestsRes.ok) {
           requestsData = await requestsRes.json();
         }
@@ -141,6 +156,7 @@ function DashboardContent() {
         console.warn("Error fetching requests");
       }
 
+      // ✅ FIX: Add cache: 'no-store' to prevent cached data
       let overworkData = {
         summary: {
           totalApprovedHours: 0,
@@ -150,7 +166,13 @@ function DashboardContent() {
         },
       };
       try {
-        const overworkRes = await fetch("/api/overwork/my-summary");
+        const overworkRes = await fetch("/api/overwork/my-summary", {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          }
+        });
         if (overworkRes.ok) {
           overworkData = await overworkRes.json();
         }
@@ -225,6 +247,7 @@ function DashboardContent() {
     }
   }, []);
 
+  // Auto-refresh every 30 seconds
   useEffect(() => {
     let isMounted = true;
 
@@ -236,8 +259,16 @@ function DashboardContent() {
 
     loadData();
 
+    // Set up auto-refresh
+    const interval = setInterval(() => {
+      if (isMounted && user) {
+        fetchDashboardData();
+      }
+    }, 30000); // 30 seconds
+
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
   }, [user, fetchDashboardData, hydrationComplete]);
 
@@ -307,6 +338,19 @@ function DashboardContent() {
         greeting={`Welcome back, ${user.name}! 👋`}
         subtitle={`${user.departmentName} • ${getRoleLabel()}`}
       />
+
+      {/* Refresh Button */}
+      <div className="flex justify-end mb-4">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => fetchDashboardData()}
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          {loading ? 'Refreshing...' : 'Refresh Data'}
+        </Button>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-4 mb-8 mt-6">
         <Card>
