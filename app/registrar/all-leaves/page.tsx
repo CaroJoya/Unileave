@@ -1,4 +1,4 @@
-// app/registrar/all-leaves/page.tsx - COMPLETE FIXED FILE
+// app/registrar/all-leaves/page.tsx - COMPLETE FIXED FILE WITH OD SUPPORT
 "use client";
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Eye, Check, X, MessageSquare, RefreshCw, Search, FileText, AlertCircle, Download } from "lucide-react";
+import { Eye, Check, X, MessageSquare, RefreshCw, Search, FileText, AlertCircle, Download, Briefcase } from "lucide-react";
 
 interface LeaveRequest {
   id: string;
@@ -55,6 +55,12 @@ interface LeaveRequest {
   createdAt: string;
   revisionCount: number;
   revisionHistory?: Revision[];
+  odDetails?: {
+    eventName: string;
+    organization: string;
+    location: string;
+    purpose: string;
+  };
 }
 
 interface Revision {
@@ -93,7 +99,6 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   Cancelled: { label: "Cancelled", color: "bg-gray-100 text-gray-800" },
 };
 
-// ✅ MAIN COMPONENT WRAPPED WITH SUSPENSE
 export default function RegistrarAllLeavesPage() {
   return (
     <Suspense fallback={
@@ -106,7 +111,6 @@ export default function RegistrarAllLeavesPage() {
   );
 }
 
-// ✅ ACTUAL CONTENT COMPONENT
 function RegistrarAllLeavesContent() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
@@ -120,7 +124,6 @@ function RegistrarAllLeavesContent() {
   const [actionLoading, setActionLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
   
-  // Filters
   const [filters, setFilters] = useState({
     departmentId: "",
     role: "",
@@ -131,7 +134,6 @@ function RegistrarAllLeavesContent() {
     endDate: "",
   });
   
-  // Modals
   const [rejectModal, setRejectModal] = useState<{ open: boolean; requestId: string | null; reason: string }>({
     open: false,
     requestId: null,
@@ -143,7 +145,6 @@ function RegistrarAllLeavesContent() {
     remarks: "",
   });
 
-  // Auth check
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
@@ -153,7 +154,6 @@ function RegistrarAllLeavesContent() {
     }
   }, [user, authLoading, router]);
 
-  // Check URL params for initial tab
   const hasSetInitialTab = React.useRef(false);
   useEffect(() => {
     if (!hasSetInitialTab.current) {
@@ -183,7 +183,6 @@ function RegistrarAllLeavesContent() {
 
       const response = await fetch(`/api/registrar/leaves?${params.toString()}`);
       
-      // ✅ BETTER ERROR HANDLING
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
         throw new Error(errorData.error || `Failed to fetch requests (Status: ${response.status})`);
@@ -191,7 +190,6 @@ function RegistrarAllLeavesContent() {
       
       const data = await response.json();
       
-      // ✅ SAFE DATA ACCESS
       setRequests(data.requests || []);
       setDepartments(data.departments || []);
     } catch (error) {
@@ -205,12 +203,13 @@ function RegistrarAllLeavesContent() {
   }, [activeTab, filters]);
 
   useEffect(() => {
-  if (user?.roles?.includes("registrar")) {
-    (async () => {
-      await fetchRequests();
-    })();
-  }
-}, [user, fetchRequests]);
+    if (user?.roles?.includes("registrar")) {
+      (async () => {
+        await fetchRequests();
+      })();
+    }
+  }, [user, fetchRequests]);
+
   const handleApprove = async (requestId: string) => {
     setActionLoading(true);
     try {
@@ -401,7 +400,6 @@ function RegistrarAllLeavesContent() {
         </TabsList>
 
         <TabsContent value={activeTab}>
-          {/* Filters */}
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="grid gap-4 md:grid-cols-4">
@@ -506,7 +504,6 @@ function RegistrarAllLeavesContent() {
             </CardContent>
           </Card>
 
-          {/* Requests Table */}
           <Card>
             <CardContent className="pt-6">
               {requests.length === 0 ? (
@@ -542,32 +539,38 @@ function RegistrarAllLeavesContent() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {requests.map((request) => (
-                        <TableRow key={request.id}>
-                          <TableCell className="font-medium">{request.applicantName}</TableCell>
-                          <TableCell>{request.departmentName}</TableCell>
-                          <TableCell className="capitalize">{request.applicantRoles?.[0] || "Staff"}</TableCell>
-                          <TableCell>{LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType}</TableCell>
-                          <TableCell>{new Date(request.startDate).toLocaleDateString()}</TableCell>
-                          <TableCell>{new Date(request.endDate).toLocaleDateString()}</TableCell>
-                          <TableCell>{request.totalDays}</TableCell>
-                          <TableCell>{getStatusBadge(request.status, request.revisionCount)}</TableCell>
-                          <TableCell>{new Date(request.createdAt).toLocaleDateString()}</TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedRequest(request);
-                                setShowDetails(true);
-                              }}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              View
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {requests.map((request) => {
+                        const isOD = request.leaveType === "OD";
+                        return (
+                          <TableRow key={request.id}>
+                            <TableCell className="font-medium">{request.applicantName}</TableCell>
+                            <TableCell>{request.departmentName}</TableCell>
+                            <TableCell className="capitalize">{request.applicantRoles?.[0] || "Staff"}</TableCell>
+                            <TableCell>
+                              {isOD ? "On Duty (OD)" : (LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType)}
+                              {isOD && <Badge variant="outline" className="ml-2 text-blue-600 border-blue-300 bg-blue-50 text-xs">No Balance Deduct</Badge>}
+                            </TableCell>
+                            <TableCell>{new Date(request.startDate).toLocaleDateString()}</TableCell>
+                            <TableCell>{new Date(request.endDate).toLocaleDateString()}</TableCell>
+                            <TableCell>{request.totalDays}</TableCell>
+                            <TableCell>{getStatusBadge(request.status, request.revisionCount)}</TableCell>
+                            <TableCell>{new Date(request.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setShowDetails(true);
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -577,7 +580,6 @@ function RegistrarAllLeavesContent() {
         </TabsContent>
       </Tabs>
 
-      {/* Request Details Drawer */}
       <Dialog open={showDetails} onOpenChange={(open) => {
         if (!open) {
           setShowDetails(false);
@@ -610,7 +612,7 @@ function RegistrarAllLeavesContent() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Leave Type</Label>
-                  <p>{LEAVE_TYPE_LABELS[selectedRequest.leaveType] || selectedRequest.leaveType}</p>
+                  <p>{selectedRequest.leaveType === "OD" ? "On Duty (OD)" : (LEAVE_TYPE_LABELS[selectedRequest.leaveType] || selectedRequest.leaveType)}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Date Range</Label>
@@ -633,6 +635,37 @@ function RegistrarAllLeavesContent() {
                   <div className="mt-1">{getStatusBadge(selectedRequest.status, selectedRequest.revisionCount)}</div>
                 </div>
               </div>
+
+              {/* OD Details */}
+              {selectedRequest.leaveType === "OD" && selectedRequest.odDetails && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-medium text-blue-800 flex items-center gap-2 mb-2">
+                    <Briefcase className="h-4 w-4" />
+                    On Duty Details
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Event:</span>
+                      <p className="font-medium">{selectedRequest.odDetails.eventName}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Organization:</span>
+                      <p className="font-medium">{selectedRequest.odDetails.organization}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Location:</span>
+                      <p className="font-medium">{selectedRequest.odDetails.location}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Purpose:</span>
+                      <p className="font-medium">{selectedRequest.odDetails.purpose}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-blue-600">
+                    ℹ️ On Duty leave does not deduct from balance
+                  </div>
+                </div>
+              )}
 
               <div>
                 <Label className="text-muted-foreground flex items-center gap-2">
@@ -672,6 +705,14 @@ function RegistrarAllLeavesContent() {
                   </div>
                 </div>
               )}
+
+              {selectedRequest.leaveType === "OD" && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> On Duty leave does not deduct from the employees leave balance.
+                  </p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter className="gap-2">
@@ -706,7 +747,6 @@ function RegistrarAllLeavesContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Reject Modal */}
       <Dialog open={rejectModal.open} onOpenChange={(open) => !open && setRejectModal({ ...rejectModal, open: false })}>
         <DialogContent>
           <DialogHeader>
@@ -737,7 +777,6 @@ function RegistrarAllLeavesContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Send Remarks Modal */}
       <Dialog open={remarksModal.open} onOpenChange={(open) => !open && setRemarksModal({ ...remarksModal, open: false })}>
         <DialogContent>
           <DialogHeader>

@@ -1,4 +1,4 @@
-// app/status/page.tsx - COMPLETE FIXED FILE
+// app/status/page.tsx - COMPLETE FIXED FILE WITH OD SUPPORT
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Edit, XCircle, ChevronDown, ChevronUp, FileText, AlertCircle, History, CheckCircle, Clock, Ban, RefreshCw } from "lucide-react";
+import { CalendarIcon, Edit, XCircle, ChevronDown, ChevronUp, FileText, AlertCircle, History, CheckCircle, Clock, Ban, RefreshCw, Briefcase } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -38,6 +38,12 @@ interface LeaveRequest {
   updatedAt: string;
   approvalLogs?: ApprovalLog[];
   revisionHistory?: RevisionHistory[];
+  odDetails?: {
+    eventName: string;
+    organization: string;
+    location: string;
+    purpose: string;
+  };
 }
 
 interface ApprovalLog {
@@ -155,7 +161,6 @@ export default function StatusPage() {
   // Fetch leave types and balances
   const fetchLeaveTypesAndBalances = useCallback(async () => {
     try {
-      // Fetch leave types
       const typesResponse = await fetch("/api/leave-types");
       const typesData = await typesResponse.json();
       if (typesResponse.ok) {
@@ -165,7 +170,6 @@ export default function StatusPage() {
         setLeaveTypes(activeTypes);
       }
 
-      // Fetch balances
       const balanceResponse = await fetch("/api/leave/balances");
       const balanceData = await balanceResponse.json();
       if (balanceResponse.ok && balanceData.balances) {
@@ -271,145 +275,135 @@ export default function StatusPage() {
   }, [requests, activeTab, leaveTypeFilter, dateRange]);
 
   // ============ CANCEL HANDLER ============
-// In app/status/page.tsx - Update the handleCancelRequest function
-
-const handleCancelRequest = async () => {
-  if (!cancellingRequest) return;
-  
-  setEditLoading(true);
-  try {
-    const response = await fetch(`/api/leave/request/${cancellingRequest.id}/cancel`, {
-      method: "PUT",
-    });
+  const handleCancelRequest = async () => {
+    if (!cancellingRequest) return;
     
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-      throw new Error(errorData.error || "Failed to cancel request");
-    }
-    
-    const result = await response.json();
-    
-    // ✅ FIXED: Show detailed success message with balance info
-    if (result.balanceRestored) {
-      toast.success(`✅ ${result.message}`);
-    } else {
-      toast.warning(`⚠️ ${result.message}`);
-    }
-    
-    setCancelDialogOpen(false);
-    setCancellingRequest(null);
-    
-    // Refresh both requests AND balances
-    await fetchRequests();
-    await fetchLeaveTypesAndBalances();
-    
-    // ✅ Force a UI update
-    toast.success("📊 Dashboard balance updated");
-    
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to cancel";
-    toast.error(errorMessage);
-  } finally {
-    setEditLoading(false);
-  }
-};
-// ============ EDIT HANDLER - FIXED ============
-const handleEditRequest = async () => {
-  if (!editingRequest) return;
-  
-  setEditLoading(true);
-  try {
-    // Calculate total days
-    let totalDays = editingRequest.totalDays;
-    
-    if (editForm.isHalfDay) {
-      totalDays = 0.5;
-    } else if (editForm.startDate && editForm.endDate) {
-      const start = new Date(editForm.startDate);
-      const end = new Date(editForm.endDate);
-      const diffTime = Math.abs(end.getTime() - start.getTime());
-      totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    }
-    
-    // Get the leave type code from the selected ID
-    const selectedLeaveType = leaveTypes.find(t => t.id === editForm.leaveType);
-    const leaveTypeCode = selectedLeaveType?.leaveCode || editingRequest.leaveType;
-    
-    // ✅ CRITICAL FIX: Ensure dates are always valid strings in YYYY-MM-DD format
-    const getValidDate = (dateStr: string | undefined): string => {
-      if (!dateStr) return new Date().toISOString().split("T")[0];
-      if (dateStr.includes("T")) {
-        return dateStr.split("T")[0];
+    setEditLoading(true);
+    try {
+      const response = await fetch(`/api/leave/request/${cancellingRequest.id}/cancel`, {
+        method: "PUT",
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || "Failed to cancel request");
       }
-      return dateStr;
-    };
-    
-    // ✅ CRITICAL FIX: Handle attachmentUrl - convert undefined to null
-    let attachmentUrl = editForm.attachmentUrl;
-    if (attachmentUrl === undefined) {
-      attachmentUrl = null;
+      
+      const result = await response.json();
+      
+      if (result.balanceRestored) {
+        toast.success(`✅ ${result.message}`);
+      } else {
+        toast.warning(`⚠️ ${result.message}`);
+      }
+      
+      setCancelDialogOpen(false);
+      setCancellingRequest(null);
+      
+      await fetchRequests();
+      await fetchLeaveTypesAndBalances();
+      
+      toast.success("📊 Dashboard balance updated");
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to cancel";
+      toast.error(errorMessage);
+    } finally {
+      setEditLoading(false);
     }
-    if (attachmentUrl === "") {
-      attachmentUrl = null;
+  };
+
+  // ============ EDIT HANDLER ============
+  const handleEditRequest = async () => {
+    if (!editingRequest) return;
+    
+    setEditLoading(true);
+    try {
+      let totalDays = editingRequest.totalDays;
+      
+      if (editForm.isHalfDay) {
+        totalDays = 0.5;
+      } else if (editForm.startDate && editForm.endDate) {
+        const start = new Date(editForm.startDate);
+        const end = new Date(editForm.endDate);
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      }
+      
+      const selectedLeaveType = leaveTypes.find(t => t.id === editForm.leaveType);
+      const leaveTypeCode = selectedLeaveType?.leaveCode || editingRequest.leaveType;
+      
+      const getValidDate = (dateStr: string | undefined): string => {
+        if (!dateStr) return new Date().toISOString().split("T")[0];
+        if (dateStr.includes("T")) {
+          return dateStr.split("T")[0];
+        }
+        return dateStr;
+      };
+      
+      let attachmentUrl = editForm.attachmentUrl;
+      if (attachmentUrl === undefined) {
+        attachmentUrl = null;
+      }
+      if (attachmentUrl === "") {
+        attachmentUrl = null;
+      }
+      if (editingRequest.attachmentUrl && attachmentUrl === null) {
+        attachmentUrl = null;
+      }
+      if (!attachmentUrl && editingRequest.attachmentUrl) {
+        attachmentUrl = editingRequest.attachmentUrl;
+      }
+      
+      const requestBody = {
+        leaveType: leaveTypeCode,
+        startDate: getValidDate(editForm.startDate || editingRequest.startDate),
+        endDate: getValidDate(editForm.endDate || editingRequest.endDate),
+        totalDays,
+        isHalfDay: editForm.isHalfDay,
+        halfDaySession: editForm.isHalfDay ? editForm.halfDaySession : null,
+        reason: editForm.reason || editingRequest.reason,
+        alternateFacultyName: editForm.alternateFacultyName || editingRequest.alternateFacultyName,
+        attachmentUrl: attachmentUrl,
+      };
+      
+      console.log("📝 Submitting edit:", requestBody);
+      
+      const response = await fetch(`/api/leave/request/${editingRequest.id}/edit`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || "Failed to update request");
+      }
+      
+      await response.json();
+      
+      const successMessage = editingRequest.status === "Pending_Revision"
+        ? "Leave request resubmitted successfully!"
+        : "Leave request updated successfully!";
+      
+      toast.success(successMessage);
+      setEditDialogOpen(false);
+      setEditingRequest(null);
+      await fetchRequests();
+      await fetchLeaveTypesAndBalances();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to update";
+      toast.error(errorMessage);
+    } finally {
+      setEditLoading(false);
     }
-    if (editingRequest.attachmentUrl && attachmentUrl === null) {
-      // User removed the attachment
-      attachmentUrl = null;
-    }
-    if (!attachmentUrl && editingRequest.attachmentUrl) {
-      attachmentUrl = editingRequest.attachmentUrl;
-    }
-    
-    const requestBody = {
-      leaveType: leaveTypeCode,
-      startDate: getValidDate(editForm.startDate || editingRequest.startDate),
-      endDate: getValidDate(editForm.endDate || editingRequest.endDate),
-      totalDays,
-      isHalfDay: editForm.isHalfDay,
-      halfDaySession: editForm.isHalfDay ? editForm.halfDaySession : null,
-      reason: editForm.reason || editingRequest.reason,
-      alternateFacultyName: editForm.alternateFacultyName || editingRequest.alternateFacultyName,
-      attachmentUrl: attachmentUrl, // ✅ Now always null or string, never undefined
-    };
-    
-    console.log("📝 Submitting edit:", requestBody);
-    
-    const response = await fetch(`/api/leave/request/${editingRequest.id}/edit`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-      throw new Error(errorData.error || "Failed to update request");
-    }
-    
-    await response.json();
-    
-    const successMessage = editingRequest.status === "Pending_Revision"
-      ? "Leave request resubmitted successfully!"
-      : "Leave request updated successfully!";
-    
-    toast.success(successMessage);
-    setEditDialogOpen(false);
-    setEditingRequest(null);
-    await fetchRequests();
-    await fetchLeaveTypesAndBalances();
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to update";
-    toast.error(errorMessage);
-  } finally {
-    setEditLoading(false);
-  }
-};
+  };
+
   // ============ OPEN EDIT DIALOG ============
   const openEditDialog = (request: LeaveRequest) => {
-    // Get the leave type ID from the leave code
     const leaveTypeObj = leaveTypes.find(t => t.leaveCode === request.leaveType);
     const leaveTypeId = leaveTypeObj?.id || "";
     
-    // ✅ Ensure dates are in YYYY-MM-DD format
     const getDatePart = (dateStr: string): string => {
       if (dateStr.includes("T")) {
         return dateStr.split("T")[0];
@@ -681,178 +675,219 @@ const handleEditRequest = async () => {
             </Card>
           ) : (
             <div className="space-y-4">
-              {filteredRequests.map((request) => (
-                <Card key={request.id} className="overflow-hidden">
-                  <CardContent className="p-6">
-                    <div className="flex flex-wrap justify-between items-start gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <h3 className="font-semibold text-lg">
-                            {LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType}
-                          </h3>
-                          {getStatusBadge(request.status, request.revisionCount)}
-                          {request.isHalfDay && (
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                              Half Day ({request.halfDaySession})
-                            </Badge>
+              {filteredRequests.map((request) => {
+                const isOD = request.leaveType === "OD";
+                return (
+                  <Card key={request.id} className="overflow-hidden">
+                    <CardContent className="p-6">
+                      <div className="flex flex-wrap justify-between items-start gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <h3 className="font-semibold text-lg">
+                              {isOD ? "On Duty (OD)" : (LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType)}
+                            </h3>
+                            {getStatusBadge(request.status, request.revisionCount)}
+                            {request.isHalfDay && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                                Half Day ({request.halfDaySession})
+                              </Badge>
+                            )}
+                            {isOD && (
+                              <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                                No Balance Deduction
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
+                          </p>
+                          <p className="text-sm mt-1">
+                            Total: <span className="font-medium">{request.totalDays}</span> day{request.totalDays !== 1 ? "s" : ""}
+                            {isOD && <span className="text-blue-600 ml-2">(No balance deducted)</span>}
+                          </p>
+                          <p className="text-sm mt-2">
+                            Alternate Faculty: <span className="font-medium">{request.alternateFacultyName}</span>
+                          </p>
+                          
+                          {/* OD Details */}
+                          {isOD && request.odDetails && (
+                            <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                              <h4 className="font-medium text-blue-800 flex items-center gap-2 mb-2">
+                                <Briefcase className="h-4 w-4" />
+                                On Duty Details
+                              </h4>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">Event:</span>
+                                  <p className="font-medium">{request.odDetails.eventName}</p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Organization:</span>
+                                  <p className="font-medium">{request.odDetails.organization}</p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Location:</span>
+                                  <p className="font-medium">{request.odDetails.location}</p>
+                                </div>
+                                <div className="col-span-2">
+                                  <span className="text-muted-foreground">Purpose:</span>
+                                  <p className="font-medium">{request.odDetails.purpose}</p>
+                                </div>
+                              </div>
+                              <div className="mt-2 text-xs text-blue-600">
+                                ℹ️ On Duty leave does not deduct from balance
+                              </div>
+                            </div>
+                          )}
+
+                          {request.status === "Pending_Revision" && request.revisionHistory && request.revisionHistory.length > 0 && (
+                            <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                              <p className="text-sm text-purple-800 font-medium flex items-center gap-2">
+                                <AlertCircle className="h-4 w-4" />
+                                Latest Remarks:
+                              </p>
+                              <p className="text-sm text-purple-700 mt-1">
+                                {request.revisionHistory[request.revisionHistory.length - 1].remarkText}
+                              </p>
+                              <p className="text-xs text-purple-500 mt-1">
+                                From: {request.revisionHistory[request.revisionHistory.length - 1].remarkSentByName}
+                              </p>
+                            </div>
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
-                        </p>
-                        <p className="text-sm mt-1">
-                          Total: <span className="font-medium">{request.totalDays}</span> day{request.totalDays !== 1 ? "s" : ""}
-                        </p>
-                        <p className="text-sm mt-2">
-                          Alternate Faculty: <span className="font-medium">{request.alternateFacultyName}</span>
-                        </p>
-                        {request.status === "Pending_Revision" && request.revisionHistory && request.revisionHistory.length > 0 && (
-                          <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                            <p className="text-sm text-purple-800 font-medium flex items-center gap-2">
-                              <AlertCircle className="h-4 w-4" />
-                              Latest Remarks:
-                            </p>
-                            <p className="text-sm text-purple-700 mt-1">
-                              {request.revisionHistory[request.revisionHistory.length - 1].remarkText}
-                            </p>
-                            <p className="text-xs text-purple-500 mt-1">
-                              From: {request.revisionHistory[request.revisionHistory.length - 1].remarkSentByName}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-2">
-                        {isEditable(request.status) && (
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => openEditDialog(request)}
-                          >
-                            <Edit className="h-4 w-4 mr-1" />
-                            {request.status === "Pending_Revision" ? "Edit & Resubmit" : "Edit"}
-                          </Button>
-                        )}
-                        {isCancellable(request.status) && (
-                          <Button 
-                            size="sm" 
-                            variant="destructive"
-                            onClick={() => {
-                              setCancellingRequest(request);
-                              setCancelDialogOpen(true);
-                            }}
-                          >
-                            <XCircle className="h-4 w-4 mr-1" />
-                            Cancel
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setExpandedRequest(expandedRequest === request.id ? null : request.id)}
-                        >
-                          {expandedRequest === request.id ? (
-                            <ChevronUp className="h-4 w-4" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4" />
+                        
+                        <div className="flex flex-wrap gap-2">
+                          {isEditable(request.status) && (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => openEditDialog(request)}
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              {request.status === "Pending_Revision" ? "Edit & Resubmit" : "Edit"}
+                            </Button>
                           )}
-                          Details
-                        </Button>
+                          {isCancellable(request.status) && (
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={() => {
+                                setCancellingRequest(request);
+                                setCancelDialogOpen(true);
+                              }}
+                            >
+                              <XCircle className="h-4 w-4 mr-1" />
+                              Cancel
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setExpandedRequest(expandedRequest === request.id ? null : request.id)}
+                          >
+                            {expandedRequest === request.id ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                            Details
+                          </Button>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Expanded Details */}
-                    {expandedRequest === request.id && (
-                      <div className="mt-6 pt-4 border-t space-y-6">
-                        {/* Reason */}
-                        {request.reason && (
-                          <div>
-                            <h4 className="font-medium flex items-center gap-2 mb-2">
-                              <FileText className="h-4 w-4" />
-                              Reason
-                            </h4>
-                            <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-                              {request.reason}
-                            </p>
-                          </div>
-                        )}
+                      {/* Expanded Details */}
+                      {expandedRequest === request.id && (
+                        <div className="mt-6 pt-4 border-t space-y-6">
+                          {/* Reason */}
+                          {request.reason && (
+                            <div>
+                              <h4 className="font-medium flex items-center gap-2 mb-2">
+                                <FileText className="h-4 w-4" />
+                                Reason
+                              </h4>
+                              <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
+                                {request.reason}
+                              </p>
+                            </div>
+                          )}
 
-                        {/* Approval Timeline */}
-                        {request.approvalLogs && request.approvalLogs.length > 0 && (
-                          <div>
-                            <h4 className="font-medium flex items-center gap-2 mb-3">
-                              <History className="h-4 w-4" />
-                              Approval Timeline
-                            </h4>
-                            <div className="space-y-3">
-                              {request.approvalLogs.map((log) => (
-                                <div key={log.id} className="flex items-start gap-3 text-sm">
-                                  <div className="w-28 flex-shrink-0 text-muted-foreground">
-                                    {new Date(log.actionAt).toLocaleDateString()}
+                          {/* Approval Timeline */}
+                          {request.approvalLogs && request.approvalLogs.length > 0 && (
+                            <div>
+                              <h4 className="font-medium flex items-center gap-2 mb-3">
+                                <History className="h-4 w-4" />
+                                Approval Timeline
+                              </h4>
+                              <div className="space-y-3">
+                                {request.approvalLogs.map((log) => (
+                                  <div key={log.id} className="flex items-start gap-3 text-sm">
+                                    <div className="w-28 flex-shrink-0 text-muted-foreground">
+                                      {new Date(log.actionAt).toLocaleDateString()}
+                                    </div>
+                                    <div className="flex-1">
+                                      <span className="font-medium">{log.actionByName}</span>
+                                      <span className="text-muted-foreground"> ({log.actionRole}) </span>
+                                      <span>{getActionLabel(log.action)}</span>
+                                      {log.remark && (
+                                        <p className="text-muted-foreground mt-1 text-xs bg-gray-50 p-2 rounded">
+                                          &quot;{log.remark}&quot;
+                                        </p>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="flex-1">
-                                    <span className="font-medium">{log.actionByName}</span>
-                                    <span className="text-muted-foreground"> ({log.actionRole}) </span>
-                                    <span>{getActionLabel(log.action)}</span>
-                                    {log.remark && (
-                                      <p className="text-muted-foreground mt-1 text-xs bg-gray-50 p-2 rounded">
-                                        &quot;{log.remark}&quot;
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Revision History */}
+                          {request.revisionHistory && request.revisionHistory.length > 0 && (
+                            <div>
+                              <h4 className="font-medium flex items-center gap-2 mb-3">
+                                <AlertCircle className="h-4 w-4" />
+                                Revision History
+                              </h4>
+                              <div className="space-y-3">
+                                {request.revisionHistory.map((rev) => (
+                                  <div key={rev.id} className="bg-amber-50 p-3 rounded-lg">
+                                    <p className="text-sm font-medium">Revision #{rev.cycleNumber}</p>
+                                    <p className="text-sm text-amber-800 mt-1">
+                                      <strong>Remarks:</strong> {rev.remarkText}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Sent by: {rev.remarkSentByName}
+                                    </p>
+                                    {rev.resubmittedAt && (
+                                      <p className="text-xs text-green-600 mt-1">
+                                        Resubmitted on: {new Date(rev.resubmittedAt).toLocaleDateString()}
                                       </p>
                                     )}
                                   </div>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {/* Revision History */}
-                        {request.revisionHistory && request.revisionHistory.length > 0 && (
-                          <div>
-                            <h4 className="font-medium flex items-center gap-2 mb-3">
-                              <AlertCircle className="h-4 w-4" />
-                              Revision History
-                            </h4>
-                            <div className="space-y-3">
-                              {request.revisionHistory.map((rev) => (
-                                <div key={rev.id} className="bg-amber-50 p-3 rounded-lg">
-                                  <p className="text-sm font-medium">Revision #{rev.cycleNumber}</p>
-                                  <p className="text-sm text-amber-800 mt-1">
-                                    <strong>Remarks:</strong> {rev.remarkText}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Sent by: {rev.remarkSentByName}
-                                  </p>
-                                  {rev.resubmittedAt && (
-                                    <p className="text-xs text-green-600 mt-1">
-                                      Resubmitted on: {new Date(rev.resubmittedAt).toLocaleDateString()}
-                                    </p>
-                                  )}
-                                </div>
-                              ))}
+                          {/* Attachment */}
+                          {request.attachmentUrl && (
+                            <div>
+                              <h4 className="font-medium mb-2">Attachment</h4>
+                              <a
+                                href={request.attachmentUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline text-sm"
+                              >
+                                View Attachment
+                              </a>
                             </div>
-                          </div>
-                        )}
-
-                        {/* Attachment */}
-                        {request.attachmentUrl && (
-                          <div>
-                            <h4 className="font-medium mb-2">Attachment</h4>
-                            <a
-                              href={request.attachmentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline text-sm"
-                            >
-                              View Attachment
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -877,7 +912,6 @@ const handleEditRequest = async () => {
             </DialogDescription>
           </DialogHeader>
 
-          {/* Revision Remarks - Show if pending revision */}
           {editingRequest?.status === "Pending_Revision" && editingRequest.revisionHistory && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
               <p className="text-sm text-amber-800 font-medium flex items-center gap-2">
@@ -891,7 +925,6 @@ const handleEditRequest = async () => {
           )}
 
           <div className="space-y-4">
-            {/* 1. LEAVE TYPE - Always editable */}
             <div className="space-y-2">
               <Label htmlFor="editLeaveType">Leave Type *</Label>
               <Select
@@ -935,7 +968,6 @@ const handleEditRequest = async () => {
               </p>
             </div>
 
-            {/* 2. HALF DAY TOGGLE - Always editable */}
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <input
@@ -988,7 +1020,6 @@ const handleEditRequest = async () => {
               )}
             </div>
 
-            {/* 3. DATES */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Start Date *</Label>
@@ -1065,7 +1096,6 @@ const handleEditRequest = async () => {
               </div>
             </div>
 
-            {/* 4. TOTAL DAYS - Auto-calculated */}
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="text-sm">
                 Total Days: <strong>
@@ -1084,7 +1114,6 @@ const handleEditRequest = async () => {
               )}
             </div>
 
-            {/* 5. REASON */}
             <div className="space-y-2">
               <Label htmlFor="editReason">Reason</Label>
               <Textarea
@@ -1095,7 +1124,6 @@ const handleEditRequest = async () => {
               />
             </div>
 
-            {/* 6. ALTERNATE FACULTY */}
             <div className="space-y-2">
               <Label htmlFor="editAlternateFaculty">Alternate Faculty Name *</Label>
               <Input
@@ -1109,7 +1137,6 @@ const handleEditRequest = async () => {
               )}
             </div>
 
-            {/* 7. ATTACHMENT - Show if required */}
             {(() => {
               const selectedType = leaveTypes.find(t => t.id === editForm.leaveType);
               if (!selectedType?.requiresAttachment) return null;
@@ -1144,7 +1171,6 @@ const handleEditRequest = async () => {
               );
             })()}
 
-            {/* 8. BALANCE WARNING */}
             {(() => {
               const selectedType = leaveTypes.find(t => t.id === editForm.leaveType);
               if (!selectedType?.deductsBalance) return null;
@@ -1228,7 +1254,7 @@ const handleEditRequest = async () => {
               {cancellingRequest?.leaveType && (
                 <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                   <p className="text-sm">
-                    <strong>Leave Type:</strong> {LEAVE_TYPE_LABELS[cancellingRequest.leaveType]}
+                    <strong>Leave Type:</strong> {LEAVE_TYPE_LABELS[cancellingRequest.leaveType] || cancellingRequest.leaveType}
                   </p>
                   <p className="text-sm">
                     <strong>Dates:</strong> {new Date(cancellingRequest.startDate).toLocaleDateString()} - {new Date(cancellingRequest.endDate).toLocaleDateString()}
@@ -1236,6 +1262,9 @@ const handleEditRequest = async () => {
                   <p className="text-sm">
                     <strong>Days:</strong> {cancellingRequest.totalDays} day(s)
                   </p>
+                  {cancellingRequest.leaveType === "OD" && (
+                    <p className="text-sm text-blue-600">(On Duty - No balance to restore)</p>
+                  )}
                 </div>
               )}
             </DialogDescription>

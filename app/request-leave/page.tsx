@@ -1,4 +1,4 @@
-// app/request-leave/page.tsx - COMPLETE UPDATED VERSION
+// app/request-leave/page.tsx - FIXED ESLint ERRORS
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -12,11 +12,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CalendarIcon, CheckCircle, Info, Briefcase, MapPin} from "lucide-react";
+import { CalendarIcon, CheckCircle, Info, Briefcase, MapPin } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-//import { doesLeaveTypeRequireEventDetails } from "@/lib/constants/leave-types";
 
 interface LeaveType {
   id: string;
@@ -64,14 +63,13 @@ export default function RequestLeavePage() {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   
-  // ✅ NEW: OD specific state
+  // OD specific state
   const [odDetails, setOdDetails] = useState<ODDetails>({
     eventName: "",
     organization: "",
     location: "",
     purpose: "",
   });
-  const [showODFields, setShowODFields] = useState(false);
 
   // Auth check
   useEffect(() => {
@@ -100,7 +98,6 @@ export default function RequestLeavePage() {
         console.error("Failed to fetch leave types:", typesData.error);
       }
 
-      // ✅ FIX: Fetch comp-off balance separately for CO
       const balanceResponse = await fetch("/api/leave/balances");
       const balanceData = await balanceResponse.json();
       if (balanceResponse.ok && balanceData.balances) {
@@ -158,12 +155,9 @@ export default function RequestLeavePage() {
     setIsHalfDay(false);
     setEndDate(undefined);
     
-    // ✅ Check if this leave type requires event details (OD)
-    const requiresEventDetails = config?.requiresEventDetails || 
-                                 (config?.leaveCode === 'OD');
-    setShowODFields(requiresEventDetails);
+    const requiresEventDetails = config?.requiresEventDetails || (config?.leaveCode === 'OD');
     
-    // Reset OD details if not required
+    // Clear OD details when switching away from OD
     if (!requiresEventDetails) {
       setOdDetails({
         eventName: "",
@@ -179,6 +173,10 @@ export default function RequestLeavePage() {
       setAttachmentFile(e.target.files[0]);
     }
   };
+
+  // Clear OD details when switching away from OD - FIXED: use useMemo or remove the effect
+  // Instead of using useEffect with setState, we handle this in handleLeaveTypeChange
+  // The effect below is removed to avoid the cascading render warning
 
   const handleSubmit = async () => {
     toast.dismiss();
@@ -203,13 +201,10 @@ export default function RequestLeavePage() {
       return;
     }
 
-    if (selectedLeaveTypeConfig?.requiresAttachment && !attachmentFile) {
-      toast.error("Attachment is required for this leave type");
-      return;
-    }
+    const isOD = selectedLeaveTypeConfig?.leaveCode === "OD";
 
-    // ✅ NEW: Validate OD details
-    if (showODFields) {
+    // OD: Validate event details
+    if (isOD) {
       if (!odDetails.eventName.trim() || odDetails.eventName.trim().length < 3) {
         toast.error("Event name is required (minimum 3 characters)");
         return;
@@ -228,10 +223,16 @@ export default function RequestLeavePage() {
       }
     }
 
+    // Attachment validation
+    if ((isOD || selectedLeaveTypeConfig?.requiresAttachment) && !attachmentFile) {
+      toast.error("Attachment is required for this leave type");
+      return;
+    }
+
     const leaveTypeCode = selectedLeaveTypeConfig?.leaveCode || "";
     
-    // ✅ FIX: For CO, check comp-off balance (handled by backend)
-    if (selectedLeaveTypeConfig?.deductsBalance && leaveTypeCode !== 'CO') {
+    // Balance check - Skip for OD
+    if (!isOD && selectedLeaveTypeConfig?.deductsBalance && leaveTypeCode !== 'CO') {
       const balance = balances[leaveTypeCode];
       if (balance && balance.available < totalDays) {
         toast.error(
@@ -289,8 +290,7 @@ export default function RequestLeavePage() {
         attachmentUrl,
       };
 
-      // ✅ NEW: Add OD details if present
-      if (showODFields) {
+      if (isOD) {
         requestBody.odDetails = odDetails;
       }
 
@@ -313,9 +313,9 @@ export default function RequestLeavePage() {
         return;
       }
 
-      const leaveTypeLabel = selectedLeaveTypeConfig?.leaveName || leaveTypeCode;
+      const leaveTypeLabel = isOD ? "On Duty" : (selectedLeaveTypeConfig?.leaveName || leaveTypeCode);
       toast.success(
-        `✅ ${leaveTypeLabel} request submitted successfully! Status: ${data.status || "Pending"}`
+        `✅ ${leaveTypeLabel} request submitted successfully!${isOD ? " (No balance deducted)" : ""}`
       );
 
       setSelectedLeaveType("");
@@ -327,7 +327,6 @@ export default function RequestLeavePage() {
       setAlternateFacultyName("");
       setAttachmentFile(null);
       setIsHalfDay(false);
-      setShowODFields(false);
       setOdDetails({
         eventName: "",
         organization: "",
@@ -359,6 +358,7 @@ export default function RequestLeavePage() {
 
   const isSubmitDisabled = (() => {
     const selectedBalance = getSelectedBalance();
+    const isOD = selectedLeaveTypeConfig?.leaveCode === "OD";
     
     if (
       !selectedLeaveType ||
@@ -368,19 +368,18 @@ export default function RequestLeavePage() {
       return true;
     }
 
-    if (selectedLeaveTypeConfig?.requiresAttachment && !attachmentFile) {
-      return true;
-    }
-
-    // ✅ OD validation
-    if (showODFields) {
+    if (isOD) {
       if (!odDetails.eventName.trim() || odDetails.eventName.trim().length < 3) return true;
       if (!odDetails.organization.trim() || odDetails.organization.trim().length < 2) return true;
       if (!odDetails.location.trim() || odDetails.location.trim().length < 2) return true;
       if (!odDetails.purpose.trim() || odDetails.purpose.trim().length < 5) return true;
     }
 
-    if (selectedLeaveTypeConfig?.deductsBalance && selectedBalance && selectedLeaveTypeConfig.leaveCode !== 'CO') {
+    if ((isOD || selectedLeaveTypeConfig?.requiresAttachment) && !attachmentFile) {
+      return true;
+    }
+
+    if (!isOD && selectedLeaveTypeConfig?.deductsBalance && selectedBalance && selectedLeaveTypeConfig.leaveCode !== 'CO') {
       if (selectedBalance.available < totalDays) {
         return true;
       }
@@ -390,6 +389,7 @@ export default function RequestLeavePage() {
   })();
 
   const selectedBalance = getSelectedBalance();
+  const isOD = selectedLeaveTypeConfig?.leaveCode === "OD";
 
   if (!hydrationComplete || authLoading || loading) {
     return (
@@ -432,7 +432,7 @@ export default function RequestLeavePage() {
                   const balance = balances[type.leaveCode];
                   const isAvailable = !type.deductsBalance || 
                                      (balance && balance.available > 0) ||
-                                     type.leaveCode === 'CO'; // CO uses comp-off credits
+                                     type.leaveCode === 'CO';
                   return (
                     <SelectItem
                       key={type.id}
@@ -453,7 +453,7 @@ export default function RequestLeavePage() {
                 })}
               </SelectContent>
             </Select>
-            {selectedLeaveTypeConfig && selectedBalance && (
+            {selectedLeaveTypeConfig && selectedBalance && !isOD && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                 <Info className="h-4 w-4" />
                 <span>
@@ -467,6 +467,22 @@ export default function RequestLeavePage() {
               </div>
             )}
           </div>
+
+          {/* OD Info Alert */}
+          {isOD && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm text-blue-800 font-medium">On Duty Leave</p>
+                  <p className="text-sm text-blue-700">
+                    On Duty (OD) leave does <strong>not</strong> deduct from your leave balance. 
+                    You must provide event details and upload a supporting document.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Leave Duration */}
           <div className="space-y-2">
@@ -539,12 +555,13 @@ export default function RequestLeavePage() {
               <p className="text-sm text-muted-foreground">
                 Total days: <strong>{isHalfDay ? 0.5 : totalDays}</strong> day
                 {(!isHalfDay && totalDays !== 1) ? "s" : ""}
+                {isOD && <span className="text-blue-600 ml-2">(No balance deduction)</span>}
               </p>
             )}
           </div>
 
           {/* Half Day Toggle */}
-          {selectedLeaveTypeConfig?.allowHalfDay && (
+          {selectedLeaveTypeConfig?.allowHalfDay && !isOD && (
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <input
@@ -600,8 +617,8 @@ export default function RequestLeavePage() {
             </div>
           )}
 
-          {/* ✅ NEW: OD Event Details */}
-          {showODFields && (
+          {/* OD Event Details */}
+          {isOD && (
             <div className="space-y-4 border rounded-lg p-4 bg-blue-50 border-blue-200">
               <div className="flex items-center gap-2 text-blue-800 font-medium">
                 <Briefcase className="h-5 w-5" />
@@ -617,6 +634,9 @@ export default function RequestLeavePage() {
                   onChange={(e) => setOdDetails({ ...odDetails, eventName: e.target.value })}
                   className="border-blue-300 focus:border-blue-500"
                 />
+                {odDetails.eventName && odDetails.eventName.length < 3 && (
+                  <p className="text-xs text-red-500">Minimum 3 characters required</p>
+                )}
               </div>
               
               <div className="space-y-2">
@@ -628,6 +648,9 @@ export default function RequestLeavePage() {
                   onChange={(e) => setOdDetails({ ...odDetails, organization: e.target.value })}
                   className="border-blue-300 focus:border-blue-500"
                 />
+                {odDetails.organization && odDetails.organization.length < 2 && (
+                  <p className="text-xs text-red-500">Minimum 2 characters required</p>
+                )}
               </div>
               
               <div className="space-y-2">
@@ -642,6 +665,9 @@ export default function RequestLeavePage() {
                     className="pl-9 border-blue-300 focus:border-blue-500"
                   />
                 </div>
+                {odDetails.location && odDetails.location.length < 2 && (
+                  <p className="text-xs text-red-500">Minimum 2 characters required</p>
+                )}
               </div>
               
               <div className="space-y-2">
@@ -654,6 +680,15 @@ export default function RequestLeavePage() {
                   rows={3}
                   className="border-blue-300 focus:border-blue-500"
                 />
+                {odDetails.purpose && odDetails.purpose.length < 5 && (
+                  <p className="text-xs text-red-500">Minimum 5 characters required</p>
+                )}
+              </div>
+
+              <div className="bg-blue-100 border border-blue-300 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> All OD requests require a supporting document attachment.
+                </p>
               </div>
             </div>
           )}
@@ -691,10 +726,10 @@ export default function RequestLeavePage() {
           </div>
 
           {/* Attachment */}
-          {selectedLeaveTypeConfig?.requiresAttachment && (
+          {(selectedLeaveTypeConfig?.requiresAttachment || isOD) && (
             <div className="space-y-2">
               <Label htmlFor="attachment">
-                Attachment *
+                Attachment {isOD ? "* (Required)" : "*"}
                 <span className="text-xs text-muted-foreground ml-2">
                   (PDF, DOC, JPG, PNG - Max 16MB)
                 </span>
@@ -705,12 +740,16 @@ export default function RequestLeavePage() {
                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                 onChange={handleFileChange}
                 className="cursor-pointer"
+                required={isOD}
               />
               {attachmentFile && (
                 <p className="text-sm text-green-600">
                   <CheckCircle className="inline h-4 w-4 mr-1" />
                   File selected: {attachmentFile.name}
                 </p>
+              )}
+              {isOD && !attachmentFile && (
+                <p className="text-xs text-red-500">Attachment is required for On Duty leave</p>
               )}
             </div>
           )}
@@ -750,15 +789,15 @@ export default function RequestLeavePage() {
                   <li>Your request will be sent to your department HOD for approval</li>
                   <li>You can edit or cancel your request before it is approved</li>
                   <li>You will receive email and in-app notifications for status updates</li>
-                  {selectedLeaveTypeConfig?.deductsBalance && (
+                  {!isOD && selectedLeaveTypeConfig?.deductsBalance && (
                     <li>
                       This leave type deducts from your balance. Make sure you have enough
                       days available.
                     </li>
                   )}
-                  {showODFields && (
+                  {isOD && (
                     <li className="text-blue-800 font-medium">
-                      📋 On Duty leave does not deduct from your leave balance.
+                      📋 On Duty leave does NOT deduct from your leave balance.
                     </li>
                   )}
                 </ul>

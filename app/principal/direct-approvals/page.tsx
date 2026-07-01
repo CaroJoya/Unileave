@@ -1,4 +1,4 @@
-// app/principal/direct-approvals/page.tsx
+// app/principal/direct-approvals/page.tsx - COMPLETE FILE WITH OD SUPPORT
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -24,8 +24,9 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Eye, Check, X, FileText, Clock } from "lucide-react";
+import { Eye, Check, X, FileText, Clock, Briefcase } from "lucide-react";
 
 interface LeaveRequest {
   id: string;
@@ -44,6 +45,12 @@ interface LeaveRequest {
   status: string;
   createdAt: string;
   approvalLogs?: ApprovalLog[];
+  odDetails?: {
+    eventName: string;
+    organization: string;
+    location: string;
+    purpose: string;
+  };
 }
 
 interface ApprovalLog {
@@ -92,7 +99,6 @@ export default function PrincipalDirectApprovalsPage() {
     reason: "",
   });
 
-  // Auth check
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
@@ -121,7 +127,6 @@ export default function PrincipalDirectApprovalsPage() {
     }
   }, []);
 
-  // Load data when user is authenticated
   useEffect(() => {
     let isMounted = true;
     
@@ -155,7 +160,6 @@ export default function PrincipalDirectApprovalsPage() {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
       
       toast.success("📋 Request list updated");
@@ -193,7 +197,6 @@ export default function PrincipalDirectApprovalsPage() {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ SMART REDIRECT: Refresh the list to show updated status
       await fetchRequests();
       
       toast.success("📋 Request list updated");
@@ -251,53 +254,59 @@ export default function PrincipalDirectApprovalsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pendingRequests.map((request) => (
-                    <TableRow key={request.id}>
-                      <TableCell className="font-medium">{request.applicantName}</TableCell>
-                      <TableCell className="capitalize">{request.applicantRoles?.[0] || "Staff"}</TableCell>
-                      <TableCell>{request.departmentName}</TableCell>
-                      <TableCell>{LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType}</TableCell>
-                      <TableCell>{new Date(request.startDate).toLocaleDateString()}</TableCell>
-                      <TableCell>{new Date(request.endDate).toLocaleDateString()}</TableCell>
-                      <TableCell>{request.totalDays}</TableCell>
-                      <TableCell>{new Date(request.createdAt).toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedRequest(request);
-                              setShowDetails(true);
-                            }}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => handleApprove(request.id)}
-                            disabled={actionLoading}
-                          >
-                            <Check className="h-4 w-4 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => {
-                              setRejectModal({ open: true, requestId: request.id, reason: "" });
-                            }}
-                            disabled={actionLoading}
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Reject
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {pendingRequests.map((request) => {
+                    const isOD = request.leaveType === "OD";
+                    return (
+                      <TableRow key={request.id}>
+                        <TableCell className="font-medium">{request.applicantName}</TableCell>
+                        <TableCell className="capitalize">{request.applicantRoles?.[0] || "Staff"}</TableCell>
+                        <TableCell>{request.departmentName}</TableCell>
+                        <TableCell>
+                          {isOD ? "On Duty (OD)" : (LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType)}
+                          {isOD && <Badge variant="outline" className="ml-2 text-blue-600 border-blue-300 bg-blue-50 text-xs">No Balance Deduct</Badge>}
+                        </TableCell>
+                        <TableCell>{new Date(request.startDate).toLocaleDateString()}</TableCell>
+                        <TableCell>{new Date(request.endDate).toLocaleDateString()}</TableCell>
+                        <TableCell>{request.totalDays}</TableCell>
+                        <TableCell>{new Date(request.createdAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedRequest(request);
+                                setShowDetails(true);
+                              }}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => handleApprove(request.id)}
+                              disabled={actionLoading}
+                            >
+                              <Check className="h-4 w-4 mr-1" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => {
+                                setRejectModal({ open: true, requestId: request.id, reason: "" });
+                              }}
+                              disabled={actionLoading}
+                            >
+                              <X className="h-4 w-4 mr-1" />
+                              Reject
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -305,7 +314,6 @@ export default function PrincipalDirectApprovalsPage() {
         </CardContent>
       </Card>
 
-      {/* Request Details Drawer */}
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -316,7 +324,6 @@ export default function PrincipalDirectApprovalsPage() {
           </DialogHeader>
           {selectedRequest && (
             <div className="space-y-6">
-              {/* Basic Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Employee</p>
@@ -332,7 +339,7 @@ export default function PrincipalDirectApprovalsPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Leave Type</p>
-                  <p>{LEAVE_TYPE_LABELS[selectedRequest.leaveType] || selectedRequest.leaveType}</p>
+                  <p>{selectedRequest.leaveType === "OD" ? "On Duty (OD)" : (LEAVE_TYPE_LABELS[selectedRequest.leaveType] || selectedRequest.leaveType)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Date Range</p>
@@ -354,7 +361,37 @@ export default function PrincipalDirectApprovalsPage() {
                 </div>
               </div>
 
-              {/* Reason */}
+              {/* OD Details */}
+              {selectedRequest.leaveType === "OD" && selectedRequest.odDetails && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-medium text-blue-800 flex items-center gap-2 mb-2">
+                    <Briefcase className="h-4 w-4" />
+                    On Duty Details
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Event:</span>
+                      <p className="font-medium">{selectedRequest.odDetails.eventName}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Organization:</span>
+                      <p className="font-medium">{selectedRequest.odDetails.organization}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Location:</span>
+                      <p className="font-medium">{selectedRequest.odDetails.location}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Purpose:</span>
+                      <p className="font-medium">{selectedRequest.odDetails.purpose}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-blue-600">
+                    ℹ️ On Duty leave does not deduct from balance
+                  </div>
+                </div>
+              )}
+
               <div>
                 <p className="text-sm text-muted-foreground flex items-center gap-2">
                   <FileText className="h-4 w-4" />
@@ -363,7 +400,6 @@ export default function PrincipalDirectApprovalsPage() {
                 <p className="mt-1 p-3 bg-gray-50 rounded-lg">{selectedRequest.reason}</p>
               </div>
 
-              {/* Approval History */}
               {selectedRequest.approvalLogs && selectedRequest.approvalLogs.length > 0 && (
                 <div>
                   <p className="text-sm text-muted-foreground flex items-center gap-2">
@@ -392,7 +428,6 @@ export default function PrincipalDirectApprovalsPage() {
                 </div>
               )}
 
-              {/* Attachment */}
               {selectedRequest.attachmentUrl && (
                 <div>
                   <p className="text-sm text-muted-foreground">Attachment</p>
@@ -404,6 +439,14 @@ export default function PrincipalDirectApprovalsPage() {
                   >
                     View Attachment
                   </a>
+                </div>
+              )}
+
+              {selectedRequest.leaveType === "OD" && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> On Duty leave does not deduct from the employees leave balance.
+                  </p>
                 </div>
               )}
             </div>
@@ -438,7 +481,6 @@ export default function PrincipalDirectApprovalsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Reject Modal */}
       <Dialog open={rejectModal.open} onOpenChange={(open) => !open && setRejectModal({ ...rejectModal, open: false })}>
         <DialogContent>
           <DialogHeader>

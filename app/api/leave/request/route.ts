@@ -1,4 +1,4 @@
-// app/api/leave/request/route.ts - COMPLETE UPDATED VERSION
+// app/api/leave/request/route.ts - COMPLETE UPDATED VERSION WITH OD SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -160,7 +160,7 @@ export async function POST(request: Request) {
       reason,
       alternateFacultyName,
       attachmentUrl,
-      odDetails, // ✅ NEW: OD specific details
+      odDetails,
     } = body;
 
     // ============ VALIDATION ============
@@ -231,8 +231,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ Check OD details
-    if (leaveType === "OD" && leaveTypeConfig.requiresEventDetails) {
+    // ✅ CRITICAL: OD specific validation
+    if (leaveType === "OD") {
       if (!odDetails) {
         return NextResponse.json(
           { error: "Event details are required for On Duty leave", field: "odDetails" },
@@ -243,6 +243,13 @@ export async function POST(request: Request) {
       if (!validation.isValid) {
         return NextResponse.json(
           { error: validation.errors[0], field: "odDetails" },
+          { status: 400 }
+        );
+      }
+      // ✅ OD always requires attachment
+      if (!attachmentUrl) {
+        return NextResponse.json(
+          { error: "Attachment is required for On Duty leave", field: "attachmentUrl" },
           { status: 400 }
         );
       }
@@ -282,6 +289,9 @@ export async function POST(request: Request) {
 
     // ============ BALANCE CHECK ============
 
+    // ✅ CRITICAL: OD does NOT deduct balance
+    const deductsBalance = leaveType !== "OD" && leaveTypeConfig.deductsBalance;
+
     if (leaveType === "CO") {
       // ✅ COMP-OFF: Check comp-off credits balance
       const availableCredits = await getAvailableCompOffCredits(userId);
@@ -296,7 +306,7 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-    } else if (leaveTypeConfig.deductsBalance) {
+    } else if (deductsBalance) {
       // ✅ REGULAR LEAVE: Check regular balance
       const balanceDoc = await getOrCreateLeaveBalance(userId, userRole, academicYear);
       if (!balanceDoc) {
@@ -340,7 +350,8 @@ export async function POST(request: Request) {
 
     // ============ DEDUCT BALANCE (if applicable) ============
 
-    if (leaveType !== "CO" && leaveTypeConfig.deductsBalance) {
+    // ✅ CRITICAL: OD does NOT deduct balance
+    if (leaveType !== "CO" && deductsBalance) {
       const deductResult = await deductLeaveBalance(userId, leaveType, totalDays, academicYear);
       if (!deductResult.success) {
         return NextResponse.json(
@@ -378,8 +389,10 @@ export async function POST(request: Request) {
       balanceRestored: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      // ✅ NEW: OD details
+      // ✅ OD details stored only for OD leave
       ...(leaveType === "OD" && odDetails && { odDetails }),
+      // ✅ Track if balance should be deducted
+      deductsBalance: deductsBalance,
     };
 
     await rtdb.ref(`leaveRequests/${requestId}`).set(leaveRequest);
@@ -408,7 +421,7 @@ export async function POST(request: Request) {
       id: notificationId,
       userId: approverUserId,
       title: "New Leave Request",
-      message: `${userData.name} has submitted a ${leaveType} leave request for ${totalDays} day(s).`,
+      message: `${userData.name} has submitted a ${leaveType} leave request for ${totalDays} day(s).${leaveType === "OD" ? " (On Duty)" : ""}`,
       type: "leave_submitted",
       isRead: false,
       metadata: JSON.stringify({
@@ -416,6 +429,7 @@ export async function POST(request: Request) {
         leaveType,
         totalDays,
         applicantId: userId,
+        isOD: leaveType === "OD",
       }),
       createdAt: new Date().toISOString(),
     });
@@ -428,7 +442,7 @@ export async function POST(request: Request) {
     if (approverData?.email) {
       const emailHtml = getLeaveSubmittedEmail(
         userData.name,
-        leaveType,
+        leaveType === "OD" ? "On Duty (OD)" : leaveType,
         startDate,
         endDate || startDate,
         reason || "No reason provided"
@@ -446,6 +460,9 @@ export async function POST(request: Request) {
       requestId,
       status,
       currentApprover: approverRole,
+      message: leaveType === "OD" 
+        ? "On Duty request submitted successfully! (No balance deducted)" 
+        : "Leave request submitted successfully!",
     });
   } catch (error) {
     console.error("❌ Error submitting leave request:", error);

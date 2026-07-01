@@ -1,8 +1,8 @@
-// app/api/registrar/leave/[id]/reject/route.ts - COMPLETE UPDATED VERSION
+// app/api/registrar/leave/[id]/reject/route.ts - COMPLETE UPDATED VERSION (OD SUPPORT)
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
-import { restoreLeaveBalance, doesLeaveTypeDeductBalance } from "@/lib/services/leave-balance-service";
+import { restoreLeaveBalance } from "@/lib/services/leave-balance-service";
 import { sendEmail, getLeaveRejectedEmail } from "@/lib/utils/email";
 
 interface LeaveRequest {
@@ -15,6 +15,7 @@ interface LeaveRequest {
   endDate: string;
   totalDays: number;
   status: string;
+  deductsBalance?: boolean;
 }
 
 interface User {
@@ -77,13 +78,16 @@ export async function POST(
       return NextResponse.json({ error: "Request is not pending registrar approval" }, { status: 400 });
     }
 
+    // ============ CRITICAL: Skip balance restoration for OD ============
+    const isOD = leaveRequest.leaveType === "OD";
+    const shouldRestoreBalance = !isOD && leaveRequest.deductsBalance !== false;
+
     // ============ BALANCE RESTORATION (CONDITIONAL) ============
     
-    const deductsBalance = await doesLeaveTypeDeductBalance(leaveRequest.leaveType);
     let balanceRestored = false;
     let balanceError: string | null = null;
 
-    if (deductsBalance) {
+    if (shouldRestoreBalance) {
       console.log(`🔄 Restoring balance for ${leaveRequest.leaveType} (deducts balance: true)`);
       const result = await restoreLeaveBalance(
         leaveRequest.applicantId,
@@ -98,6 +102,8 @@ export async function POST(
         balanceError = result.error || "Unknown error";
         console.warn(`⚠️ Could not restore balance: ${balanceError}`);
       }
+    } else if (isOD) {
+      console.log(`ℹ️ OD leave rejected - No balance to restore (OD doesn't deduct)`);
     } else {
       console.log(`ℹ️ Leave type ${leaveRequest.leaveType} does not deduct balance, skipping restoration`);
     }
@@ -121,7 +127,7 @@ export async function POST(
       actionByName: registrarData.name,
       actionRole: "registrar",
       action: "REJECT",
-      remark: reason,
+      remark: isOD ? "OD rejected - No balance to restore" : reason,
       oldStatus: "Pending_Registrar",
       newStatus: "Rejected_Registrar",
       actionAt: new Date().toISOString(),
@@ -134,7 +140,7 @@ export async function POST(
       id: notificationId,
       userId: leaveRequest.applicantId,
       title: "Leave Request Rejected",
-      message: `Your ${leaveRequest.leaveType} leave request has been rejected by Registrar. Reason: ${reason}`,
+      message: `Your ${isOD ? "On Duty" : leaveRequest.leaveType} leave request has been rejected by Registrar. Reason: ${reason}`,
       type: "leave_rejected",
       isRead: false,
       metadata: JSON.stringify({
@@ -142,6 +148,7 @@ export async function POST(
         leaveType: leaveRequest.leaveType,
         reason,
         balanceRestored,
+        isOD: isOD,
       }),
       createdAt: new Date().toISOString(),
     });
@@ -154,7 +161,7 @@ export async function POST(
     if (applicantData?.email) {
       const emailHtml = getLeaveRejectedEmail(
         leaveRequest.applicantName,
-        leaveRequest.leaveType,
+        isOD ? "On Duty (OD)" : leaveRequest.leaveType,
         leaveRequest.startDate,
         leaveRequest.endDate,
         reason,
@@ -163,7 +170,7 @@ export async function POST(
       
       await sendEmail(
         applicantData.email,
-        `Leave Request Rejected - ${leaveRequest.leaveType}`,
+        `Leave Request Rejected - ${isOD ? "On Duty" : leaveRequest.leaveType}`,
         emailHtml
       ).catch(err => console.error("❌ Failed to send rejection email:", err));
     }
@@ -171,9 +178,11 @@ export async function POST(
     return NextResponse.json({ 
       success: true,
       balanceRestored,
-      message: balanceRestored 
-        ? `Leave request rejected. Balance restored.` 
-        : `Leave request rejected. ${balanceError ? `Balance not restored: ${balanceError}` : 'Balance not restored.'}`
+      message: isOD 
+        ? "On Duty request rejected. No balance to restore." 
+        : balanceRestored 
+          ? `Leave request rejected. Balance restored.` 
+          : `Leave request rejected. ${balanceError ? `Balance not restored: ${balanceError}` : 'Balance not restored.'}`
     });
   } catch (error) {
     console.error("Error rejecting leave request:", error);

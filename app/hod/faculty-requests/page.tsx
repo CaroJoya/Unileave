@@ -1,4 +1,4 @@
-// app/hod/faculty-requests/page.tsx - COMPLETE FIXED FILE
+// app/hod/faculty-requests/page.tsx - COMPLETE FIXED FILE WITH OD SUPPORT
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -26,10 +26,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Eye, Check, X, MessageSquare, RefreshCw } from "lucide-react";
+import { Eye, Check, X, MessageSquare, RefreshCw, Briefcase } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-
-// ✅ Import from shared utility
 import { getLeaveTypeLabel } from "@/lib/constants/leave-types";
 
 interface LeaveRequest {
@@ -50,6 +48,12 @@ interface LeaveRequest {
   createdAt: string;
   revisionCount: number;
   revisionHistory?: Revision[];
+  odDetails?: {
+    eventName: string;
+    organization: string;
+    location: string;
+    purpose: string;
+  };
 }
 
 interface Revision {
@@ -81,6 +85,8 @@ function RequestDetailsDrawer({
 }: DetailsDrawerProps) {
   if (!request) return null;
 
+  const isOD = request.leaveType === "OD";
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -92,7 +98,6 @@ function RequestDetailsDrawer({
         </DialogHeader>
         
         <div className="space-y-4">
-          {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label className="text-muted-foreground">Employee</Label>
@@ -108,11 +113,10 @@ function RequestDetailsDrawer({
             </div>
             <div>
               <Label className="text-muted-foreground">Leave Type</Label>
-              <p className="font-medium">{getLeaveTypeLabel(request.leaveType)}</p>
+              <p className="font-medium">{isOD ? "On Duty (OD)" : getLeaveTypeLabel(request.leaveType)}</p>
             </div>
           </div>
 
-          {/* Date Range */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label className="text-muted-foreground">Start Date</Label>
@@ -132,19 +136,47 @@ function RequestDetailsDrawer({
             </div>
           </div>
 
-          {/* Reason */}
+          {/* OD Details */}
+          {isOD && request.odDetails && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="font-medium text-blue-800 flex items-center gap-2 mb-2">
+                <Briefcase className="h-4 w-4" />
+                On Duty Details
+              </h4>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Event:</span>
+                  <p className="font-medium">{request.odDetails.eventName}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Organization:</span>
+                  <p className="font-medium">{request.odDetails.organization}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Location:</span>
+                  <p className="font-medium">{request.odDetails.location}</p>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">Purpose:</span>
+                  <p className="font-medium">{request.odDetails.purpose}</p>
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-blue-600">
+                ℹ️ On Duty leave does not deduct from balance
+              </div>
+            </div>
+          )}
+
           <div>
             <Label className="text-muted-foreground">Reason</Label>
             <p className="mt-1 p-3 bg-gray-50 rounded-lg">{request.reason}</p>
           </div>
 
-          {/* Alternate Faculty */}
           <div>
             <Label className="text-muted-foreground">Alternate Faculty</Label>
             <p className="font-medium">{request.alternateFacultyName}</p>
           </div>
 
-          {/* Revision History */}
           {request.revisionHistory && request.revisionHistory.length > 0 && (
             <div>
               <Label className="text-muted-foreground">Revision History</Label>
@@ -162,7 +194,6 @@ function RequestDetailsDrawer({
             </div>
           )}
 
-          {/* Attachment */}
           {request.attachmentUrl && (
             <div>
               <Label className="text-muted-foreground">Attachment</Label>
@@ -176,6 +207,14 @@ function RequestDetailsDrawer({
                   View Attachment
                 </a>
               </div>
+            </div>
+          )}
+
+          {isOD && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> On Duty leave does not deduct from the employees leave balance.
+              </p>
             </div>
           )}
         </div>
@@ -222,7 +261,6 @@ export default function FacultyRequestsPage() {
     reason: "",
   });
 
-  // Auth check
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
@@ -277,7 +315,6 @@ export default function FacultyRequestsPage() {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ Invalidate balance query to refresh the user's balance
       queryClient.invalidateQueries({ queryKey: ['leave-balance'] });
       
       await fetchRequests();
@@ -316,7 +353,6 @@ export default function FacultyRequestsPage() {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ Invalidate balance query to refresh the user's balance
       queryClient.invalidateQueries({ queryKey: ['leave-balance'] });
       
       await fetchRequests();
@@ -355,7 +391,6 @@ export default function FacultyRequestsPage() {
       setShowDetails(false);
       setSelectedRequest(null);
       
-      // ✅ Invalidate balance query (remarks don't affect balance, but keep consistency)
       queryClient.invalidateQueries({ queryKey: ['leave-balance'] });
       
       await fetchRequests();
@@ -428,31 +463,37 @@ export default function FacultyRequestsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {requests.map((request) => (
-                    <TableRow key={request.id}>
-                      <TableCell className="font-medium">{request.applicantName}</TableCell>
-                      <TableCell className="capitalize">{request.applicantRoles?.[0] || "Staff"}</TableCell>
-                      <TableCell>{getLeaveTypeLabel(request.leaveType)}</TableCell>
-                      <TableCell>{new Date(request.startDate).toLocaleDateString()}</TableCell>
-                      <TableCell>{new Date(request.endDate).toLocaleDateString()}</TableCell>
-                      <TableCell>{request.totalDays}</TableCell>
-                      <TableCell>{getStatusBadge(request.revisionCount)}</TableCell>
-                      <TableCell>{new Date(request.createdAt).toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedRequest(request);
-                            setShowDetails(true);
-                          }}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {requests.map((request) => {
+                    const isOD = request.leaveType === "OD";
+                    return (
+                      <TableRow key={request.id}>
+                        <TableCell className="font-medium">{request.applicantName}</TableCell>
+                        <TableCell className="capitalize">{request.applicantRoles?.[0] || "Staff"}</TableCell>
+                        <TableCell>
+                          {isOD ? "On Duty (OD)" : getLeaveTypeLabel(request.leaveType)}
+                          {isOD && <Badge variant="outline" className="ml-2 text-blue-600 border-blue-300 bg-blue-50 text-xs">No Balance Deduct</Badge>}
+                        </TableCell>
+                        <TableCell>{new Date(request.startDate).toLocaleDateString()}</TableCell>
+                        <TableCell>{new Date(request.endDate).toLocaleDateString()}</TableCell>
+                        <TableCell>{request.totalDays}</TableCell>
+                        <TableCell>{getStatusBadge(request.revisionCount)}</TableCell>
+                        <TableCell>{new Date(request.createdAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedRequest(request);
+                              setShowDetails(true);
+                            }}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -460,7 +501,6 @@ export default function FacultyRequestsPage() {
         </CardContent>
       </Card>
 
-      {/* Request Details Drawer */}
       <RequestDetailsDrawer
         request={selectedRequest}
         open={showDetails}
@@ -482,7 +522,6 @@ export default function FacultyRequestsPage() {
         loading={actionLoading}
       />
 
-      {/* Reject Modal */}
       <Dialog open={rejectModal.open} onOpenChange={(open) => !open && setRejectModal({ ...rejectModal, open: false })}>
         <DialogContent>
           <DialogHeader>
@@ -513,7 +552,6 @@ export default function FacultyRequestsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Send Remarks Modal */}
       <Dialog open={remarksModal.open} onOpenChange={(open) => !open && setRemarksModal({ ...remarksModal, open: false })}>
         <DialogContent>
           <DialogHeader>

@@ -1,4 +1,4 @@
-// app/api/hod/leave/[id]/approve/route.ts - COMPLETE FIXED VERSION (ADD COMP-OFF LOGIC)
+// app/api/hod/leave/[id]/approve/route.ts - COMPLETE UPDATED VERSION (OD SUPPORT)
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -35,6 +35,13 @@ interface LeaveRequest {
   compOffCreditsUsed?: {
     creditId: string;
     daysUsed: number;
+  };
+  deductsBalance?: boolean;
+  odDetails?: {
+    eventName: string;
+    organization: string;
+    location: string;
+    purpose: string;
   };
 }
 
@@ -104,6 +111,10 @@ export async function POST(
       return NextResponse.json({ error: "Request is not pending HOD approval" }, { status: 400 });
     }
 
+    // ============ CRITICAL: Skip balance deduction for OD ============
+    const isOD = leaveRequest.leaveType === "OD";
+    const shouldDeductBalance = !isOD && leaveRequest.deductsBalance !== false;
+
     // ============ UPDATE COMP-OFF CREDIT USAGE (if CO) ============
     
     if (leaveRequest.leaveType === "CO" && leaveRequest.compOffCreditsUsed) {
@@ -116,7 +127,6 @@ export async function POST(
         const newUsedDays = (credit.usedDays || 0) + daysUsed;
         const isFullyUsed = newUsedDays >= credit.creditedDays;
         
-        // ✅ Update credit: usedDays increments, status changes if fully used
         await creditRef.update({
           usedDays: newUsedDays,
           status: isFullyUsed ? 'fully_used' : 'active',
@@ -125,7 +135,6 @@ export async function POST(
         
         console.log(`✅ Comp-off credit ${creditId} updated: usedDays=${newUsedDays}, status=${isFullyUsed ? 'fully_used' : 'active'}`);
         
-        // ✅ Update usage record
         const usageSnapshot = await rtdb.ref('compOffUsage').once('value');
         const allUsage = usageSnapshot.val() as Record<string, CompOffUsageRecord> | null | undefined;
         
@@ -145,6 +154,13 @@ export async function POST(
 
     // ============ UPDATE LEAVE REQUEST ============
 
+    // ✅ Only deduct balance if NOT OD
+    if (shouldDeductBalance) {
+      console.log(`✅ Balance deducted for ${leaveRequest.leaveType} leave (${leaveRequest.totalDays} days)`);
+    } else if (isOD) {
+      console.log(`ℹ️ OD leave approved - No balance deducted`);
+    }
+
     await rtdb.ref(`leaveRequests/${id}`).update({
       status: "Approved",
       approvedBy: "hod",
@@ -162,7 +178,7 @@ export async function POST(
       actionByName: hodData.name,
       actionRole: "hod",
       action: "APPROVE",
-      remark: null,
+      remark: isOD ? "OD approved - No balance deducted" : null,
       oldStatus: "Pending_HOD",
       newStatus: "Approved",
       actionAt: new Date().toISOString(),
@@ -171,10 +187,14 @@ export async function POST(
 
     // ============ SEND NOTIFICATION ============
 
+    const notificationMessage = isOD
+      ? `Your On Duty request (${new Date(leaveRequest.startDate).toLocaleDateString()}) has been approved by HOD ${hodData.name}. (No balance deducted)`
+      : `Your ${leaveRequest.leaveType} leave request (${new Date(leaveRequest.startDate).toLocaleDateString()} - ${new Date(leaveRequest.endDate).toLocaleDateString()}) has been approved by HOD ${hodData.name}.`;
+
     await createNotification({
       userId: leaveRequest.applicantId,
       type: NotificationType.LEAVE_APPROVED,
-      message: `Your ${leaveRequest.leaveType} leave request (${new Date(leaveRequest.startDate).toLocaleDateString()} - ${new Date(leaveRequest.endDate).toLocaleDateString()}) has been approved by HOD ${hodData.name}.`,
+      message: notificationMessage,
       metadata: {
         leaveRequestId: id,
         approver: "hod",
@@ -182,6 +202,8 @@ export async function POST(
         leaveType: leaveRequest.leaveType,
         totalDays: leaveRequest.totalDays,
         compOffCreditUsed: leaveRequest.compOffCreditsUsed || null,
+        isOD: isOD,
+        balanceDeducted: shouldDeductBalance,
       },
     });
 
@@ -201,6 +223,8 @@ export async function POST(
         startDate: leaveRequest.startDate,
         endDate: leaveRequest.endDate,
         compOffCreditUsed: leaveRequest.compOffCreditsUsed || null,
+        isOD: isOD,
+        balanceDeducted: shouldDeductBalance,
       },
     });
 
@@ -212,7 +236,7 @@ export async function POST(
     if (applicantData?.email) {
       const emailHtml = getLeaveApprovedEmail(
         leaveRequest.applicantName,
-        leaveRequest.leaveType,
+        isOD ? "On Duty (OD)" : leaveRequest.leaveType,
         leaveRequest.startDate,
         leaveRequest.endDate,
         leaveRequest.totalDays,
@@ -221,7 +245,7 @@ export async function POST(
       
       await sendEmail(
         applicantData.email,
-        `Leave Request Approved - ${leaveRequest.leaveType}`,
+        `Leave Request Approved - ${isOD ? "On Duty" : leaveRequest.leaveType}`,
         emailHtml
       ).catch(err => console.error("❌ Failed to send approval email:", err));
     }
@@ -250,7 +274,9 @@ export async function POST(
 
     return NextResponse.json({ 
       success: true,
-      message: "Leave request approved successfully",
+      message: isOD 
+        ? "On Duty request approved successfully (No balance deducted)" 
+        : "Leave request approved successfully",
     });
   } catch (error) {
     console.error("Error approving leave request:", error);
