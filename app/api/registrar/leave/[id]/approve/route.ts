@@ -1,4 +1,4 @@
-// app/api/registrar/leave/[id]/approve/route.ts - COMPLETE FIXED VERSION
+// app/api/registrar/leave/[id]/approve/route.ts - COMPLETE FIXED VERSION (ADD COMP-OFF LOGIC)
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -7,7 +7,6 @@ import { createNotification } from "@/lib/services/notification-service";
 import { createAuditLog } from "@/lib/services/audit-service";
 import { NotificationType } from "@/lib/constants/notification-types";
 
-// ✅ FIX: Define proper interface instead of using 'any'
 interface CompOffUsageRecord {
   id: string;
   creditId: string;
@@ -113,6 +112,7 @@ export async function POST(
         const newUsedDays = (credit.usedDays || 0) + daysUsed;
         const isFullyUsed = newUsedDays >= credit.creditedDays;
         
+        // ✅ Update credit: usedDays increments, status changes if fully used
         await creditRef.update({
           usedDays: newUsedDays,
           status: isFullyUsed ? 'fully_used' : 'active',
@@ -121,7 +121,7 @@ export async function POST(
         
         console.log(`✅ Comp-off credit ${creditId} updated: usedDays=${newUsedDays}, status=${isFullyUsed ? 'fully_used' : 'active'}`);
         
-        // ✅ FIX: Use proper interface instead of 'any'
+        // ✅ Update usage record
         const usageSnapshot = await rtdb.ref('compOffUsage').once('value');
         const allUsage = usageSnapshot.val() as Record<string, CompOffUsageRecord> | null | undefined;
         
@@ -162,6 +162,7 @@ export async function POST(
       oldStatus: "Pending_Registrar",
       newStatus: "Approved",
       actionAt: new Date().toISOString(),
+      compOffCreditUsed: leaveRequest.compOffCreditsUsed || null,
     });
 
     // ============ SEND NOTIFICATION ============
@@ -176,6 +177,7 @@ export async function POST(
         approverName: registrarData.name,
         leaveType: leaveRequest.leaveType,
         totalDays: leaveRequest.totalDays,
+        compOffCreditUsed: leaveRequest.compOffCreditsUsed || null,
       },
     });
 
@@ -204,7 +206,6 @@ export async function POST(
     const applicantData = applicantSnapshot.val() as User | null;
 
     if (applicantData?.email) {
-      // ✅ FIX: getLeaveApprovedEmail expects 6 arguments, not 7
       const emailHtml = getLeaveApprovedEmail(
         leaveRequest.applicantName,
         leaveRequest.leaveType,
@@ -212,7 +213,6 @@ export async function POST(
         leaveRequest.endDate,
         leaveRequest.totalDays,
         registrarData.name
-        // ❌ REMOVED: statusPageUrl (extra argument)
       );
       
       await sendEmail(
@@ -220,6 +220,28 @@ export async function POST(
         `Leave Request Approved - ${leaveRequest.leaveType}`,
         emailHtml
       ).catch(err => console.error("❌ Failed to send approval email:", err));
+    }
+
+    // ============ COMP-OFF SPECIFIC NOTIFICATION ============
+    if (leaveRequest.leaveType === "CO" && leaveRequest.compOffCreditsUsed) {
+      const creditId = leaveRequest.compOffCreditsUsed.creditId;
+      const creditSnap = await rtdb.ref(`compOffCredits/${creditId}`).once('value');
+      const credit = creditSnap.val() as CompOffCredit | null;
+      
+      if (credit) {
+        await createNotification({
+          userId: leaveRequest.applicantId,
+          type: NotificationType.COMPOFF_APPROVED,
+          message: `Your comp-off request for ${leaveRequest.totalDays} day(s) has been approved by Registrar. ${credit.status === 'fully_used' ? 'All credits have been used.' : `${credit.creditedDays - credit.usedDays} day(s) remaining.`}`,
+          metadata: {
+            leaveRequestId: id,
+            creditId: creditId,
+            usedDays: credit.usedDays,
+            remainingDays: credit.creditedDays - credit.usedDays,
+            status: credit.status,
+          },
+        });
+      }
     }
 
     return NextResponse.json({ 

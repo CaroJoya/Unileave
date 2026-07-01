@@ -1,8 +1,7 @@
-// app/api/principal/comp-off-credits/route.ts - NEW FILE
+// app/api/principal/comp-off-credits/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
-import { approveCompOffCredit, rejectCompOffCredit } from "@/lib/services/comp-off-service";
 import { createNotification } from "@/lib/services/notification-service";
 import { NotificationType } from "@/lib/constants/notification-types";
 
@@ -161,22 +160,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Credit is ${credit.status}, not pending approval` }, { status: 400 });
     }
 
-    let result;
     let notificationMessage: string;
     let notificationType: NotificationType;
 
     if (action === 'approve') {
-      result = await approveCompOffCredit(creditId, principalId, principalData.name, remark);
+      // ✅ APPROVE: Set status to 'active'
+      await rtdb.ref(`compOffCredits/${creditId}`).update({
+        status: 'active',
+        approvedBy: principalId,
+        approvedByName: principalData.name,
+        approvalRemark: remark || null,
+        updatedAt: new Date().toISOString(),
+      });
+      
       notificationMessage = `Your comp-off credit request for ${credit.creditedDays} day(s) has been approved by Principal ${principalData.name}.`;
       notificationType = NotificationType.COMPOFF_APPROVED;
     } else {
-      result = await rejectCompOffCredit(creditId, principalId, principalData.name, remark);
+      // ✅ REJECT: Set status to 'rejected'
+      await rtdb.ref(`compOffCredits/${creditId}`).update({
+        status: 'rejected',
+        approvedBy: principalId,
+        approvedByName: principalData.name,
+        approvalRemark: remark,
+        updatedAt: new Date().toISOString(),
+      });
+      
       notificationMessage = `Your comp-off credit request for ${credit.creditedDays} day(s) has been rejected by Principal ${principalData.name}. Reason: ${remark}`;
       notificationType = NotificationType.COMPOFF_REJECTED;
-    }
-
-    if (!result.success) {
-      return NextResponse.json({ error: result.error || "Failed to process credit" }, { status: 500 });
     }
 
     // ============ NOTIFY APPLICANT ============

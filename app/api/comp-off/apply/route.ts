@@ -1,17 +1,10 @@
-// app/api/comp-off/apply/route.ts - COMPLETE FIXED FILE
+// app/api/comp-off/apply/route.ts - COMPLETE FIXED VERSION (ESLint fixed)
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { determineApprover, getStatusForApprover } from "@/lib/utils/routing";
-import type { LeaveRequest, LeaveStatus } from "@/types/leave";
+import type { LeaveStatus } from "@/types/leave";
 import type { Role } from "@/types/roles";
-
-interface ExtendedLeaveRequest extends LeaveRequest {
-  compOffCreditsUsed?: {
-    creditId: string;
-    daysUsed: number;
-  };
-}
 
 interface CompOffCredit {
   id: string;
@@ -125,6 +118,7 @@ export async function POST(request: Request) {
       reason,
     } = body;
 
+    // ✅ Validation
     if (!creditId) {
       return NextResponse.json({ error: "Credit ID is required" }, { status: 400 });
     }
@@ -151,6 +145,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // ✅ Fetch and validate credit
     const creditSnapshot = await rtdb.ref(`compOffCredits/${creditId}`).once("value");
     const credit = creditSnapshot.val() as CompOffCredit | null;
 
@@ -165,6 +160,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // ✅ Check credit status - must be 'active'
     if (credit.status !== "active") {
       return NextResponse.json(
         { error: `Credit is ${credit.status}. Cannot use.` },
@@ -182,6 +178,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // ✅ Check expiry
     const expiryDate = new Date(credit.expiryDate);
     const today = new Date();
     if (expiryDate < today) {
@@ -191,6 +188,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // ✅ Determine approver
     const userRoles = userData.roles as Role[];
     const route = determineApprover(userRoles, "CO");
     const approverRole = route.firstApproverRole;
@@ -210,7 +208,15 @@ export async function POST(request: Request) {
     const status = getStatusForApprover(approverRole) as LeaveStatus;
     const requestId = `leave_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
-    const leaveRequest: ExtendedLeaveRequest = {
+    // ✅ Update credit status to 'pending_usage' to prevent double booking
+    await rtdb.ref(`compOffCredits/${creditId}`).update({
+      status: "pending_usage",
+      pendingDays: daysToUse,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // ✅ Create leave request
+    const leaveRequest = {
       id: requestId,
       applicantId: userId,
       applicantName: userData.name,
@@ -244,12 +250,7 @@ export async function POST(request: Request) {
 
     await rtdb.ref(`leaveRequests/${requestId}`).set(leaveRequest);
 
-    await rtdb.ref(`compOffCredits/${creditId}`).update({
-      status: "pending_usage",
-      pendingDays: daysToUse,
-      updatedAt: new Date().toISOString(),
-    });
-
+    // ✅ Log usage
     const usageId = `co_usage_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`compOffUsage/${usageId}`).set({
       id: usageId,
@@ -263,6 +264,7 @@ export async function POST(request: Request) {
       status: "pending",
     });
 
+    // ✅ Log approval action
     const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
@@ -278,6 +280,7 @@ export async function POST(request: Request) {
       compOffCreditId: creditId,
     });
 
+    // ✅ Send notification to approver
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,

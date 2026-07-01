@@ -1,4 +1,4 @@
-// app/api/registrar/overwork/[id]/approve/route.ts - FIXED
+// app/api/registrar/overwork/[id]/approve/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -71,26 +71,31 @@ export async function POST(
       return NextResponse.json({ error: "Overwork entry is not pending approval" }, { status: 400 });
     }
 
+    // ✅ Get conversion config
     const configSnapshot = await rtdb.ref("overworkConfig/overwork_config").once("value");
     const config = configSnapshot.val() as OverworkConfig | null;
     const conversionHours = config?.conversionHours || 5;
 
+    // ✅ Calculate earned leave days
     const earnedLeaveDays = Math.floor(entry.hours / conversionHours);
 
+    // ✅ Update overwork entry
     await rtdb.ref(`overworkEntries/${id}`).update({
       status: "approved",
       approvedBy: registrarId,
       approvedAt: new Date().toISOString(),
       convertedToLeave: earnedLeaveDays > 0,
       earnedLeaveDays: earnedLeaveDays > 0 ? earnedLeaveDays : null,
-      updatedAt: new Date().toISOString(),
     });
 
+    // ✅ CREATE COMP-OFF CREDIT if earnedLeaveDays > 0
+    let creditId = null;
     if (earnedLeaveDays > 0 && config?.autoConversionEnabled !== false) {
+      // ✅ Set expiry to 180 days from now
       const expiryDate = new Date();
-      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+      expiryDate.setDate(expiryDate.getDate() + 180);
       
-      const creditId = `co_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      creditId = `co_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       await rtdb.ref(`compOffCredits/${creditId}`).set({
         id: creditId,
         userId: entry.userId,
@@ -99,12 +104,21 @@ export async function POST(
         earnedDate: new Date().toISOString(),
         reason: `Auto-converted from ${entry.hours} overwork hours on ${new Date(entry.workDate).toLocaleDateString()}`,
         expiryDate: expiryDate.toISOString(),
-        status: "active",
+        status: "pending_approval", // ✅ Goes to pending for Registrar approval
+        hoursWorked: entry.hours,
+        overworkEntryId: id,
+        approvedBy: null,
+        approvedByName: null,
+        approvalRemark: null,
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
+
+      console.log(`✅ Comp-off credit created: ${creditId} for ${earnedLeaveDays} days`);
     }
 
-    const logId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    // ✅ Log approval
+    const logId = `log_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
       overworkEntryId: id,
@@ -116,9 +130,12 @@ export async function POST(
       oldStatus: "pending",
       newStatus: "approved",
       actionAt: new Date().toISOString(),
+      compOffCreditId: creditId,
+      earnedLeaveDays: earnedLeaveDays,
     });
 
-    const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    // ✅ Audit log
+    const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`auditLogs/${auditLogId}`).set({
       id: auditLogId,
       userId: registrarId,
@@ -131,11 +148,13 @@ export async function POST(
       details: JSON.stringify({
         hours: entry.hours,
         earnedLeaveDays,
+        compOffCreditId: creditId,
       }),
       createdAt: new Date().toISOString(),
     });
 
-    const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    // ✅ Send notification
+    const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     await rtdb.ref(`notifications/${notificationId}`).set({
       id: notificationId,
       userId: entry.userId,
@@ -143,10 +162,21 @@ export async function POST(
       message: `Your overwork entry of ${entry.hours} hours has been approved by Registrar.${earnedLeaveDays > 0 ? ` You earned ${earnedLeaveDays} comp-off day(s).` : ''}`,
       type: "overwork_approved",
       isRead: false,
+      metadata: JSON.stringify({
+        overworkEntryId: id,
+        hours: entry.hours,
+        earnedLeaveDays: earnedLeaveDays,
+        compOffCreditId: creditId,
+        status: creditId ? "pending_approval" : "none",
+      }),
       createdAt: new Date().toISOString(),
     });
 
-    return NextResponse.json({ success: true, earnedLeaveDays });
+    return NextResponse.json({ 
+      success: true, 
+      earnedLeaveDays,
+      compOffCreditId: creditId,
+    });
   } catch (error) {
     console.error("Error approving overwork:", error);
     return NextResponse.json({ error: "Failed to approve overwork" }, { status: 500 });

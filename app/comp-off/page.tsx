@@ -1,4 +1,4 @@
-// app/comp-off/page.tsx
+// app/comp-off/page.tsx - COMPLETE FIXED VERSION (Badge errors fixed)
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -11,10 +11,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CalendarIcon, Award, AlertTriangle } from "lucide-react";
+import { CalendarIcon, Award, AlertTriangle, CheckCircle, XCircle, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 interface CompOffCredit {
   id: string;
@@ -23,8 +24,9 @@ interface CompOffCredit {
   earnedDate: string;
   reason: string;
   expiryDate: string;
-  status: "active" | "expired" | "fully_used";
+  status: "active" | "expired" | "fully_used" | "pending_approval" | "pending_usage" | "rejected";
   createdAt: string;
+  hoursWorked?: number;
 }
 
 interface CompOffUsage {
@@ -34,6 +36,7 @@ interface CompOffUsage {
   daysUsed: number;
   usedAt: string;
   reason: string;
+  status: "pending" | "approved" | "rejected";
 }
 
 export default function CompOffPage() {
@@ -89,7 +92,7 @@ export default function CompOffPage() {
     }
   }, []);
 
-  // Fetch data when user is available - using a flag to prevent double fetch
+  // Fetch data when user is available
   useEffect(() => {
     let isMounted = true;
     
@@ -170,7 +173,6 @@ export default function CompOffPage() {
       setShowApplyDialog(false);
       setSelectedCredit(null);
       
-      // ✅ SMART REDIRECT: Refresh the page to show updated credits
       await fetchData();
       
       toast.success("📊 Comp-off credits updated");
@@ -182,11 +184,57 @@ export default function CompOffPage() {
     }
   };
 
-  const activeCredits = credits.filter((c) => c.status === "active");
+  // ✅ Get status badge - FIXED: No 'warning' variant
+  const getStatusBadge = (credit: CompOffCredit) => {
+    const isExpired = new Date(credit.expiryDate) < new Date();
+    const availableDays = getAvailableDays(credit);
+    
+    // Check if credit is actually expired (even if status says active)
+    if (isExpired && credit.status === "active") {
+      return <Badge variant="destructive">Expired</Badge>;
+    }
+    
+    switch (credit.status) {
+      case "active":
+        if (availableDays <= 0) {
+          return <Badge variant="secondary">Fully Used</Badge>;
+        }
+        const daysUntilExpiry = getDaysUntilExpiry(credit.expiryDate);
+        if (daysUntilExpiry <= 30 && daysUntilExpiry > 0) {
+          // ✅ FIXED: Use 'secondary' with custom className instead of 'warning'
+          return <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200">Expiring Soon</Badge>;
+        }
+        return <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-200 border-green-200">Active</Badge>;
+      case "fully_used":
+        return <Badge variant="secondary">Fully Used</Badge>;
+      case "expired":
+        return <Badge variant="destructive">Expired</Badge>;
+      case "pending_approval":
+        // ✅ FIXED: Use 'secondary' with custom className instead of 'warning'
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200 border-yellow-200">Pending Approval</Badge>;
+      case "pending_usage":
+        // ✅ FIXED: Use 'secondary' with custom className instead of 'warning'
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800 hover:bg-blue-200 border-blue-200">Pending Usage</Badge>;
+      case "rejected":
+        return <Badge variant="destructive">Rejected</Badge>;
+      default:
+        return <Badge variant="outline">{credit.status}</Badge>;
+    }
+  };
+
+  const activeCredits = credits.filter((c) => {
+    const isActive = c.status === "active";
+    const isNotExpired = new Date(c.expiryDate) >= new Date();
+    const hasAvailable = getAvailableDays(c) > 0;
+    return isActive && isNotExpired && hasAvailable;
+  });
+  
   const totalAvailableDays = activeCredits.reduce((sum, c) => sum + getAvailableDays(c), 0);
-  const expiringCredits = activeCredits.filter(
-    (c) => getDaysUntilExpiry(c.expiryDate) <= 30 && getDaysUntilExpiry(c.expiryDate) > 0
-  );
+  
+  const expiringCredits = credits.filter((c) => {
+    const daysUntilExpiry = getDaysUntilExpiry(c.expiryDate);
+    return c.status === "active" && daysUntilExpiry <= 30 && daysUntilExpiry > 0 && getAvailableDays(c) > 0;
+  });
 
   if (authLoading || loading) {
     return (
@@ -258,39 +306,30 @@ export default function CompOffPage() {
           {credits.map((credit) => {
             const availableDays = getAvailableDays(credit);
             const daysUntilExpiry = getDaysUntilExpiry(credit.expiryDate);
-            const isExpiringSoon = daysUntilExpiry <= 30 && daysUntilExpiry > 0 && credit.status === "active";
-            const isExpired = credit.status === "expired" || daysUntilExpiry <= 0;
+            const isExpired = credit.status === "expired" || new Date(credit.expiryDate) < new Date();
+            const isExpiringSoon = !isExpired && daysUntilExpiry <= 30 && daysUntilExpiry > 0 && credit.status === "active";
+            const progress = credit.creditedDays > 0 ? (credit.usedDays / credit.creditedDays) * 100 : 0;
+            const isPending = credit.status === "pending_approval" || credit.status === "pending_usage";
 
             return (
-              <Card key={credit.id} className={cn(isExpiringSoon && "border-amber-300 bg-amber-50/30")}>
+              <Card key={credit.id} className={cn(
+                isExpired && "opacity-60",
+                isExpiringSoon && "border-amber-300 bg-amber-50/30"
+              )}>
                 <CardContent className="p-6">
                   <div className="flex flex-wrap justify-between items-start gap-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <Award
                           className={cn(
                             "h-5 w-5",
-                            credit.status === "active" ? "text-teal-600" : "text-gray-400"
+                            credit.status === "active" && !isExpired ? "text-teal-600" : "text-gray-400"
                           )}
                         />
                         <h3 className="font-semibold">
                           {credit.creditedDays} Day{credit.creditedDays !== 1 ? "s" : ""} Credit
                         </h3>
-                        {credit.status === "active" && availableDays > 0 && (
-                          <span className="text-xs bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full">
-                            {availableDays.toFixed(1)} Available
-                          </span>
-                        )}
-                        {credit.status === "fully_used" && (
-                          <span className="text-xs bg-gray-100 text-gray-800 px-2 py-0.5 rounded-full">
-                            Fully Used
-                          </span>
-                        )}
-                        {isExpired && (
-                          <span className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full">
-                            Expired
-                          </span>
-                        )}
+                        {getStatusBadge(credit)}
                       </div>
 
                       <p className="text-sm text-muted-foreground mb-2">
@@ -301,9 +340,17 @@ export default function CompOffPage() {
                         <span className="text-muted-foreground">
                           Earned: {new Date(credit.earnedDate).toLocaleDateString()}
                         </span>
-                        <span className="text-muted-foreground">
+                        <span className={cn(
+                          "text-muted-foreground",
+                          isExpired && "text-red-600"
+                        )}>
                           Expires: {new Date(credit.expiryDate).toLocaleDateString()}
                         </span>
+                        {credit.hoursWorked && (
+                          <span className="text-muted-foreground">
+                            Hours Worked: {credit.hoursWorked}
+                          </span>
+                        )}
                       </div>
 
                       {isExpiringSoon && !isExpired && (
@@ -313,24 +360,40 @@ export default function CompOffPage() {
                         </div>
                       )}
 
+                      {isPending && (
+                        <div className="mt-2 flex items-center gap-1 text-blue-600 text-sm">
+                          <Clock className="h-4 w-4" />
+                          <span>Awaiting approval</span>
+                        </div>
+                      )}
+
                       <div className="mt-3">
                         <div className="flex items-center gap-2 text-sm">
                           <span className="text-muted-foreground">Usage:</span>
                           <div className="flex-1 max-w-xs bg-gray-200 rounded-full h-2">
                             <div
-                              className="bg-teal-500 h-2 rounded-full transition-all"
-                              style={{ width: `${(credit.usedDays / credit.creditedDays) * 100}%` }}
+                              className={cn(
+                                "h-2 rounded-full transition-all",
+                                progress > 80 ? "bg-red-500" : "bg-teal-500"
+                              )}
+                              style={{ width: `${Math.min(progress, 100)}%` }}
                             />
                           </div>
                           <span className="font-medium">
                             {credit.usedDays} / {credit.creditedDays} days
                           </span>
+                          <span className="text-xs text-muted-foreground">
+                            ({availableDays.toFixed(1)} remaining)
+                          </span>
                         </div>
                       </div>
                     </div>
 
-                    {credit.status === "active" && availableDays > 0 && (
-                      <Button onClick={() => openApplyDialog(credit)} className="bg-teal-600 hover:bg-teal-700">
+                    {credit.status === "active" && !isExpired && availableDays > 0 && (
+                      <Button 
+                        onClick={() => openApplyDialog(credit)} 
+                        className="bg-teal-600 hover:bg-teal-700 shrink-0"
+                      >
                         Apply for Leave
                       </Button>
                     )}
@@ -497,9 +560,22 @@ export default function CompOffPage() {
                         <td className="p-3">{usage.daysUsed} day(s)</td>
                         <td className="p-3">{usage.reason || "-"}</td>
                         <td className="p-3">
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            Approved
-                          </span>
+                          {usage.status === "approved" ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Approved
+                            </span>
+                          ) : usage.status === "rejected" ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              <XCircle className="h-3 w-3 mr-1" />
+                              Rejected
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Pending
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
