@@ -200,6 +200,7 @@ export async function restoreLeaveBalance(
 
 /**
  * Check if a leave type deducts balance
+ * ✅ FIX: OD (On Duty) does NOT deduct balance
  */
 export async function doesLeaveTypeDeductBalance(leaveType: string): Promise<boolean> {
   const rtdb = getRTDB();
@@ -214,9 +215,19 @@ export async function doesLeaveTypeDeductBalance(leaveType: string): Promise<boo
         return type.deductsBalance !== false;
       }
     }
+    
+    // ✅ CRITICAL FIX: OD explicitly returns false
+    if (leaveType === 'OD') {
+      return false;
+    }
+    
     return true; // Default to true if not found
   } catch (error) {
     console.error('Error checking leave type deducts balance:', error);
+    // ✅ Fallback: OD does not deduct
+    if (leaveType === 'OD') {
+      return false;
+    }
     return true;
   }
 }

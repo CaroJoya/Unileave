@@ -227,21 +227,20 @@ export async function PUT(
       );
     }
 
-    // ✅ PARSE REQUEST BODY
     // ✅ PARSE REQUEST BODY WITH PROPER TYPE
-let body: EditRequestData;
-try {
-  const rawBody = await request.text();
-  console.log("📝 Raw request body:", rawBody);
-  body = JSON.parse(rawBody) as EditRequestData;
-  console.log("📝 Parsed body:", JSON.stringify(body, null, 2));
-} catch (parseError) {
-  console.error("Error parsing request body:", parseError);
-  return NextResponse.json(
-    { error: "Invalid request body" },
-    { status: 400 }
-  );
-}
+    let body: EditRequestData;
+    try {
+      const rawBody = await request.text();
+      console.log("📝 Raw request body:", rawBody);
+      body = JSON.parse(rawBody) as EditRequestData;
+      console.log("📝 Parsed body:", JSON.stringify(body, null, 2));
+    } catch (parseError) {
+      console.error("Error parsing request body:", parseError);
+      return NextResponse.json(
+        { error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
 
     // ✅ EXTRACT VALUES WITH DEFAULT FALLBACKS
     const finalLeaveType = body.leaveType || existingRequest.leaveType;
@@ -537,22 +536,20 @@ try {
     try {
       console.log("🔄 Updating leave request...");
       
-      // In the edit route, around line 430-450
-const updateData = {
-  leaveType: finalLeaveType as LeaveType,
-  startDate: new Date(finalStartDate).toISOString(),
-  endDate: new Date(finalEndDate).toISOString(),
-  totalDays: finalTotalDays,
-  isHalfDay: finalIsHalfDay,
-  halfDaySession: finalHalfDaySession,
-  reason: finalReason || "",
-  alternateFacultyName: finalAlternateFacultyName ? finalAlternateFacultyName.trim() : existingRequest.alternateFacultyName,
-  // ✅ FIX: Ensure attachmentUrl is never undefined
-  attachmentUrl: finalAttachmentUrl !== undefined && finalAttachmentUrl !== null ? finalAttachmentUrl : null,
-  status: newStatus,
-  revisionCount: newRevisionCount,
-  updatedAt: new Date().toISOString(),
-};
+      const updateData = {
+        leaveType: finalLeaveType as LeaveType,
+        startDate: new Date(finalStartDate).toISOString(),
+        endDate: new Date(finalEndDate).toISOString(),
+        totalDays: finalTotalDays,
+        isHalfDay: finalIsHalfDay,
+        halfDaySession: finalHalfDaySession,
+        reason: finalReason || "",
+        alternateFacultyName: finalAlternateFacultyName ? finalAlternateFacultyName.trim() : existingRequest.alternateFacultyName,
+        attachmentUrl: finalAttachmentUrl !== undefined && finalAttachmentUrl !== null ? finalAttachmentUrl : null,
+        status: newStatus,
+        revisionCount: newRevisionCount,
+        updatedAt: new Date().toISOString(),
+      };
 
       console.log("📊 Update data:", JSON.stringify(updateData, null, 2));
       
@@ -596,45 +593,41 @@ const updateData = {
     }
 
     // ============ SEND EMAIL NOTIFICATIONS ============
-// app/api/leave/request/[id]/edit/route.ts - FIXED (Line ~620)
-// Find this section and update it:
 
-// ============ SEND EMAIL NOTIFICATIONS ============
+    // If resubmitted after revision, notify approver
+    if (existingRequest.status === "Pending_Revision") {
+      try {
+        console.log("🔄 Sending revision notification email...");
+        const userRoles = existingRequest.applicantRoles as Role[];
+        const route = determineApprover(userRoles, finalLeaveType);
+        const approverRole = route.firstApproverRole;
+        const approverId = await getApproverUserId(
+          approverRole,
+          userData.collegeId,
+          userData.departmentId
+        );
 
-// If resubmitted after revision, notify approver
-if (existingRequest.status === "Pending_Revision") {
-  try {
-    console.log("🔄 Sending revision notification email...");
-    const userRoles = existingRequest.applicantRoles as Role[];
-    const route = determineApprover(userRoles, finalLeaveType);
-    const approverRole = route.firstApproverRole;
-    const approverId = await getApproverUserId(
-      approverRole,
-      userData.collegeId,
-      userData.departmentId
-    );
+        if (approverId) {
+          const approverSnapshot = await rtdb.ref(`users/${approverId}`).once("value");
+          const approverData = approverSnapshot.val() as { email: string } | null;
 
-    if (approverId) {
-      const approverSnapshot = await rtdb.ref(`users/${approverId}`).once("value");
-      const approverData = approverSnapshot.val() as { email: string } | null;
-
-      if (approverData?.email) {
-        // ✅ FIXED: Only pass 1 argument to getResubmittedEmail
-        const emailHtml = getResubmittedEmail(userData.name);
-        
-        sendEmail(
-          approverData.email,
-          `Resubmitted: Leave Request from ${userData.name}`,
-          emailHtml
-        ).catch(err => console.error("❌ Failed to send resubmission email:", err));
+          if (approverData?.email) {
+            const emailHtml = getResubmittedEmail(userData.name);
+            
+            sendEmail(
+              approverData.email,
+              `Resubmitted: Leave Request from ${userData.name}`,
+              emailHtml
+            ).catch(err => console.error("❌ Failed to send resubmission email:", err));
+          }
+        }
+        console.log("✅ Revision notification email sent");
+      } catch (emailError) {
+        console.error("Error sending email:", emailError);
+        // Non-critical, continue
       }
     }
-    console.log("✅ Revision notification email sent");
-  } catch (emailError) {
-    console.error("Error sending email:", emailError);
-    // Non-critical, continue
-  }
-}
+
     // ============ RETURN RESPONSE ============
 
     console.log("✅ Edit completed successfully");

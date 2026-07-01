@@ -271,8 +271,7 @@ export default function StatusPage() {
   }, [requests, activeTab, leaveTypeFilter, dateRange]);
 
   // ============ CANCEL HANDLER ============
-// app/status/page.tsx - Updated handleCancelRequest function
-// Find the existing handleCancelRequest function and replace it with this:
+// In app/status/page.tsx - Update the handleCancelRequest function
 
 const handleCancelRequest = async () => {
   if (!cancellingRequest) return;
@@ -290,7 +289,7 @@ const handleCancelRequest = async () => {
     
     const result = await response.json();
     
-    // Show detailed success message with balance info
+    // ✅ FIXED: Show detailed success message with balance info
     if (result.balanceRestored) {
       toast.success(`✅ ${result.message}`);
     } else {
@@ -304,7 +303,7 @@ const handleCancelRequest = async () => {
     await fetchRequests();
     await fetchLeaveTypesAndBalances();
     
-    // Force a UI update
+    // ✅ Force a UI update
     toast.success("📊 Dashboard balance updated");
     
   } catch (error) {
@@ -314,7 +313,6 @@ const handleCancelRequest = async () => {
     setEditLoading(false);
   }
 };
-
 // ============ EDIT HANDLER - FIXED ============
 const handleEditRequest = async () => {
   if (!editingRequest) return;

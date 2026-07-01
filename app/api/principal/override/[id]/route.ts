@@ -16,7 +16,7 @@ interface LeaveRequest {
   totalDays: number;
   status: string;
   approvedBy?: string;
-  collegeId?: string; // ✅ Added collegeId
+  collegeId?: string;
 }
 
 interface User {
@@ -139,7 +139,7 @@ export async function POST(
 
     const collegeId = leaveCollegeId || principalData.collegeId || "";
 
-    // ✅ ALWAYS restore balance
+    // ✅ ALWAYS restore balance (balance restoration is mandatory for override)
     const academicYear = getCurrentAcademicYear();
     const balanceKey = `${leaveRequest.applicantId}_${academicYear}`;
     const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
@@ -157,6 +157,54 @@ export async function POST(
       });
       
       console.log(`✅ Balance restored for user ${leaveRequest.applicantId}, leave type ${leaveRequest.leaveType}`);
+    } else {
+      console.log(`⚠️ Balance not found for user ${leaveRequest.applicantId}, creating balance...`);
+      // Create balance with restored days
+      const userSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
+      const userData = userSnapshot.val() as { roles?: string[] } | null;
+      const userRole = userData?.roles?.[0] || "faculty";
+      
+      const defaultQuotas: Record<string, Record<string, number>> = {
+        faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
+        lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
+        office_staff: { CL: 20, EL: 10, ML: 15, CO: 8 },
+        hod: { CL: 24, EL: 15, ML: 15, CO: 10 },
+        registrar: { CL: 20, EL: 12, ML: 15, CO: 10 },
+        principal: { CL: 30, EL: 20, ML: 15, CO: 12 },
+        head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
+      };
+      
+      const quotas = defaultQuotas[userRole] || defaultQuotas.faculty;
+      const newBalances: Record<string, { allocated: number; used: number; pending: number; available: number }> = {};
+      
+      for (const [type, quota] of Object.entries(quotas)) {
+        newBalances[type] = {
+          allocated: quota,
+          used: 0,
+          pending: 0,
+          available: quota,
+        };
+      }
+      
+      if (!newBalances[leaveRequest.leaveType]) {
+        newBalances[leaveRequest.leaveType] = {
+          allocated: 0,
+          used: 0,
+          pending: 0,
+          available: 0,
+        };
+      }
+      
+      newBalances[leaveRequest.leaveType].available += leaveRequest.totalDays;
+      
+      await balanceRef.set({
+        userId: leaveRequest.applicantId,
+        academicYear,
+        balances: newBalances,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      console.log(`✅ Balance created for user ${leaveRequest.applicantId}`);
     }
 
     await rtdb.ref(`leaveRequests/${id}`).update({
@@ -248,18 +296,18 @@ export async function POST(
     const applicantEmailData = applicantEmailSnapshot.val() as User | null;
 
     if (applicantEmailData?.email) {
-      await sendEmail({
-        to: applicantEmailData.email,
-        subject: `Leave Request Overridden - ${leaveRequest.leaveType}`,
-        html: getLeaveRejectedEmail(
+      await sendEmail(
+        applicantEmailData.email,
+        `Leave Request Overridden - ${leaveRequest.leaveType}`,
+        getLeaveRejectedEmail(
           leaveRequest.applicantName,
           leaveRequest.leaveType,
           leaveRequest.startDate,
           leaveRequest.endDate,
           `Your approved leave request has been overridden by the Principal. Reason: ${reason}`,
           principalData.name
-        ),
-      });
+        )
+      ).catch(err => console.error("❌ Failed to send override email:", err));
     }
 
     return NextResponse.json({ success: true });

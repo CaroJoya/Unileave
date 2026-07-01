@@ -1,4 +1,4 @@
-// app/api/registrar/leave/[id]/reject/route.ts - COMPLETE UPDATED VERSION
+// app/api/hod/leave/[id]/reject/route.ts - COMPLETE UPDATED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -57,13 +57,13 @@ export async function POST(
     }
 
     const decodedToken = await auth.verifySessionCookie(sessionCookie);
-    const registrarId = decodedToken.uid;
+    const hodId = decodedToken.uid;
 
-    const registrarSnapshot = await rtdb.ref(`users/${registrarId}`).once("value");
-    const registrarData = registrarSnapshot.val() as User | null;
+    const hodSnapshot = await rtdb.ref(`users/${hodId}`).once("value");
+    const hodData = hodSnapshot.val() as User | null;
 
-    if (!registrarData?.roles?.includes("registrar")) {
-      return NextResponse.json({ error: "Not authorized - Registrar only" }, { status: 403 });
+    if (!hodData?.roles?.includes("hod")) {
+      return NextResponse.json({ error: "Not authorized - HOD only" }, { status: 403 });
     }
 
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
@@ -73,8 +73,12 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    if (leaveRequest.status !== "Pending_Registrar") {
-      return NextResponse.json({ error: "Request is not pending registrar approval" }, { status: 400 });
+    if (leaveRequest.departmentId !== hodData.departmentId) {
+      return NextResponse.json({ error: "Not authorized for this department" }, { status: 403 });
+    }
+
+    if (leaveRequest.status !== "Pending_HOD") {
+      return NextResponse.json({ error: "Request is not pending HOD approval" }, { status: 400 });
     }
 
     // ============ BALANCE RESTORATION (CONDITIONAL) ============
@@ -105,7 +109,7 @@ export async function POST(
     // ============ UPDATE REQUEST ============
 
     await rtdb.ref(`leaveRequests/${id}`).update({
-      status: "Rejected_Registrar",
+      status: "Rejected_HOD",
       balanceRestored: balanceRestored,
       balanceRestoreError: balanceError,
       updatedAt: new Date().toISOString(),
@@ -117,13 +121,13 @@ export async function POST(
     await rtdb.ref(`approvalLogs/${logId}`).set({
       id: logId,
       leaveRequestId: id,
-      actionBy: registrarId,
-      actionByName: registrarData.name,
-      actionRole: "registrar",
+      actionBy: hodId,
+      actionByName: hodData.name,
+      actionRole: "hod",
       action: "REJECT",
       remark: reason,
-      oldStatus: "Pending_Registrar",
-      newStatus: "Rejected_Registrar",
+      oldStatus: "Pending_HOD",
+      newStatus: "Rejected_HOD",
       actionAt: new Date().toISOString(),
     });
 
@@ -134,7 +138,7 @@ export async function POST(
       id: notificationId,
       userId: leaveRequest.applicantId,
       title: "Leave Request Rejected",
-      message: `Your ${leaveRequest.leaveType} leave request has been rejected by Registrar. Reason: ${reason}`,
+      message: `Your ${leaveRequest.leaveType} leave request has been rejected by HOD. Reason: ${reason}`,
       type: "leave_rejected",
       isRead: false,
       metadata: JSON.stringify({
@@ -158,7 +162,7 @@ export async function POST(
         leaveRequest.startDate,
         leaveRequest.endDate,
         reason,
-        registrarData.name
+        hodData.name
       );
       
       await sendEmail(

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import type { LeaveBalancesDoc, LeaveBalance } from "@/types/leave";
 
+// ✅ CO is now included in DEFAULT_QUOTAS
 const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
   faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
   lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
