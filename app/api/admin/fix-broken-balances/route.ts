@@ -1,4 +1,4 @@
-// app/api/admin/fix-broken-balances/route.ts
+// app/api/admin/fix-broken-balances/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -100,9 +100,10 @@ export async function POST() {
             const newPending = Math.max(0, (currentBalance.pending || 0) - request.totalDays);
             const newAvailable = (currentBalance.available || 0) + request.totalDays;
             
+            // ✅ FIXED: Use / instead of . for Firebase path
             await balanceRef.update({
-              [`balances.${request.leaveType}.pending`]: newPending,
-              [`balances.${request.leaveType}.available`]: newAvailable,
+              [`balances/${request.leaveType}/pending`]: newPending,
+              [`balances/${request.leaveType}/available`]: newAvailable,
               updatedAt: new Date().toISOString(),
             });
             

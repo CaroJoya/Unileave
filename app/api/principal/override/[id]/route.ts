@@ -106,7 +106,6 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // ✅ CRITICAL FIX: Validate leave request belongs to Principal's college
     const applicantSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
     const applicantData = applicantSnapshot.val() as { collegeId: string } | null;
     const leaveCollegeId = applicantData?.collegeId || leaveRequest.collegeId;
@@ -139,7 +138,6 @@ export async function POST(
 
     const collegeId = leaveCollegeId || principalData.collegeId || "";
 
-    // ✅ ALWAYS restore balance (balance restoration is mandatory for override)
     const academicYear = getCurrentAcademicYear();
     const balanceKey = `${leaveRequest.applicantId}_${academicYear}`;
     const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
@@ -150,16 +148,16 @@ export async function POST(
       const currentPending = balanceDoc.balances[leaveRequest.leaveType].pending || 0;
       const currentAvailable = balanceDoc.balances[leaveRequest.leaveType].available || 0;
       
+      // ✅ FIXED: Use / instead of . for Firebase path
       await balanceRef.update({
-        [`balances.${leaveRequest.leaveType}.pending`]: Math.max(0, currentPending - leaveRequest.totalDays),
-        [`balances.${leaveRequest.leaveType}.available`]: currentAvailable + leaveRequest.totalDays,
+        [`balances/${leaveRequest.leaveType}/pending`]: Math.max(0, currentPending - leaveRequest.totalDays),
+        [`balances/${leaveRequest.leaveType}/available`]: currentAvailable + leaveRequest.totalDays,
         updatedAt: new Date().toISOString(),
       });
       
       console.log(`✅ Balance restored for user ${leaveRequest.applicantId}, leave type ${leaveRequest.leaveType}`);
     } else {
       console.log(`⚠️ Balance not found for user ${leaveRequest.applicantId}, creating balance...`);
-      // Create balance with restored days
       const userSnapshot = await rtdb.ref(`users/${leaveRequest.applicantId}`).once("value");
       const userData = userSnapshot.val() as { roles?: string[] } | null;
       const userRole = userData?.roles?.[0] || "faculty";

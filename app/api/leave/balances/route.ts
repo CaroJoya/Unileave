@@ -38,11 +38,8 @@ export async function GET() {
     }
 
     const userRole = userData.roles?.[0] || "faculty";
-    
-    // ✅ FIX: Ensure balance is created with correct quotas
     const balanceData = await getOrCreateLeaveBalance(userId, userRole, academicYear);
 
-    // ✅ FIX: Ensure the response has no-cache headers
     const response = NextResponse.json({
       success: true,
       balances: balanceData.balances,
@@ -145,8 +142,9 @@ export async function PUT(request: Request) {
       };
     }
 
+    // ✅ FIXED: Use / instead of . for Firebase path
     await balanceRef.update({
-      [`balances.${leaveType}`]: updatedBalance,
+      [`balances/${leaveType}`]: updatedBalance,
       updatedAt: new Date().toISOString(),
     });
 

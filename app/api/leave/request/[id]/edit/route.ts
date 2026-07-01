@@ -195,7 +195,6 @@ export async function PUT(
     const userId = decodedToken.uid;
     console.log(`👤 User ID: ${userId}`);
 
-    // Get user data
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val() as UserData | null;
 
@@ -203,7 +202,6 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Get existing request
     const requestSnapshot = await rtdb.ref(`leaveRequests/${id}`).once("value");
     const existingRequest = requestSnapshot.val() as LeaveRequest | null;
 
@@ -211,7 +209,6 @@ export async function PUT(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
-    // Authorization check
     if (existingRequest.applicantId !== userId) {
       return NextResponse.json(
         { error: "Not authorized to edit this request" },
@@ -219,7 +216,6 @@ export async function PUT(
       );
     }
 
-    // Status check
     if (!EDITABLE_STATUSES.includes(existingRequest.status)) {
       return NextResponse.json(
         { error: "This request cannot be edited. It has already been approved or rejected." },
@@ -227,7 +223,6 @@ export async function PUT(
       );
     }
 
-    // ✅ PARSE REQUEST BODY WITH PROPER TYPE
     let body: EditRequestData;
     try {
       const rawBody = await request.text();
@@ -242,18 +237,15 @@ export async function PUT(
       );
     }
 
-    // ✅ EXTRACT VALUES WITH DEFAULT FALLBACKS
     const finalLeaveType = body.leaveType || existingRequest.leaveType;
     const finalIsHalfDay = body.isHalfDay !== undefined ? body.isHalfDay : existingRequest.isHalfDay;
     const finalHalfDaySession = body.halfDaySession !== undefined ? body.halfDaySession : existingRequest.halfDaySession;
     
-    // ✅ CRITICAL FIX: Ensure dates are always valid strings
     const todayStr = new Date().toISOString().split("T")[0];
     
     let finalStartDate = body.startDate || existingRequest.startDate || todayStr;
     let finalEndDate = body.endDate || existingRequest.endDate || finalStartDate;
     
-    // Ensure dates are in YYYY-MM-DD format
     if (finalStartDate.includes("T")) {
       finalStartDate = finalStartDate.split("T")[0];
     }
@@ -261,7 +253,6 @@ export async function PUT(
       finalEndDate = finalEndDate.split("T")[0];
     }
     
-    // If half-day, end date = start date
     if (finalIsHalfDay) {
       finalEndDate = finalStartDate;
     }
@@ -283,7 +274,6 @@ export async function PUT(
       isHalfDay: finalIsHalfDay,
     });
 
-    // ✅ GET LEAVE TYPE CONFIG
     const leaveTypeConfig = await getLeaveTypeConfig(finalLeaveType);
     if (!leaveTypeConfig) {
       return NextResponse.json(
@@ -292,7 +282,6 @@ export async function PUT(
       );
     }
 
-    // ✅ VALIDATE HALF DAY
     if (finalIsHalfDay && !leaveTypeConfig.allowHalfDay) {
       return NextResponse.json(
         { error: `Half-day leave is not allowed for ${finalLeaveType}`, field: "isHalfDay" },
@@ -307,7 +296,6 @@ export async function PUT(
       );
     }
 
-    // ✅ VALIDATE DATES
     try {
       const start = new Date(finalStartDate);
       const end = new Date(finalEndDate);
@@ -334,7 +322,6 @@ export async function PUT(
       );
     }
 
-    // ✅ VALIDATE ALTERNATE FACULTY NAME
     if (finalAlternateFacultyName && finalAlternateFacultyName.trim().length < 3) {
       return NextResponse.json(
         { error: "Alternate faculty name must be at least 3 characters", field: "alternateFacultyName" },
@@ -342,7 +329,6 @@ export async function PUT(
       );
     }
 
-    // ✅ VALIDATE ATTACHMENT
     if (leaveTypeConfig.requiresAttachment && !finalAttachmentUrl) {
       return NextResponse.json(
         { error: "Attachment is required for this leave type", field: "attachmentUrl" },
@@ -395,7 +381,6 @@ export async function PUT(
       }
     } catch (overlapError) {
       console.error("Error checking overlaps:", overlapError);
-      // Continue - don't block the edit if overlap check fails
     }
 
     // ============ UPDATE LEAVE BALANCE ============
@@ -417,23 +402,21 @@ export async function PUT(
         if (balanceDoc && balanceDoc.balances) {
           console.log("📊 Balance doc found");
           
-          // Remove from old leave type's pending
           if (leaveTypeChanged) {
             console.log(`🔄 Moving from ${existingRequest.leaveType} to ${finalLeaveType}`);
             const oldBalance = balanceDoc.balances[existingRequest.leaveType];
             if (oldBalance) {
               console.log(`📊 Old balance: pending=${oldBalance.pending}, available=${oldBalance.available}`);
+              // ✅ FIXED: Use / instead of . for Firebase path
               await balanceRef.update({
-                [`balances.${existingRequest.leaveType}.pending`]: Math.max(0, (oldBalance.pending || 0) - existingRequest.totalDays),
-                [`balances.${existingRequest.leaveType}.available`]: (oldBalance.available || 0) + existingRequest.totalDays,
+                [`balances/${existingRequest.leaveType}/pending`]: Math.max(0, (oldBalance.pending || 0) - existingRequest.totalDays),
+                [`balances/${existingRequest.leaveType}/available`]: (oldBalance.available || 0) + existingRequest.totalDays,
               });
             }
             
-            // Add to new leave type's pending
             const newBalance = balanceDoc.balances[finalLeaveType];
             if (newBalance) {
               console.log(`📊 New balance: pending=${newBalance.pending}, available=${newBalance.available}`);
-              // Check if enough available
               if (newBalance.available < finalTotalDays) {
                 return NextResponse.json(
                   { error: `Insufficient ${finalLeaveType} balance. Available: ${newBalance.available}, Requested: ${finalTotalDays}`, field: "balance" },
@@ -441,14 +424,14 @@ export async function PUT(
                 );
               }
               
+              // ✅ FIXED: Use / instead of . for Firebase path
               await balanceRef.update({
-                [`balances.${finalLeaveType}.pending`]: (newBalance.pending || 0) + finalTotalDays,
-                [`balances.${finalLeaveType}.available`]: (newBalance.available || 0) - finalTotalDays,
+                [`balances/${finalLeaveType}/pending`]: (newBalance.pending || 0) + finalTotalDays,
+                [`balances/${finalLeaveType}/available`]: (newBalance.available || 0) - finalTotalDays,
               });
             }
           } else if (daysChanged) {
             console.log(`🔄 Adjusting days by ${finalTotalDays - existingRequest.totalDays}`);
-            // Same leave type, adjust the difference
             const currentBalance = balanceDoc.balances[finalLeaveType];
             if (currentBalance) {
               const dayDifference = finalTotalDays - existingRequest.totalDays;
@@ -462,9 +445,10 @@ export async function PUT(
                 );
               }
               
+              // ✅ FIXED: Use / instead of . for Firebase path
               await balanceRef.update({
-                [`balances.${finalLeaveType}.pending`]: (currentBalance.pending || 0) + dayDifference,
-                [`balances.${finalLeaveType}.available`]: (currentBalance.available || 0) - dayDifference,
+                [`balances/${finalLeaveType}/pending`]: (currentBalance.pending || 0) + dayDifference,
+                [`balances/${finalLeaveType}/available`]: (currentBalance.available || 0) - dayDifference,
               });
             }
           }
@@ -475,7 +459,6 @@ export async function PUT(
       } catch (balanceError) {
         console.error("❌ Balance update failed:", balanceError);
         balanceUpdateSuccess = false;
-        // Continue with the edit, but log the error
       }
     }
 
@@ -484,7 +467,6 @@ export async function PUT(
     let newStatus: LeaveStatus = existingRequest.status;
     let newRevisionCount = existingRequest.revisionCount || 0;
 
-    // If resubmitting after revision
     if (existingRequest.status === "Pending_Revision") {
       try {
         console.log("🔄 Processing revision resubmission");
@@ -511,7 +493,6 @@ export async function PUT(
           currentApproverId: approverUserId,
         });
 
-        // Record revision resubmission
         const revisionId = `rev_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         await rtdb.ref(`revisionHistory/${revisionId}`).set({
           id: revisionId,
@@ -527,7 +508,6 @@ export async function PUT(
         console.log("✅ Revision resubmission processed");
       } catch (revisionError) {
         console.error("Error handling revision:", revisionError);
-        // Continue with the edit
       }
     }
 
@@ -589,12 +569,10 @@ export async function PUT(
       console.log("✅ Approval log created");
     } catch (logError) {
       console.error("Error logging action:", logError);
-      // Non-critical, continue
     }
 
     // ============ SEND EMAIL NOTIFICATIONS ============
 
-    // If resubmitted after revision, notify approver
     if (existingRequest.status === "Pending_Revision") {
       try {
         console.log("🔄 Sending revision notification email...");
@@ -624,7 +602,6 @@ export async function PUT(
         console.log("✅ Revision notification email sent");
       } catch (emailError) {
         console.error("Error sending email:", emailError);
-        // Non-critical, continue
       }
     }
 

@@ -127,9 +127,10 @@ async function restoreLeaveBalance(
     console.log(`📊 Current: pending=${currentBalance.pending}, available=${currentBalance.available}`);
     console.log(`📊 New: pending=${newPending}, available=${newAvailable}`);
 
+    // ✅ FIXED: Use / instead of . for Firebase path
     await balanceRef.update({
-      [`balances.${leaveType}.pending`]: newPending,
-      [`balances.${leaveType}.available`]: newAvailable,
+      [`balances/${leaveType}/pending`]: newPending,
+      [`balances/${leaveType}/available`]: newAvailable,
       updatedAt: new Date().toISOString(),
     });
 

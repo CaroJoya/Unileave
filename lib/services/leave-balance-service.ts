@@ -46,7 +46,6 @@ export async function getOrCreateLeaveBalance(
       requiresUpdate = true;
     }
 
-    // Enforce consistency for existing balances
     for (const [leaveType, quota] of Object.entries(roleQuota)) {
       if (!data.balances[leaveType]) {
         data.balances[leaveType] = { 
@@ -57,13 +56,10 @@ export async function getOrCreateLeaveBalance(
         };
         requiresUpdate = true;
       } else {
-        // Fix: If allocated is missing or 0, restore it
         const balance = data.balances[leaveType];
         if (balance.allocated === undefined || balance.allocated === 0) {
-          // Except for OD which legitimately has 0 allocated
           if (quota > 0) {
             balance.allocated = quota;
-            // ✅ FIX: Ensure used is not lost if it exists
             if (balance.used === undefined) balance.used = 0;
             if (balance.pending === undefined) balance.pending = 0;
             if (balance.available === undefined) balance.available = quota;
@@ -82,7 +78,6 @@ export async function getOrCreateLeaveBalance(
     return data;
   }
 
-  // Create new balance
   const balances: Record<string, LeaveBalance> = {};
   for (const [leaveType, quota] of Object.entries(roleQuota)) {
     balances[leaveType] = {
@@ -141,9 +136,10 @@ export async function deductLeaveBalance(
   const newPending = (currentBalance.pending || 0) + days;
   const newAvailable = currentBalance.available - days;
 
+  // ✅ FIXED: Use / instead of . for Firebase path
   await balanceRef.update({
-    [`balances.${leaveType}.pending`]: newPending,
-    [`balances.${leaveType}.available`]: newAvailable,
+    [`balances/${leaveType}/pending`]: newPending,
+    [`balances/${leaveType}/available`]: newAvailable,
     updatedAt: new Date().toISOString(),
   });
 
@@ -170,7 +166,6 @@ export async function restoreLeaveBalance(
   const balanceDoc = snapshot.val() as LeaveBalancesDoc | null;
 
   if (!balanceDoc) {
-    // If balance doesn't exist, create it with the restored days
     const userSnapshot = await rtdb.ref(`users/${userId}`).once('value');
     const userData = userSnapshot.val() as { roles?: string[] } | null;
     const userRole = userData?.roles?.[0] || 'faculty';
@@ -180,14 +175,14 @@ export async function restoreLeaveBalance(
       return { success: false, error: 'Failed to create leave balance' };
     }
     
-    // Add the restored days to the balance
     const currentBalance = newBalance.balances[leaveType] || { allocated: 0, used: 0, pending: 0, available: 0 };
     const balanceBefore = { ...currentBalance };
     const newAvailable = (currentBalance.available || 0) + days;
     const newPending = Math.max(0, (currentBalance.pending || 0) - days);
 
+    // ✅ FIXED: Use / instead of . for Firebase path
     await balanceRef.update({
-      [`balances.${leaveType}`]: {
+      [`balances/${leaveType}`]: {
         ...currentBalance,
         pending: newPending,
         available: newAvailable,
@@ -201,7 +196,6 @@ export async function restoreLeaveBalance(
 
   const currentBalance = balanceDoc.balances[leaveType];
   if (!currentBalance) {
-    // Create the leave type in the balance
     const newBalance: LeaveBalance = {
       allocated: 0,
       used: 0,
@@ -209,8 +203,9 @@ export async function restoreLeaveBalance(
       available: days,
     };
     
+    // ✅ FIXED: Use / instead of . for Firebase path
     await balanceRef.update({
-      [`balances.${leaveType}`]: newBalance,
+      [`balances/${leaveType}`]: newBalance,
       updatedAt: new Date().toISOString(),
     });
 
@@ -221,9 +216,10 @@ export async function restoreLeaveBalance(
   const newPending = Math.max(0, (currentBalance.pending || 0) - days);
   const newAvailable = (currentBalance.available || 0) + days;
 
+  // ✅ FIXED: Use / instead of . for Firebase path
   await balanceRef.update({
-    [`balances.${leaveType}/pending`]: newPending,
-    [`balances.${leaveType}/available`]: newAvailable,
+    [`balances/${leaveType}/pending`]: newPending,
+    [`balances/${leaveType}/available`]: newAvailable,
     updatedAt: new Date().toISOString(),
   });
 
@@ -246,7 +242,6 @@ export async function doesLeaveTypeDeductBalance(leaveType: string): Promise<boo
       }
     }
     
-    // CRITICAL FIX: OD explicitly returns false
     if (leaveType === 'OD') {
       return false;
     }
@@ -288,15 +283,13 @@ export async function finalizeApproval(
   }
 
   const balanceBefore = { ...currentBalance };
-  
-  // ✅ FIX: Clear pending and add to used
   const newPending = Math.max(0, (currentBalance.pending || 0) - days);
   const newUsed = (currentBalance.used || 0) + days;
-  // ✅ FIX: available stays the same (it was already deducted at submission)
 
+  // ✅ FIXED: Use / instead of . for Firebase path
   await balanceRef.update({
-    [`balances.${leaveType}/pending`]: newPending,
-    [`balances.${leaveType}/used`]: newUsed,
+    [`balances/${leaveType}/pending`]: newPending,
+    [`balances/${leaveType}/used`]: newUsed,
     updatedAt: new Date().toISOString(),
   });
 
