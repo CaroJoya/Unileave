@@ -6,6 +6,7 @@ import { sendEmail, getLeaveApprovedEmail } from "@/lib/utils/email";
 import { createNotification } from "@/lib/services/notification-service";
 import { createAuditLog } from "@/lib/services/audit-service";
 import { NotificationType } from "@/lib/constants/notification-types";
+import { finalizeApproval } from "@/lib/services/leave-balance-service";
 
 interface CompOffUsageRecord {
   id: string;
@@ -156,7 +157,12 @@ export async function POST(
 
     // ✅ Only deduct balance if NOT OD
     if (shouldDeductBalance) {
-      console.log(`✅ Balance deducted for ${leaveRequest.leaveType} leave (${leaveRequest.totalDays} days)`);
+      console.log(`✅ Finalizing approval for ${leaveRequest.leaveType} leave (${leaveRequest.totalDays} days)`);
+      await finalizeApproval(
+        leaveRequest.applicantId,
+        leaveRequest.leaveType,
+        leaveRequest.totalDays
+      );
     } else if (isOD) {
       console.log(`ℹ️ OD leave approved - No balance deducted`);
     }

@@ -256,3 +256,45 @@ export async function doesLeaveTypeDeductBalance(leaveType: string): Promise<boo
     return true;
   }
 }
+
+export async function finalizeApproval(
+  userId: string,
+  leaveType: string,
+  days: number,
+  academicYear?: string
+): Promise<BalanceOperationResult> {
+  const rtdb = getRTDB();
+  if (!rtdb) {
+    return { success: false, error: 'Database not initialized' };
+  }
+
+  const year = academicYear || getCurrentAcademicYear();
+  const balanceKey = `${userId}_${year}`;
+  const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
+  const snapshot = await balanceRef.once('value');
+  const balanceDoc = snapshot.val() as LeaveBalancesDoc | null;
+
+  if (!balanceDoc) {
+    return { success: false, error: 'Leave balance not found' };
+  }
+
+  const currentBalance = balanceDoc.balances[leaveType];
+  if (!currentBalance) {
+    return { success: false, error: `Leave type ${leaveType} not found in balance` };
+  }
+
+  const balanceBefore = { ...currentBalance };
+  
+  // Clear pending and add to used
+  const newPending = Math.max(0, (currentBalance.pending || 0) - days);
+  const newUsed = (currentBalance.used || 0) + days;
+
+  await balanceRef.update({
+    [`balances.${leaveType}.pending`]: newPending,
+    [`balances.${leaveType}.used`]: newUsed,
+    updatedAt: new Date().toISOString(),
+  });
+
+  const balanceAfter = { ...currentBalance, pending: newPending, used: newUsed };
+  return { success: true, balanceBefore, balanceAfter };
+}
