@@ -1,4 +1,4 @@
-// app/api/leave/balances/route.ts - COMPLETE FIXED FILE (ESLint clean)
+// app/api/leave/balances/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -39,9 +39,10 @@ export async function GET() {
 
     const userRole = userData.roles?.[0] || "faculty";
     
-    // This strictly ensures that all quotas including `allocated` are populated properly
+    // ✅ FIX: Ensure balance is created with correct quotas
     const balanceData = await getOrCreateLeaveBalance(userId, userRole, academicYear);
 
+    // ✅ FIX: Ensure the response has no-cache headers
     const response = NextResponse.json({
       success: true,
       balances: balanceData.balances,
@@ -152,10 +153,14 @@ export async function PUT(request: Request) {
     const updatedSnapshot = await balanceRef.once("value");
     const updatedDoc = updatedSnapshot.val() as LeaveBalancesDoc | null;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       balances: updatedDoc?.balances || {},
     });
+
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
+    
+    return response;
   } catch (error) {
     console.error("❌ Error updating leave balances:", error);
     return NextResponse.json(
@@ -224,11 +229,15 @@ export async function POST(request: Request) {
       balances[uid] = snapshot.val() || null;
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       balances,
       academicYear: year,
     });
+
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
+    
+    return response;
   } catch (error) {
     console.error("❌ Error fetching bulk balances:", error);
     return NextResponse.json(

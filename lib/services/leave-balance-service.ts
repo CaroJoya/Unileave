@@ -57,12 +57,16 @@ export async function getOrCreateLeaveBalance(
         };
         requiresUpdate = true;
       } else {
-        // Fix: If allocated is missing or erroneously 0 (like the CL bug), forcefully restore it
+        // Fix: If allocated is missing or 0, restore it
         const balance = data.balances[leaveType];
         if (balance.allocated === undefined || balance.allocated === 0) {
           // Except for OD which legitimately has 0 allocated
           if (quota > 0) {
             balance.allocated = quota;
+            // ✅ FIX: Ensure used is not lost if it exists
+            if (balance.used === undefined) balance.used = 0;
+            if (balance.pending === undefined) balance.pending = 0;
+            if (balance.available === undefined) balance.available = quota;
             requiresUpdate = true;
           }
         }
@@ -285,9 +289,10 @@ export async function finalizeApproval(
 
   const balanceBefore = { ...currentBalance };
   
-  // Clear pending and add to used
+  // ✅ FIX: Clear pending and add to used
   const newPending = Math.max(0, (currentBalance.pending || 0) - days);
   const newUsed = (currentBalance.used || 0) + days;
+  // ✅ FIX: available stays the same (it was already deducted at submission)
 
   await balanceRef.update({
     [`balances.${leaveType}.pending`]: newPending,

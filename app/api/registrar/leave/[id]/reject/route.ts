@@ -1,4 +1,4 @@
-// app/api/registrar/leave/[id]/reject/route.ts - COMPLETE UPDATED VERSION (OD SUPPORT)
+// app/api/registrar/leave/[id]/reject/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -108,10 +108,10 @@ export async function POST(
       console.log(`ℹ️ Leave type ${leaveRequest.leaveType} does not deduct balance, skipping restoration`);
     }
 
-    // ============ UPDATE REQUEST ============
-
+    // ============ UPDATE REQUEST - ✅ FIX: STATUS FIRST ============
+    const newStatus = "Rejected_Registrar";
     await rtdb.ref(`leaveRequests/${id}`).update({
-      status: "Rejected_Registrar",
+      status: newStatus,
       balanceRestored: balanceRestored,
       balanceRestoreError: balanceError,
       updatedAt: new Date().toISOString(),
@@ -129,7 +129,7 @@ export async function POST(
       action: "REJECT",
       remark: isOD ? "OD rejected - No balance to restore" : reason,
       oldStatus: "Pending_Registrar",
-      newStatus: "Rejected_Registrar",
+      newStatus,
       actionAt: new Date().toISOString(),
     });
 

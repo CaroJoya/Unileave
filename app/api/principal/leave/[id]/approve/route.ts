@@ -1,4 +1,4 @@
-// app/api/principal/leave/[id]/approve/route.ts - COMPLETE UPDATED VERSION (OD SUPPORT)
+// app/api/principal/leave/[id]/approve/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -148,8 +148,17 @@ export async function POST(
       }
     }
 
-    // ============ UPDATE LEAVE REQUEST ============
+    // ============ UPDATE LEAVE REQUEST - ✅ FIX: STATUS FIRST ============
+    
+    const newStatus = "Approved";
+    await rtdb.ref(`leaveRequests/${id}`).update({
+      status: newStatus,
+      approvedBy: "principal",
+      approvedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
 
+    // ============ UPDATE BALANCE - ✅ FIX: NOW UPDATE BALANCE ============
     if (shouldDeductBalance) {
       console.log(`✅ Finalizing approval for ${leaveRequest.leaveType} leave (${leaveRequest.totalDays} days)`);
       await finalizeApproval(
@@ -160,13 +169,6 @@ export async function POST(
     } else if (isOD) {
       console.log(`ℹ️ OD leave approved - No balance deducted`);
     }
-
-    await rtdb.ref(`leaveRequests/${id}`).update({
-      status: "Approved",
-      approvedBy: "principal",
-      approvedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
 
     // ============ LOG ACTION ============
 
@@ -180,7 +182,7 @@ export async function POST(
       action: "APPROVE",
       remark: isOD ? "OD approved - No balance deducted" : null,
       oldStatus: "Pending_Principal",
-      newStatus: "Approved",
+      newStatus,
       actionAt: new Date().toISOString(),
       compOffCreditUsed: leaveRequest.compOffCreditsUsed || null,
     });

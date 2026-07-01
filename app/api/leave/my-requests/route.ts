@@ -1,4 +1,4 @@
-// app/api/leave/my-requests/route.ts - FIXED
+// app/api/leave/my-requests/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -36,11 +36,10 @@ export async function GET(request: Request) {
     console.log("📋 /api/leave/my-requests called by user:", userId);
     const requestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests = requestsSnapshot.val() as Record<string, LeaveRequest> | null || {};
-    console.log("📋 All requests:", allRequests);
+    
     let userRequests = Object.values(allRequests).filter(
       (req) => req.applicantId === userId
     );
-    console.log("📋 User requests:", userRequests);
 
     if (leaveType) {
       userRequests = userRequests.filter((req) => req.leaveType === leaveType);
@@ -75,10 +74,17 @@ export async function GET(request: Request) {
       ),
     }));
 
-    return NextResponse.json({
+    // ✅ FIX: Add cache-control headers
+    const response = NextResponse.json({
       success: true,
       requests: requestsWithDetails,
     });
+
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    
+    return response;
   } catch (error) {
     console.error("Error fetching leave requests:", error);
     return NextResponse.json(

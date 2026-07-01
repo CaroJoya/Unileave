@@ -1,8 +1,7 @@
-// app/dashboard/page.tsx - COMPLETE FIXED VERSION (ESLint clean)
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Role } from "@/types/roles";
 import { useRouter } from "next/navigation";
@@ -33,6 +32,7 @@ import {
 } from "lucide-react";
 import { RoleNavbar } from "@/components/layout/RoleNavbar";
 import { Progress } from "@/components/ui/progress";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface LeaveBalance {
   allocated: number;
@@ -49,55 +49,207 @@ interface CompOffCredit {
   expiryDate: string;
 }
 
-interface DashboardData {
-  balances: Record<string, LeaveBalance>;
-  pendingRequests: number;
-  approvedRequests: number;
-  rejectedRequests: number;
-  revisionRequests: number;
-  totalAvailable: number;
-  totalAllocated: number;
-  totalUsed: number;
-  utilization: number;
-  compOffBalance: number;
-  compOffCredits: CompOffCredit[];
-  expiringCompOffCredits: CompOffCredit[];
-  overworkSummary: {
-    totalApprovedHours: number;
-    pendingHours: number;
-    earnedLeaves: number;
-    progressPercent: number;
-  };
-}
-
-// Standard leaves to include in Total Calculation to prevent skewing from non-deductible/special leaves
+// Standard leaves to include in Total Calculation
 const STANDARD_LEAVE_TYPES = ["CL", "EL", "ML", "CO"];
+
+// Fetch functions for React Query
+const fetchBalances = async () => {
+  const res = await fetch("/api/leave/balances", {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' }
+  });
+  if (!res.ok) throw new Error("Failed to fetch balances");
+  return res.json();
+};
+
+const fetchRequests = async () => {
+  const res = await fetch("/api/leave/my-requests", {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' }
+  });
+  if (!res.ok) throw new Error("Failed to fetch requests");
+  return res.json();
+};
+
+const fetchCompOff = async () => {
+  const res = await fetch("/api/comp-off/credits", {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' }
+  });
+  if (!res.ok) throw new Error("Failed to fetch comp-off");
+  return res.json();
+};
+
+const fetchOverwork = async () => {
+  const res = await fetch("/api/overwork/my-summary", {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' }
+  });
+  if (!res.ok) throw new Error("Failed to fetch overwork");
+  return res.json();
+};
 
 function DashboardContent() {
   const { user, userRoles, isLoading: authLoading, hydrationComplete } = useAuthStore();
   const { currentRole } = useRoleStore();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<DashboardData>({
-    balances: {},
-    pendingRequests: 0,
-    approvedRequests: 0,
-    rejectedRequests: 0,
-    revisionRequests: 0,
-    totalAvailable: 0,
-    totalAllocated: 0,
-    totalUsed: 0,
-    utilization: 0,
-    compOffBalance: 0,
-    compOffCredits: [],
-    expiringCompOffCredits: [],
-    overworkSummary: {
+  const queryClient = useQueryClient();
+
+  // React Query for all data - with proper refetch on focus
+  const { 
+    data: balanceData, 
+    isLoading: balancesLoading,
+    refetch: refetchBalances
+  } = useQuery({
+    queryKey: ['balances', user?.uid],
+    queryFn: fetchBalances,
+    enabled: !!user?.uid && !user?.roles?.includes("principal"),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  const { 
+    data: requestsData, 
+    isLoading: requestsLoading,
+    refetch: refetchRequests
+  } = useQuery({
+    queryKey: ['requests', user?.uid],
+    queryFn: fetchRequests,
+    enabled: !!user?.uid && !user?.roles?.includes("principal"),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  const { 
+    data: compOffData, 
+    isLoading: compOffLoading,
+    refetch: refetchCompOff
+  } = useQuery({
+    queryKey: ['compOff', user?.uid],
+    queryFn: fetchCompOff,
+    enabled: !!user?.uid && !user?.roles?.includes("principal"),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  const { 
+    data: overworkData, 
+    isLoading: overworkLoading,
+    refetch: refetchOverwork
+  } = useQuery({
+    queryKey: ['overwork', user?.uid],
+    queryFn: fetchOverwork,
+    enabled: !!user?.uid && !user?.roles?.includes("principal"),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  // Derived state with proper calculations
+  const dashboardData = (() => {
+    const balances = balanceData?.balances || {};
+    const requests = requestsData?.requests || [];
+    
+    // Calculate totals using STANDARD_LEAVE_TYPES only
+    let totalAllocated = 0;
+    let totalUsed = 0;
+    let totalAvailable = 0;
+    
+    Object.entries(balances).forEach(([type, balance]) => {
+      const b = balance as LeaveBalance;
+      if (STANDARD_LEAVE_TYPES.includes(type)) {
+        totalAllocated += (b?.allocated || 0);
+        totalUsed += (b?.used || 0);
+        totalAvailable += (b?.available || 0);
+      }
+    });
+    
+    const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
+
+    const pendingRequests = requests.filter(
+      (req: { status: string }) =>
+        req.status === "Pending_HOD" ||
+        req.status === "Pending_Registrar" ||
+        req.status === "Pending_Principal"
+    ).length;
+
+    const revisionRequests = requests.filter(
+      (req: { status: string }) =>
+        req.status === "Pending_Revision"
+    ).length;
+
+    const approvedRequests = requests.filter(
+      (req: { status: string }) => req.status === "Approved"
+    ).length;
+
+    const rejectedRequests = requests.filter(
+      (req: { status: string }) =>
+        req.status === "Rejected_HOD" ||
+        req.status === "Rejected_Registrar" ||
+        req.status === "Rejected_Principal"
+    ).length;
+
+    // Comp-off balance
+    const credits = compOffData?.credits || [];
+    const compOffBalance = credits
+      .filter((c: CompOffCredit) => c.status === 'active')
+      .reduce((sum: number, c: CompOffCredit) => sum + (c.creditedDays - c.usedDays), 0);
+    
+    const now = new Date();
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const expiringCompOffCredits = credits.filter((c: CompOffCredit) => {
+      if (c.status !== 'active') return false;
+      const expiryDate = new Date(c.expiryDate);
+      return expiryDate <= thirtyDaysFromNow && expiryDate > now;
+    });
+
+    const overworkSummary = overworkData?.summary || {
       totalApprovedHours: 0,
       pendingHours: 0,
       earnedLeaves: 0,
       progressPercent: 0,
-    },
-  });
+    };
+
+    return {
+      balances,
+      pendingRequests,
+      approvedRequests,
+      rejectedRequests,
+      revisionRequests,
+      totalAvailable,
+      totalAllocated,
+      totalUsed,
+      utilization,
+      compOffBalance,
+      compOffCredits: credits,
+      expiringCompOffCredits,
+      overworkSummary,
+    };
+  })();
+
+  // Manual refresh function that invalidates all queries
+  const refreshAllData = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['balances'] }),
+      queryClient.invalidateQueries({ queryKey: ['requests'] }),
+      queryClient.invalidateQueries({ queryKey: ['compOff'] }),
+      queryClient.invalidateQueries({ queryKey: ['overwork'] }),
+    ]);
+    await Promise.all([
+      refetchBalances(),
+      refetchRequests(),
+      refetchCompOff(),
+      refetchOverwork(),
+    ]);
+  }, [queryClient, refetchBalances, refetchRequests, refetchCompOff, refetchOverwork]);
+
+  // Auto-refresh on focus
+  useEffect(() => {
+    const handleFocus = () => {
+      refreshAllData();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refreshAllData]);
 
   // Auth check
   useEffect(() => {
@@ -106,7 +258,6 @@ function DashboardContent() {
       router.push("/login");
       return;
     }
-
     if (!authLoading && user) {
       const staffRoles = ["faculty", "lab_assistant", "office_staff"];
       const adminRoles = ["super_admin", "head_clerk", "hod", "registrar", "principal"];
@@ -143,249 +294,9 @@ function DashboardContent() {
     }
   }, [user, userRoles, authLoading, router, currentRole, hydrationComplete]);
 
-  const refreshBalance = useCallback(async () => {
-    try {
-      const balanceRes = await fetch("/api/leave/balances", {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
-        }
-      });
-      if (balanceRes.ok) {
-        const balanceData = await balanceRes.json();
-        const balances = balanceData.balances || {};
-        
-        // Calculate totals using STANDARD_LEAVE_TYPES only
-        let totalAvailable = 0;
-        let totalAllocated = 0;
-        let totalUsed = 0;
-        
-        Object.entries(balances).forEach(([type, b]) => {
-          const balance = b as LeaveBalance;
-          if (STANDARD_LEAVE_TYPES.includes(type)) {
-            totalAvailable += (balance?.available || 0);
-            totalAllocated += (balance?.allocated || 0);
-            totalUsed += (balance?.used || 0);
-          }
-        });
-        
-        const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
-        
-        setData(prev => ({
-          ...prev,
-          balances: balances,
-          totalAvailable,
-          totalAllocated,
-          totalUsed,
-          utilization,
-        }));
-        
-        console.log("🔄 Balance refreshed:", { totalAvailable, totalAllocated, totalUsed });
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error("Error refreshing balance:", error);
-      return false;
-    }
-  }, []);
+  const isLoading = authLoading || balancesLoading || requestsLoading || compOffLoading || overworkLoading;
 
-  const fetchDashboardData = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Fetch leave balances
-      const balanceRes = await fetch("/api/leave/balances", {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
-        }
-      });
-      let balanceData = { balances: {} };
-      if (balanceRes.ok) {
-        balanceData = await balanceRes.json();
-        console.log("📊 Balance data:", balanceData);
-      }
-
-      // Fetch Comp-Off balance from credits API
-      let compOffBalance = 0;
-      let compOffCredits: CompOffCredit[] = [];
-      let expiringCompOffCredits: CompOffCredit[] = [];
-      
-      try {
-        const compOffRes = await fetch("/api/comp-off/credits", {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-          }
-        });
-        if (compOffRes.ok) {
-          const compOffData = await compOffRes.json();
-          const credits = compOffData.credits || [];
-          compOffCredits = credits;
-          
-          compOffBalance = credits
-            .filter((c: CompOffCredit) => c.status === 'active')
-            .reduce((sum: number, c: CompOffCredit) => sum + (c.creditedDays - c.usedDays), 0);
-          
-          const now = new Date();
-          const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-          expiringCompOffCredits = credits.filter((c: CompOffCredit) => {
-            if (c.status !== 'active') return false;
-            const expiryDate = new Date(c.expiryDate);
-            return expiryDate <= thirtyDaysFromNow && expiryDate > now;
-          });
-          
-          console.log("📊 Comp-off data:", { compOffBalance, compOffCredits: credits.length, expiring: expiringCompOffCredits.length });
-        }
-      } catch {
-        console.warn("Error fetching comp-off credits");
-      }
-
-      // Fetch leave requests
-      let requestsData = { requests: [] };
-      try {
-        const requestsRes = await fetch("/api/leave/my-requests", {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-          }
-        });
-        if (requestsRes.ok) {
-          requestsData = await requestsRes.json();
-          console.log("📋 Requests data:", requestsData.requests?.length || 0);
-        }
-      } catch {
-        console.warn("Error fetching requests");
-      }
-
-      // Fetch overwork summary
-      let overworkData = {
-        summary: {
-          totalApprovedHours: 0,
-          pendingHours: 0,
-          earnedLeaves: 0,
-          progressPercent: 0,
-        },
-      };
-      try {
-        const overworkRes = await fetch("/api/overwork/my-summary", {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-          }
-        });
-        if (overworkRes.ok) {
-          overworkData = await overworkRes.json();
-        }
-      } catch {
-        console.warn("Error fetching overwork");
-      }
-
-      const requests = requestsData.requests || [];
-
-      const pendingRequests = requests.filter(
-        (req: { status: string }) =>
-          req.status === "Pending_HOD" ||
-          req.status === "Pending_Registrar" ||
-          req.status === "Pending_Principal"
-      ).length;
-
-      const revisionRequests = requests.filter(
-        (req: { status: string }) =>
-          req.status === "Pending_Revision"
-      ).length;
-
-      const approvedRequests = requests.filter(
-        (req: { status: string }) => req.status === "Approved"
-      ).length;
-
-      const rejectedRequests = requests.filter(
-        (req: { status: string }) =>
-          req.status === "Rejected_HOD" ||
-          req.status === "Rejected_Registrar" ||
-          req.status === "Rejected_Principal"
-      ).length;
-
-      // Calculate totals using STANDARD_LEAVE_TYPES only
-      const balances = balanceData.balances || {};
-      let totalAvailable = 0;
-      let totalAllocated = 0;
-      let totalUsed = 0;
-      
-      Object.entries(balances).forEach(([type, b]) => {
-        const balance = b as LeaveBalance;
-        if (STANDARD_LEAVE_TYPES.includes(type)) {
-          totalAvailable += (balance?.available || 0);
-          totalAllocated += (balance?.allocated || 0);
-          totalUsed += (balance?.used || 0);
-        }
-      });
-      
-      const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
-
-      setData({
-        balances: balances,
-        pendingRequests,
-        approvedRequests,
-        rejectedRequests,
-        revisionRequests,
-        totalAvailable,
-        totalAllocated,
-        totalUsed,
-        utilization,
-        compOffBalance,
-        compOffCredits,
-        expiringCompOffCredits,
-        overworkSummary: overworkData.summary,
-      });
-      
-      console.log("📊 Dashboard data updated:", {
-        pending: pendingRequests,
-        revision: revisionRequests,
-        balances: balances,
-        totalAvailable,
-        totalAllocated,
-        totalUsed,
-        utilization,
-      });
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Auto-refresh every 30 seconds
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadData = async () => {
-      if (hydrationComplete && user && isMounted) {
-        await fetchDashboardData();
-      }
-    };
-
-    loadData();
-
-    const interval = setInterval(() => {
-      if (isMounted && user) {
-        refreshBalance();
-        fetchDashboardData();
-      }
-    }, 30000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [user, fetchDashboardData, hydrationComplete, refreshBalance]);
-
-  if (!hydrationComplete || authLoading || loading) {
+  if (!hydrationComplete || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -452,41 +363,31 @@ function DashboardContent() {
         subtitle={`${user.departmentName} • ${getRoleLabel()}`}
       />
 
-      {/* Refresh Buttons */}
+      {/* Refresh Button */}
       <div className="flex justify-end mb-4 gap-2">
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={() => fetchDashboardData()}
-          disabled={loading}
+          onClick={() => refreshAllData()}
+          disabled={isLoading}
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Refreshing...' : 'Refresh All'}
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => refreshBalance()}
-          disabled={loading}
-          className="text-green-600 border-green-300 hover:bg-green-50"
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh Balance
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          {isLoading ? 'Refreshing...' : 'Refresh All'}
         </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4 mb-8 mt-6">
-        {/* Total Balance Card - Only standard leave types */}
+        {/* Total Balance Card */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm text-muted-foreground">Total Leave Balance</p>
                 <p className="text-2xl font-bold text-primary">
-                  {data.totalAvailable?.toFixed(1) || 0}
+                  {dashboardData.totalAvailable?.toFixed(1) || 0}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  of {data.totalAllocated?.toFixed(1) || 0} allocated
+                  of {dashboardData.totalAllocated?.toFixed(1) || 0} allocated
                 </p>
               </div>
               <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -496,9 +397,9 @@ function DashboardContent() {
             <div className="mt-3">
               <div className="flex justify-between text-xs">
                 <span>Utilization</span>
-                <span>{data.utilization?.toFixed(1) || 0}%</span>
+                <span>{dashboardData.utilization?.toFixed(1) || 0}%</span>
               </div>
-              <Progress value={Math.min(data.utilization || 0, 100)} className="mt-1 h-2" />
+              <Progress value={Math.min(dashboardData.utilization || 0, 100)} className="mt-1 h-2" />
             </div>
           </CardContent>
         </Card>
@@ -510,32 +411,33 @@ function DashboardContent() {
               <div>
                 <p className="text-sm text-muted-foreground">Comp-Off Balance</p>
                 <p className="text-2xl font-bold text-teal-600">
-                  {data.compOffBalance?.toFixed(1) || 0}
+                  {dashboardData.compOffBalance?.toFixed(1) || 0}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {data.compOffCredits.length} active credit(s)
+                  {dashboardData.compOffCredits.length} active credit(s)
                 </p>
               </div>
               <div className="h-12 w-12 rounded-full bg-teal-100 flex items-center justify-center">
                 <Award className="h-6 w-6 text-teal-600" />
               </div>
             </div>
-            {data.expiringCompOffCredits.length > 0 && (
+            {dashboardData.expiringCompOffCredits.length > 0 && (
               <div className="mt-2 flex items-center gap-1 text-xs text-amber-600">
                 <AlertTriangle className="h-3 w-3" />
-                {data.expiringCompOffCredits.length} credit(s) expiring soon
+                {dashboardData.expiringCompOffCredits.length} credit(s) expiring soon
               </div>
             )}
           </CardContent>
         </Card>
 
+        {/* Pending Approval Card */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm text-muted-foreground">Pending Approval</p>
                 <p className="text-2xl font-bold text-amber-600">
-                  {data.pendingRequests || 0}
+                  {dashboardData.pendingRequests || 0}
                 </p>
                 <p className="text-xs text-muted-foreground">Awaiting approval</p>
               </div>
@@ -546,13 +448,14 @@ function DashboardContent() {
           </CardContent>
         </Card>
 
+        {/* Approved Card */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm text-muted-foreground">Approved</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {data.approvedRequests || 0}
+                  {dashboardData.approvedRequests || 0}
                 </p>
                 <p className="text-xs text-muted-foreground">Total approved</p>
               </div>
@@ -565,7 +468,7 @@ function DashboardContent() {
       </div>
 
       {/* Revision Requests Alert */}
-      {data.revisionRequests > 0 && (
+      {dashboardData.revisionRequests > 0 && (
         <div className="mb-6">
           <Card className="border-purple-300 bg-purple-50">
             <CardContent className="pt-6">
@@ -573,10 +476,10 @@ function DashboardContent() {
                 <div>
                   <p className="text-sm text-purple-700 font-medium">Needs Revision</p>
                   <p className="text-2xl font-bold text-purple-700">
-                    {data.revisionRequests}
+                    {dashboardData.revisionRequests}
                   </p>
                   <p className="text-xs text-purple-600">
-                    {data.revisionRequests} request(s) require your attention
+                    {dashboardData.revisionRequests} request(s) require your attention
                   </p>
                 </div>
                 <div className="h-12 w-12 rounded-full bg-purple-200 flex items-center justify-center">
@@ -649,13 +552,14 @@ function DashboardContent() {
             <CardDescription>Your current leave balances</CardDescription>
           </CardHeader>
           <CardContent>
-            {data.balances && Object.keys(data.balances).length > 0 ? (
+            {dashboardData.balances && Object.keys(dashboardData.balances).length > 0 ? (
               <div className="space-y-3">
-                {Object.entries(data.balances).map(([type, balance]) => {
-                  const available = balance?.available ?? 0;
-                  const allocated = balance?.allocated ?? 0;
-                  const used = balance?.used ?? 0;
-                  const pending = balance?.pending ?? 0;
+                {Object.entries(dashboardData.balances).map(([type, balance]) => {
+                  const b = balance as LeaveBalance;
+                  const available = b?.available ?? 0;
+                  const allocated = b?.allocated ?? 0;
+                  const used = b?.used ?? 0;
+                  const pending = b?.pending ?? 0;
                   const usedPercent = allocated > 0 ? (used / allocated) * 100 : 0;
                   
                   return (
@@ -699,28 +603,28 @@ function DashboardContent() {
             <CardDescription>Your overwork hours and earned leave</CardDescription>
           </CardHeader>
           <CardContent>
-            {data.overworkSummary ? (
+            {dashboardData.overworkSummary ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gray-50 rounded-lg p-3 text-center">
                     <p className="text-sm text-muted-foreground">Approved Hours</p>
                     <p className="text-2xl font-bold text-primary">
-                      {data.overworkSummary.totalApprovedHours?.toFixed(1) || 0}
+                      {dashboardData.overworkSummary.totalApprovedHours?.toFixed(1) || 0}
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-3 text-center">
                     <p className="text-sm text-muted-foreground">Earned Leaves</p>
                     <p className="text-2xl font-bold text-green-600">
-                      {data.overworkSummary.earnedLeaves || 0}
+                      {dashboardData.overworkSummary.earnedLeaves || 0}
                     </p>
                   </div>
                 </div>
 
-                {data.overworkSummary.pendingHours > 0 && (
+                {dashboardData.overworkSummary.pendingHours > 0 && (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                     <p className="text-sm text-amber-800">
                       <Clock className="inline h-4 w-4 mr-1" />
-                      {data.overworkSummary.pendingHours.toFixed(1)} hours pending approval
+                      {dashboardData.overworkSummary.pendingHours.toFixed(1)} hours pending approval
                     </p>
                   </div>
                 )}
@@ -728,16 +632,16 @@ function DashboardContent() {
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
                     <span>Progress to next leave day</span>
-                    <span>{data.overworkSummary.progressPercent?.toFixed(0) || 0}%</span>
+                    <span>{dashboardData.overworkSummary.progressPercent?.toFixed(0) || 0}%</span>
                   </div>
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-yellow-500 rounded-full transition-all"
-                      style={{ width: `${data.overworkSummary.progressPercent || 0}%` }}
+                      style={{ width: `${dashboardData.overworkSummary.progressPercent || 0}%` }}
                     />
                   </div>
                   <p className="text-xs text-muted-foreground text-right">
-                    {5 - (data.overworkSummary.totalApprovedHours % 5)} hours to next leave
+                    {5 - (dashboardData.overworkSummary.totalApprovedHours % 5)} hours to next leave
                   </p>
                 </div>
 
