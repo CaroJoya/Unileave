@@ -222,8 +222,8 @@ export async function restoreLeaveBalance(
   const newAvailable = (currentBalance.available || 0) + days;
 
   await balanceRef.update({
-    [`balances.${leaveType}.pending`]: newPending,
-    [`balances.${leaveType}.available`]: newAvailable,
+    [`balances.${leaveType}/pending`]: newPending,
+    [`balances.${leaveType}/available`]: newAvailable,
     updatedAt: new Date().toISOString(),
   });
 
@@ -295,8 +295,8 @@ export async function finalizeApproval(
   // ✅ FIX: available stays the same (it was already deducted at submission)
 
   await balanceRef.update({
-    [`balances.${leaveType}.pending`]: newPending,
-    [`balances.${leaveType}.used`]: newUsed,
+    [`balances.${leaveType}/pending`]: newPending,
+    [`balances.${leaveType}/used`]: newUsed,
     updatedAt: new Date().toISOString(),
   });
 
