@@ -1,110 +1,10 @@
-// app/api/leave/balances/route.ts - COMPLETE FIXED FILE
+// app/api/leave/balances/route.ts - COMPLETE FIXED FILE (ESLint clean)
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
-import type { LeaveBalancesDoc, LeaveBalance } from "@/types/leave";
-
-// ✅ CO is now included in DEFAULT_QUOTAS
-const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
-  faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
-  lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
-  office_staff: { CL: 20, EL: 10, ML: 15, CO: 8 },
-  hod: { CL: 24, EL: 15, ML: 15, CO: 10 },
-  registrar: { CL: 20, EL: 12, ML: 15, CO: 10 },
-  principal: { CL: 30, EL: 20, ML: 15, CO: 12 },
-  head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
-};
-
-// ✅ NEW: Get all leave types from the database
-async function getAllLeaveTypes(): Promise<string[]> {
-  const rtdb = getRTDB();
-  if (!rtdb) return ["CL", "EL", "ML", "CO"];
-  
-  try {
-    const snapshot = await rtdb.ref("leaveTypes").once("value");
-    const types = snapshot.val() as Record<string, { leaveCode: string; isActive: boolean }> | null || {};
-    
-    return Object.values(types)
-      .filter((type) => type.isActive !== false)
-      .map((type) => type.leaveCode);
-  } catch (error) {
-    console.error("Error fetching leave types:", error);
-    return ["CL", "EL", "ML", "CO"];
-  }
-}
-
-// ✅ NEW: Get role quotas from policy
-async function getRoleQuotas(role: string, academicYear: string): Promise<Record<string, number>> {
-  const rtdb = getRTDB();
-  if (!rtdb) return DEFAULT_QUOTAS.faculty;
-
-  try {
-    const policySnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
-    const policy = policySnapshot.val();
-    
-    if (policy && policy.leaveAllocations) {
-      const roleKey = role === "lab_assistant" ? "lab_assistant" : 
-                      role === "office_staff" ? "office_staff" : role;
-      const allocation = policy.leaveAllocations[roleKey];
-      if (allocation) {
-        // ✅ Return ALL leave types from policy
-        return allocation;
-      }
-    }
-  } catch (error) {
-    console.error("Error fetching policy:", error);
-  }
-  
-  const roleKey = role === "lab_assistant" ? "lab_assistant" : 
-                  role === "office_staff" ? "office_staff" : role;
-  return DEFAULT_QUOTAS[roleKey] || DEFAULT_QUOTAS.faculty;
-}
-
-async function initializeBalance(
-  userId: string, 
-  userRole: string, 
-  academicYear: string
-): Promise<LeaveBalancesDoc> {
-  const rtdb = getRTDB();
-  if (!rtdb) throw new Error("Database not initialized");
-
-  const quotas = await getRoleQuotas(userRole, academicYear);
-  const allLeaveTypes = await getAllLeaveTypes();
-  
-  const balances: Record<string, LeaveBalance> = {};
-  
-  // ✅ Initialize ALL leave types, not just CL, EL, ML, CO
-  for (const type of allLeaveTypes) {
-    const quota = quotas[type] || 0;
-    balances[type] = {
-      allocated: quota,
-      used: 0,
-      pending: 0,
-      available: quota,
-    };
-  }
-  
-  // ✅ Ensure CO is always included (for comp-off)
-  if (!balances["CO"]) {
-    balances["CO"] = {
-      allocated: 0,
-      used: 0,
-      pending: 0,
-      available: 0,
-    };
-  }
-  
-  const balanceDoc: LeaveBalancesDoc = {
-    userId,
-    academicYear,
-    balances,
-    updatedAt: new Date().toISOString(),
-  };
-  
-  await rtdb.ref(`leaveBalances/${userId}_${academicYear}`).set(balanceDoc);
-  return balanceDoc;
-}
+import { getOrCreateLeaveBalance } from "@/lib/services/leave-balance-service";
+import type { LeaveBalancesDoc } from "@/types/leave";
 
 export async function GET() {
   try {
@@ -117,7 +17,7 @@ export async function GET() {
 
     const auth = getAuth();
     const rtdb = getRTDB();
-
+    
     if (!auth || !rtdb) {
       console.error('Firebase Admin not initialized');
       return NextResponse.json(
@@ -130,59 +30,22 @@ export async function GET() {
     const userId = decodedToken.uid;
     const academicYear = getCurrentAcademicYear();
 
-    console.log(`📊 GET /api/leave/balances - User: ${userId}, Year: ${academicYear}`);
-
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData = userSnapshot.val();
 
     if (!userData) {
-      console.error(`❌ User not found: ${userId}`);
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const balanceKey = `${userId}_${academicYear}`;
-    const balanceSnapshot = await rtdb.ref(`leaveBalances/${balanceKey}`).once("value");
-    let balanceDoc = balanceSnapshot.val() as LeaveBalancesDoc | null;
-
-    if (!balanceDoc) {
-      console.log(`⚠️ No balance found for user ${userId}, initializing...`);
-      const userRole = userData.roles?.[0] || "faculty";
-      balanceDoc = await initializeBalance(userId, userRole, academicYear);
-      console.log(`✅ Balance initialized for user ${userId}`);
-    } else {
-      // ✅ NEW: Check if all leave types are present, add missing ones
-      const allLeaveTypes = await getAllLeaveTypes();
-      let needsUpdate = false;
-      
-      for (const type of allLeaveTypes) {
-        if (!balanceDoc.balances[type]) {
-          const quotas = await getRoleQuotas(userData.roles?.[0] || "faculty", academicYear);
-          balanceDoc.balances[type] = {
-            allocated: quotas[type] || 0,
-            used: 0,
-            pending: 0,
-            available: quotas[type] || 0,
-          };
-          needsUpdate = true;
-          console.log(`✅ Added missing leave type: ${type}`);
-        }
-      }
-      
-      if (needsUpdate) {
-        await rtdb.ref(`leaveBalances/${balanceKey}`).update({
-          balances: balanceDoc.balances,
-          updatedAt: new Date().toISOString(),
-        });
-        console.log(`✅ Updated balance with missing leave types for user ${userId}`);
-      }
-    }
-
-    console.log(`📊 Balance data for ${userId}:`, JSON.stringify(balanceDoc.balances, null, 2));
+    const userRole = userData.roles?.[0] || "faculty";
+    
+    // This strictly ensures that all quotas including `allocated` are populated properly
+    const balanceData = await getOrCreateLeaveBalance(userId, userRole, academicYear);
 
     const response = NextResponse.json({
       success: true,
-      balances: balanceDoc.balances,
-      academicYear: balanceDoc.academicYear,
+      balances: balanceData.balances,
+      academicYear: balanceData.academicYear,
     });
 
     response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
@@ -226,8 +89,6 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const { leaveType, daysUsed, operation } = body;
 
-    console.log(`📝 PUT /api/leave/balances - User: ${userId}, Type: ${leaveType}, Days: ${daysUsed}, Op: ${operation}`);
-
     if (!leaveType || !daysUsed || !operation) {
       return NextResponse.json(
         { error: "Missing required fields: leaveType, daysUsed, operation" },
@@ -260,7 +121,7 @@ export async function PUT(request: Request) {
       );
     }
 
-    let updatedBalance: LeaveBalance;
+    let updatedBalance;
 
     if (operation === "deduct") {
       if (currentBalance.available < daysUsed) {
@@ -275,29 +136,25 @@ export async function PUT(request: Request) {
         pending: (currentBalance.pending || 0) + daysUsed,
         available: currentBalance.available - daysUsed,
       };
-      console.log(`📊 Deduct: pending ${currentBalance.pending} → ${updatedBalance.pending}, available ${currentBalance.available} → ${updatedBalance.available}`);
     } else {
       updatedBalance = {
         ...currentBalance,
         pending: Math.max(0, (currentBalance.pending || 0) - daysUsed),
         available: currentBalance.available + daysUsed,
       };
-      console.log(`📊 Restore: pending ${currentBalance.pending} → ${updatedBalance.pending}, available ${currentBalance.available} → ${updatedBalance.available}`);
     }
 
-    const updateData = {
+    await balanceRef.update({
       [`balances.${leaveType}`]: updatedBalance,
       updatedAt: new Date().toISOString(),
-    };
-
-    await balanceRef.update(updateData);
+    });
 
     const updatedSnapshot = await balanceRef.once("value");
-    const updatedDoc = updatedSnapshot.val() as LeaveBalancesDoc;
+    const updatedDoc = updatedSnapshot.val() as LeaveBalancesDoc | null;
 
     return NextResponse.json({
       success: true,
-      balances: updatedDoc.balances,
+      balances: updatedDoc?.balances || {},
     });
   } catch (error) {
     console.error("❌ Error updating leave balances:", error);
@@ -355,8 +212,6 @@ export async function POST(request: Request) {
 
     const year = academicYear || getCurrentAcademicYear();
     
-    console.log(`📊 POST /api/leave/balances - Admin fetching ${userIds.length} users for year ${year}`);
-
     const balancePromises = userIds.map((uid: string) =>
       rtdb.ref(`leaveBalances/${uid}_${year}`).once("value")
     );

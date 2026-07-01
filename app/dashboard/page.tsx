@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx - RESTORED & FIXED VERSION
+// app/dashboard/page.tsx - COMPLETE FIXED VERSION (ESLint clean)
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -27,12 +27,12 @@ import {
   TrendingUp,
   ChevronRight,
   CheckCircle,
-  XCircle,
   LayoutDashboard,
   RefreshCw,
   AlertTriangle,
 } from "lucide-react";
 import { RoleNavbar } from "@/components/layout/RoleNavbar";
+import { Progress } from "@/components/ui/progress";
 
 interface LeaveBalance {
   allocated: number;
@@ -69,6 +69,9 @@ interface DashboardData {
     progressPercent: number;
   };
 }
+
+// Standard leaves to include in Total Calculation to prevent skewing from non-deductible/special leaves
+const STANDARD_LEAVE_TYPES = ["CL", "EL", "ML", "CO"];
 
 function DashboardContent() {
   const { user, userRoles, isLoading: authLoading, hydrationComplete } = useAuthStore();
@@ -153,30 +156,19 @@ function DashboardContent() {
         const balanceData = await balanceRes.json();
         const balances = balanceData.balances || {};
         
-        // ✅ FIX: Calculate totals from ALL balances (including CO)
-        const totalAvailable = Object.values(balances).reduce(
-          (sum: number, b: unknown) => {
-            const balance = b as LeaveBalance;
-            return sum + (balance?.available || 0);
-          },
-          0
-        );
+        // Calculate totals using STANDARD_LEAVE_TYPES only
+        let totalAvailable = 0;
+        let totalAllocated = 0;
+        let totalUsed = 0;
         
-        const totalAllocated = Object.values(balances).reduce(
-          (sum: number, b: unknown) => {
-            const balance = b as LeaveBalance;
-            return sum + (balance?.allocated || 0);
-          },
-          0
-        );
-        
-        const totalUsed = Object.values(balances).reduce(
-          (sum: number, b: unknown) => {
-            const balance = b as LeaveBalance;
-            return sum + (balance?.used || 0);
-          },
-          0
-        );
+        Object.entries(balances).forEach(([type, b]) => {
+          const balance = b as LeaveBalance;
+          if (STANDARD_LEAVE_TYPES.includes(type)) {
+            totalAvailable += (balance?.available || 0);
+            totalAllocated += (balance?.allocated || 0);
+            totalUsed += (balance?.used || 0);
+          }
+        });
         
         const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
         
@@ -234,12 +226,10 @@ function DashboardContent() {
           const credits = compOffData.credits || [];
           compOffCredits = credits;
           
-          // Calculate total available comp-off days
           compOffBalance = credits
             .filter((c: CompOffCredit) => c.status === 'active')
             .reduce((sum: number, c: CompOffCredit) => sum + (c.creditedDays - c.usedDays), 0);
           
-          // Find expiring credits (within 30 days)
           const now = new Date();
           const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
           expiringCompOffCredits = credits.filter((c: CompOffCredit) => {
@@ -321,37 +311,25 @@ function DashboardContent() {
           req.status === "Rejected_Principal"
       ).length;
 
-      // ✅ FIX: Use ALL balances, don't filter out CO
+      // Calculate totals using STANDARD_LEAVE_TYPES only
       const balances = balanceData.balances || {};
+      let totalAvailable = 0;
+      let totalAllocated = 0;
+      let totalUsed = 0;
       
-      const totalAvailable = Object.values(balances).reduce(
-        (sum: number, b: unknown) => {
-          const balance = b as LeaveBalance;
-          return sum + (balance?.available || 0);
-        },
-        0
-      );
-      
-      const totalAllocated = Object.values(balances).reduce(
-        (sum: number, b: unknown) => {
-          const balance = b as LeaveBalance;
-          return sum + (balance?.allocated || 0);
-        },
-        0
-      );
-      
-      const totalUsed = Object.values(balances).reduce(
-        (sum: number, b: unknown) => {
-          const balance = b as LeaveBalance;
-          return sum + (balance?.used || 0);
-        },
-        0
-      );
+      Object.entries(balances).forEach(([type, b]) => {
+        const balance = b as LeaveBalance;
+        if (STANDARD_LEAVE_TYPES.includes(type)) {
+          totalAvailable += (balance?.available || 0);
+          totalAllocated += (balance?.allocated || 0);
+          totalUsed += (balance?.used || 0);
+        }
+      });
       
       const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
 
       setData({
-        balances: balances, // ✅ Use ALL balances
+        balances: balances,
         pendingRequests,
         approvedRequests,
         rejectedRequests,
@@ -370,6 +348,10 @@ function DashboardContent() {
         pending: pendingRequests,
         revision: revisionRequests,
         balances: balances,
+        totalAvailable,
+        totalAllocated,
+        totalUsed,
+        utilization,
       });
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -493,8 +475,8 @@ function DashboardContent() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-5 mb-8 mt-6">
-        {/* Total Balance Card - Includes CO */}
+      <div className="grid gap-4 md:grid-cols-4 mb-8 mt-6">
+        {/* Total Balance Card - Only standard leave types */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
@@ -516,12 +498,7 @@ function DashboardContent() {
                 <span>Utilization</span>
                 <span>{data.utilization?.toFixed(1) || 0}%</span>
               </div>
-              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1">
-                <div
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${Math.min(data.utilization || 0, 100)}%` }}
-                />
-              </div>
+              <Progress value={Math.min(data.utilization || 0, 100)} className="mt-1 h-2" />
             </div>
           </CardContent>
         </Card>
@@ -581,23 +558,6 @@ function DashboardContent() {
               </div>
               <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
                 <CheckCircle className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Rejected</p>
-                <p className="text-2xl font-bold text-red-600">
-                  {data.rejectedRequests || 0}
-                </p>
-                <p className="text-xs text-muted-foreground">Total rejected</p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
-                <XCircle className="h-6 w-6 text-red-600" />
               </div>
             </div>
           </CardContent>

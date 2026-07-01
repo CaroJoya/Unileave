@@ -1,16 +1,16 @@
-// lib/services/leave-balance-service.ts
+// lib/services/leave-balance-service.ts - COMPLETE FIXED FILE
 import { getRTDB } from "@/lib/firebase/admin";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 import type { LeaveBalance, LeaveBalancesDoc } from "@/types/leave";
 
-const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
-  faculty: { CL: 24, EL: 12, ML: 15, CO: 10 },
-  lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8 },
-  office_staff: { CL: 20, EL: 10, ML: 15, CO: 8 },
-  hod: { CL: 24, EL: 15, ML: 15, CO: 10 },
-  registrar: { CL: 20, EL: 12, ML: 15, CO: 10 },
-  principal: { CL: 30, EL: 20, ML: 15, CO: 12 },
-  head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10 },
+export const DEFAULT_QUOTAS: Record<string, Record<string, number>> = {
+  faculty: { CL: 24, EL: 12, ML: 15, CO: 10, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+  lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+  office_staff: { CL: 20, EL: 10, ML: 15, CO: 8, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+  hod: { CL: 24, EL: 15, ML: 15, CO: 10, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+  registrar: { CL: 20, EL: 12, ML: 15, CO: 10, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+  principal: { CL: 30, EL: 20, ML: 15, CO: 12, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
+  head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10, OD: 0, MAT: 180, PAT: 15, SPL: 10 },
 };
 
 export interface BalanceOperationResult {
@@ -20,53 +20,86 @@ export interface BalanceOperationResult {
   balanceAfter?: LeaveBalance;
 }
 
-/**
- * Get or create a leave balance for a user
- */
 export async function getOrCreateLeaveBalance(
   userId: string,
-  userRole: string,
+  role: string,
   academicYear?: string
-): Promise<LeaveBalancesDoc | null> {
+): Promise<LeaveBalancesDoc> {
   const rtdb = getRTDB();
-  if (!rtdb) return null;
+  if (!rtdb) {
+    throw new Error('Database not initialized');
+  }
 
   const year = academicYear || getCurrentAcademicYear();
   const balanceKey = `${userId}_${year}`;
   const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
-  const snapshot = await balanceRef.once('value');
-  let balanceDoc = snapshot.val() as LeaveBalancesDoc | null;
+  const snapshot = await balanceRef.once("value");
+  
+  const roleQuota = DEFAULT_QUOTAS[role as keyof typeof DEFAULT_QUOTAS] || DEFAULT_QUOTAS.faculty;
+  
+  if (snapshot.exists()) {
+    const data = snapshot.val() as LeaveBalancesDoc;
+    let requiresUpdate = false;
 
-  if (!balanceDoc) {
-    // Create new balance
-    const quotas = DEFAULT_QUOTAS[userRole] || DEFAULT_QUOTAS.faculty;
-    const balances: Record<string, LeaveBalance> = {};
-    
-    for (const [type, quota] of Object.entries(quotas)) {
-      balances[type] = {
-        allocated: quota,
-        used: 0,
-        pending: 0,
-        available: quota,
-      };
+    if (!data.balances) {
+      data.balances = {};
+      requiresUpdate = true;
+    }
+
+    // Enforce consistency for existing balances
+    for (const [leaveType, quota] of Object.entries(roleQuota)) {
+      if (!data.balances[leaveType]) {
+        data.balances[leaveType] = { 
+          available: quota, 
+          pending: 0, 
+          allocated: quota, 
+          used: 0 
+        };
+        requiresUpdate = true;
+      } else {
+        // Fix: If allocated is missing or erroneously 0 (like the CL bug), forcefully restore it
+        const balance = data.balances[leaveType];
+        if (balance.allocated === undefined || balance.allocated === 0) {
+          // Except for OD which legitimately has 0 allocated
+          if (quota > 0) {
+            balance.allocated = quota;
+            requiresUpdate = true;
+          }
+        }
+      }
     }
     
-    balanceDoc = {
-      userId,
-      academicYear: year,
-      balances,
-      updatedAt: new Date().toISOString(),
-    };
-    
-    await balanceRef.set(balanceDoc);
+    if (requiresUpdate) {
+      await balanceRef.update({ 
+        balances: data.balances,
+        updatedAt: new Date().toISOString()
+      });
+    }
+    return data;
   }
 
-  return balanceDoc;
+  // Create new balance
+  const balances: Record<string, LeaveBalance> = {};
+  for (const [leaveType, quota] of Object.entries(roleQuota)) {
+    balances[leaveType] = {
+      available: quota,
+      pending: 0,
+      allocated: quota,
+      used: 0
+    };
+  }
+
+  const newBalanceDoc: LeaveBalancesDoc = {
+    userId,
+    academicYear: year,
+    balances,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await balanceRef.set(newBalanceDoc);
+  return newBalanceDoc;
 }
 
-/**
- * Deduct leave from balance
- */
 export async function deductLeaveBalance(
   userId: string,
   leaveType: string,
@@ -115,9 +148,6 @@ export async function deductLeaveBalance(
   return { success: true, balanceBefore, balanceAfter };
 }
 
-/**
- * Restore leave to balance (for rejection or cancellation)
- */
 export async function restoreLeaveBalance(
   userId: string,
   leaveType: string,
@@ -198,13 +228,9 @@ export async function restoreLeaveBalance(
   return { success: true, balanceBefore, balanceAfter };
 }
 
-/**
- * Check if a leave type deducts balance
- * ✅ FIX: OD (On Duty) does NOT deduct balance
- */
 export async function doesLeaveTypeDeductBalance(leaveType: string): Promise<boolean> {
   const rtdb = getRTDB();
-  if (!rtdb) return true; // Default to true
+  if (!rtdb) return true;
 
   try {
     const snapshot = await rtdb.ref('leaveTypes').once('value');
@@ -216,15 +242,14 @@ export async function doesLeaveTypeDeductBalance(leaveType: string): Promise<boo
       }
     }
     
-    // ✅ CRITICAL FIX: OD explicitly returns false
+    // CRITICAL FIX: OD explicitly returns false
     if (leaveType === 'OD') {
       return false;
     }
     
-    return true; // Default to true if not found
+    return true;
   } catch (error) {
     console.error('Error checking leave type deducts balance:', error);
-    // ✅ Fallback: OD does not deduct
     if (leaveType === 'OD') {
       return false;
     }
