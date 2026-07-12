@@ -1,4 +1,4 @@
-// app/api/headclerk/leave-types/[id]/route.ts - COMPLETE FIXED FILE
+// app/api/headclerk/leave-types/[id]/route.ts - COMPLETE VERIFIED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -97,6 +97,18 @@ export async function PUT(
       }, { status: 403 });
     }
 
+    // ✅ Track what changed for audit
+    const changes: Record<string, { old: unknown; new: unknown }> = {};
+    if (leaveName && leaveName !== existing.leaveName) changes.leaveName = { old: existing.leaveName, new: leaveName };
+    if (description !== undefined && description !== existing.description) changes.description = { old: existing.description, new: description };
+    if (allowHalfDay !== undefined && allowHalfDay !== existing.allowHalfDay) changes.allowHalfDay = { old: existing.allowHalfDay, new: allowHalfDay };
+    if (requiresAttachment !== undefined && requiresAttachment !== existing.requiresAttachment) changes.requiresAttachment = { old: existing.requiresAttachment, new: requiresAttachment };
+    if (deductsBalance !== undefined && deductsBalance !== existing.deductsBalance) changes.deductsBalance = { old: existing.deductsBalance, new: deductsBalance };
+    if (hasExpiry !== undefined && hasExpiry !== existing.hasExpiry) changes.hasExpiry = { old: existing.hasExpiry, new: hasExpiry };
+    if (expiryInDays !== undefined && expiryInDays !== existing.expiryInDays) changes.expiryInDays = { old: existing.expiryInDays, new: expiryInDays };
+    if (maxConsecutiveDays !== undefined && maxConsecutiveDays !== existing.maxConsecutiveDays) changes.maxConsecutiveDays = { old: existing.maxConsecutiveDays, new: maxConsecutiveDays };
+    if (isActive !== undefined && isActive !== existing.isActive) changes.isActive = { old: existing.isActive, new: isActive };
+
     const updatedData = {
       ...existing,
       leaveName: leaveName || existing.leaveName,
@@ -108,13 +120,13 @@ export async function PUT(
       expiryInDays: expiryInDays !== undefined ? expiryInDays : existing.expiryInDays,
       maxConsecutiveDays: maxConsecutiveDays !== undefined ? maxConsecutiveDays : existing.maxConsecutiveDays,
       isActive: isActive !== undefined ? isActive : existing.isActive,
-      collegeId: collegeId, // ✅ Ensure collegeId is set
+      collegeId: collegeId,
       updatedAt: new Date().toISOString(),
     };
 
     await leaveTypeRef.update(updatedData);
 
-    // ✅ Log the action with college ID
+    // ✅ Enhanced audit log with detailed changes
     await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",
@@ -127,11 +139,13 @@ export async function PUT(
         leaveName: updatedData.leaveName,
         isActive: updatedData.isActive,
         collegeId: collegeId,
+        changes: changes, // ✅ Detailed change tracking
+        timestamp: new Date().toISOString(),
       }),
       createdAt: new Date().toISOString(),
     });
 
-    return NextResponse.json({ success: true, leaveType: updatedData });
+    return NextResponse.json({ success: true, leaveType: updatedData, changes });
   } catch (error) {
     console.error("Error updating leave type:", error);
     return NextResponse.json({ error: "Failed to update leave type" }, { status: 500 });
@@ -198,7 +212,7 @@ export async function DELETE(
       updatedAt: new Date().toISOString(),
     });
 
-    // ✅ Log the action with college ID
+    // ✅ Log the action with college ID and deletion reason
     await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",
@@ -210,6 +224,8 @@ export async function DELETE(
         leaveCode: existing.leaveCode,
         leaveName: existing.leaveName,
         collegeId: collegeId,
+        action: "Soft deleted (deactivated)",
+        timestamp: new Date().toISOString(),
       }),
       createdAt: new Date().toISOString(),
     });

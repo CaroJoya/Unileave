@@ -1,7 +1,8 @@
-// app/api/headclerk/leave-types/route.ts - COMPLETE FIXED FILE
+// app/api/headclerk/leave-types/route.ts - COMPLETE FIXED FILE WITH POLICY AUTO-UPDATE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
 
 interface LeaveType {
   id: string;
@@ -18,7 +19,20 @@ interface LeaveType {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-  collegeId?: string; // ✅ Added collegeId
+  collegeId?: string;
+}
+
+interface Policy {
+  id: string;
+  academicYear: string;
+  leaveAllocations: Record<string, Record<string, number>>;
+  effectiveFrom: string;
+  applyRule: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  isArchived?: boolean;
+  collegeId: string;
 }
 
 interface UserRecord {
@@ -68,16 +82,12 @@ export async function GET() {
     const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
     const leaveTypes = leaveTypesSnapshot.val() as Record<string, LeaveType> | null || {};
 
-    // ✅ Filter leave types by college
+    // Filter leave types by college
     const leaveTypesList = Object.entries(leaveTypes)
       .filter(([, data]) => {
-        // If collegeId is set, match it; if not, treat as global (or belonging to this college for backward compatibility)
         if (data.collegeId) {
           return data.collegeId === collegeId;
         }
-        // For backward compatibility: leave types without collegeId are treated as belonging to all colleges
-        // OR: you can decide they belong to the first college
-        // For safety, we'll include them only if they don't have collegeId (legacy data)
         return data.collegeId === undefined || data.collegeId === null || data.collegeId === collegeId;
       })
       .map(([id, data]) => ({
@@ -95,7 +105,7 @@ export async function GET() {
         createdBy: data.createdBy,
         createdAt: data.createdAt,
         updatedAt: data.updatedAt,
-        collegeId: data.collegeId || collegeId, // Set the collegeId if not present
+        collegeId: data.collegeId || collegeId,
       }));
 
     return NextResponse.json({ leaveTypes: leaveTypesList });
@@ -150,15 +160,28 @@ export async function POST(request: Request) {
       deductsBalance,
       hasExpiry,
       expiryInDays,
-      maxConsecutiveDays 
+      maxConsecutiveDays,
+      addToPolicy = false, // ✅ NEW: Optional flag to add to policy
     } = body;
 
     if (!leaveCode || !leaveName) {
       return NextResponse.json({ error: "Leave code and name are required" }, { status: 400 });
     }
 
+    // ✅ Check for duplicate leave code in the SAME college
+    const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
+    const existingTypes = leaveTypesSnapshot.val() as Record<string, LeaveType> | null || {};
+    
+    for (const [, type] of Object.entries(existingTypes)) {
+      if (type.leaveCode === leaveCode.toUpperCase() && type.collegeId === collegeId) {
+        return NextResponse.json({ 
+          error: `Leave type "${leaveCode.toUpperCase()}" already exists in your college` 
+        }, { status: 400 });
+      }
+    }
+
     const leaveTypeId = `leave_${leaveCode.toLowerCase()}_${Date.now()}`;
-    const leaveTypeData = {
+    const leaveTypeData: LeaveType = {
       id: leaveTypeId,
       leaveCode: leaveCode.toUpperCase(),
       leaveName,
@@ -170,7 +193,7 @@ export async function POST(request: Request) {
       expiryInDays: expiryInDays || null,
       maxConsecutiveDays: maxConsecutiveDays || null,
       isActive: true,
-      collegeId: collegeId, // ✅ Store college ID
+      collegeId: collegeId,
       createdBy: decodedToken.uid,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -178,7 +201,79 @@ export async function POST(request: Request) {
 
     await rtdb.ref(`leaveTypes/${leaveTypeId}`).set(leaveTypeData);
 
-    return NextResponse.json({ success: true, leaveType: leaveTypeData });
+    // ✅ NEW: Add to current policy if requested
+    let policyUpdated = false;
+    let policyMessage = "";
+    
+    if (addToPolicy) {
+      try {
+        const currentYear = getCurrentAcademicYear();
+        const policyRef = rtdb.ref(`leavePolicies/${currentYear}`);
+        const policySnapshot = await policyRef.once("value");
+        const policy = policySnapshot.val() as Policy | null;
+        
+        if (policy && policy.collegeId === collegeId) {
+          // ✅ Add new leave type to all role allocations with default 0
+          const newLeaveCode = leaveCode.toUpperCase();
+          const updatedAllocations = { ...policy.leaveAllocations };
+          
+          const roles = ["faculty", "lab_assistant", "office_staff", "hod", "registrar", "principal", "head_clerk"];
+          let rolesUpdated = 0;
+          
+          for (const role of roles) {
+            if (updatedAllocations[role]) {
+              // Add the new leave type with 0 default
+              updatedAllocations[role] = {
+                ...updatedAllocations[role],
+                [newLeaveCode]: 0,
+              };
+              rolesUpdated++;
+            }
+          }
+          
+          if (rolesUpdated > 0) {
+            await policyRef.update({
+              leaveAllocations: updatedAllocations,
+              updatedAt: new Date().toISOString(),
+            });
+            policyUpdated = true;
+            policyMessage = `Added to policy ${currentYear} for ${rolesUpdated} role(s)`;
+          }
+        } else {
+          policyMessage = "No active policy found for your college";
+        }
+      } catch (policyError) {
+        console.error("Error updating policy:", policyError);
+        policyMessage = "Failed to update policy";
+      }
+    }
+
+    // ✅ Audit log with policy update info
+    await rtdb.ref("auditLogs").push({
+      userId: decodedToken.uid,
+      userName: userData.name || "Unknown",
+      userRole: "head_clerk",
+      action: "LEAVE_TYPE_CREATED",
+      module: "leaveTypes",
+      targetId: leaveTypeId,
+      details: JSON.stringify({
+        leaveCode: leaveCode.toUpperCase(),
+        leaveName: leaveName,
+        deductsBalance: deductsBalance !== false,
+        collegeId: collegeId,
+        addToPolicy: addToPolicy,
+        policyUpdated: policyUpdated,
+        policyMessage: policyMessage,
+      }),
+      createdAt: new Date().toISOString(),
+    });
+
+    return NextResponse.json({ 
+      success: true, 
+      leaveType: leaveTypeData,
+      policyUpdated,
+      policyMessage,
+    });
   } catch (error) {
     console.error("Error creating leave type:", error);
     return NextResponse.json({ error: "Failed to create leave type" }, { status: 500 });

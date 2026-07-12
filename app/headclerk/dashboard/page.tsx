@@ -1,4 +1,4 @@
-// app/headclerk/dashboard/page.tsx - COMPLETE FIXED FILE (ESLint warnings fixed)
+// app/headclerk/dashboard/page.tsx - COMPLETE FIXED FILE WITH ALL IMPROVEMENTS
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -106,7 +106,7 @@ const roles: { id: RoleKey; label: string }[] = [
   { id: "head_clerk", label: "Head Clerk" },
 ];
 
-// ✅ Default allocations with ALL 7 leave types
+// Default allocations with ALL 7 leave types
 const defaultAllocations: Record<RoleKey, { CL: number; EL: number; ML: number; CO: number; MAT: number; PAT: number; SPL: number }> = {
   faculty: { CL: 24, EL: 12, ML: 15, CO: 10, MAT: 180, PAT: 15, SPL: 10 },
   lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8, MAT: 180, PAT: 15, SPL: 10 },
@@ -148,9 +148,10 @@ function HeadClerkDashboardContent() {
     hasExpiry: false,
     expiryInDays: "",
     maxConsecutiveDays: "",
+    addToPolicy: false, // ✅ NEW: Auto-add to policy flag
   });
 
-  // ✅ NEW: Edit Leave Type State
+  // Edit Leave Type State
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveType | null>(null);
   const [editLoading, setEditLoading] = useState(false);
@@ -223,6 +224,7 @@ function HeadClerkDashboardContent() {
     }
   }, []);
 
+  // ✅ UPDATED: Handle create with policy auto-update
   const handleCreateLeaveType = async () => {
     if (!formData.leaveCode || !formData.leaveName) {
       toast.error("Leave code and name are required");
@@ -243,6 +245,7 @@ function HeadClerkDashboardContent() {
           hasExpiry: formData.hasExpiry,
           expiryInDays: formData.expiryInDays ? parseInt(formData.expiryInDays) : null,
           maxConsecutiveDays: formData.maxConsecutiveDays ? parseInt(formData.maxConsecutiveDays) : null,
+          addToPolicy: formData.addToPolicy || false, // ✅ NEW
         }),
       });
 
@@ -252,18 +255,24 @@ function HeadClerkDashboardContent() {
         throw new Error(data.error || "Failed to create leave type");
       }
 
-      toast.success("Leave type created successfully");
+      // ✅ Show appropriate success message
+      if (data.policyUpdated) {
+        toast.success(`Leave type created and ${data.policyMessage}`);
+      } else if (formData.addToPolicy) {
+        toast.warning(`Leave type created but ${data.policyMessage || 'could not be added to policy'}`);
+      } else {
+        toast.success("Leave type created successfully");
+      }
+
       setShowCreateDialog(false);
       resetForm();
       await fetchLeaveTypes();
-      toast.success("📋 Leave types list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create leave type";
       toast.error(errorMessage);
     }
   };
 
-  // ✅ NEW: Open Edit Dialog
   const openEditDialog = (type: LeaveType) => {
     setEditingLeaveType(type);
     setEditFormData({
@@ -279,7 +288,6 @@ function HeadClerkDashboardContent() {
     setEditDialogOpen(true);
   };
 
-  // ✅ NEW: Handle Edit Submit
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingLeaveType) return;
@@ -312,11 +320,17 @@ function HeadClerkDashboardContent() {
         throw new Error(data.error || "Failed to update leave type");
       }
 
-      toast.success("Leave type updated successfully");
+      // ✅ Show summary of changes if available
+      if (data.changes && Object.keys(data.changes).length > 0) {
+        const changedFields = Object.keys(data.changes).join(", ");
+        toast.success(`Leave type updated: ${changedFields} changed`);
+      } else {
+        toast.success("Leave type updated successfully");
+      }
+
       setEditDialogOpen(false);
       setEditingLeaveType(null);
       await fetchLeaveTypes();
-      toast.success("📋 Leave types list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update leave type";
       toast.error(errorMessage);
@@ -341,7 +355,6 @@ function HeadClerkDashboardContent() {
 
       toast.success(`Leave type ${!leaveType.isActive ? "activated" : "deactivated"}`);
       await fetchLeaveTypes();
-      toast.success("📋 Leave types list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update leave type";
       toast.error(errorMessage);
@@ -359,6 +372,7 @@ function HeadClerkDashboardContent() {
       hasExpiry: false,
       expiryInDays: "",
       maxConsecutiveDays: "",
+      addToPolicy: false, // ✅ Reset to false
     });
   };
 
@@ -424,7 +438,6 @@ function HeadClerkDashboardContent() {
       setShowPolicyDialog(false);
       resetPolicyForm();
       await fetchPolicies();
-      toast.success("📋 Policies list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save policy";
       toast.error(errorMessage);
@@ -478,7 +491,6 @@ function HeadClerkDashboardContent() {
 
       toast.success("Overwork configuration saved successfully");
       await fetchOverworkConfig();
-      toast.success("⚙️ Configuration updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save configuration";
       toast.error(errorMessage);
@@ -547,7 +559,6 @@ function HeadClerkDashboardContent() {
 
       toast.success("Vacation period deactivated");
       await fetchVacations();
-      toast.success("📋 Vacation periods list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to deactivate";
       toast.error(errorMessage);
@@ -598,7 +609,6 @@ function HeadClerkDashboardContent() {
       setShowVacationDialog(false);
       resetVacationForm();
       await fetchVacations();
-      toast.success("📋 Vacation periods list updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to create";
       toast.error(errorMessage);
@@ -797,7 +807,6 @@ function HeadClerkDashboardContent() {
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-2">
-                              {/* ✅ NEW: Edit Button */}
                               <Button 
                                 size="sm" 
                                 variant="outline" 
@@ -1240,7 +1249,7 @@ function HeadClerkDashboardContent() {
         </TabsContent>
       </Tabs>
 
-      {/* CREATE LEAVE TYPE DIALOG */}
+      {/* ============ CREATE LEAVE TYPE DIALOG ============ */}
       <Dialog open={showCreateDialog} onOpenChange={(open) => {
         if (!open) resetForm();
         setShowCreateDialog(open);
@@ -1334,6 +1343,27 @@ function HeadClerkDashboardContent() {
                 onChange={(e) => setFormData({ ...formData, maxConsecutiveDays: e.target.value })}
               />
             </div>
+
+            {/* ✅ NEW: Add to Policy Checkbox */}
+            <div className="space-y-2 border-t pt-4 mt-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="addToPolicy"
+                  checked={formData.addToPolicy}
+                  onCheckedChange={(checked) => setFormData({ ...formData, addToPolicy: checked === true })}
+                />
+                <Label htmlFor="addToPolicy" className="cursor-pointer">
+                  Add to Current Policy
+                  <span className="text-xs text-muted-foreground ml-2 block font-normal">
+                    (Adds this leave type with 0 quota to all roles)
+                  </span>
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                If checked, this leave type will be added to all role allocations in the current academic year with 0 days.
+                You can later adjust the quota in the Leave Policies tab.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
@@ -1344,7 +1374,7 @@ function HeadClerkDashboardContent() {
         </DialogContent>
       </Dialog>
 
-      {/* ✅ NEW: EDIT LEAVE TYPE DIALOG */}
+      {/* EDIT LEAVE TYPE DIALOG */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => {
         if (!open) {
           setEditDialogOpen(false);
