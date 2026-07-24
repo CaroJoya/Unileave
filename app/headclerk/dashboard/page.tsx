@@ -1,4 +1,4 @@
-// app/headclerk/dashboard/page.tsx - COMPLETE FIXED FILE WITH ALL IMPROVEMENTS
+// app/headclerk/dashboard/page.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -148,7 +148,7 @@ function HeadClerkDashboardContent() {
     hasExpiry: false,
     expiryInDays: "",
     maxConsecutiveDays: "",
-    addToPolicy: false, // ✅ NEW: Auto-add to policy flag
+    addToPolicy: false,
   });
 
   // Edit Leave Type State
@@ -224,7 +224,6 @@ function HeadClerkDashboardContent() {
     }
   }, []);
 
-  // ✅ UPDATED: Handle create with policy auto-update
   const handleCreateLeaveType = async () => {
     if (!formData.leaveCode || !formData.leaveName) {
       toast.error("Leave code and name are required");
@@ -245,7 +244,7 @@ function HeadClerkDashboardContent() {
           hasExpiry: formData.hasExpiry,
           expiryInDays: formData.expiryInDays ? parseInt(formData.expiryInDays) : null,
           maxConsecutiveDays: formData.maxConsecutiveDays ? parseInt(formData.maxConsecutiveDays) : null,
-          addToPolicy: formData.addToPolicy || false, // ✅ NEW
+          addToPolicy: formData.addToPolicy || false,
         }),
       });
 
@@ -255,7 +254,6 @@ function HeadClerkDashboardContent() {
         throw new Error(data.error || "Failed to create leave type");
       }
 
-      // ✅ Show appropriate success message
       if (data.policyUpdated) {
         toast.success(`Leave type created and ${data.policyMessage}`);
       } else if (formData.addToPolicy) {
@@ -320,7 +318,6 @@ function HeadClerkDashboardContent() {
         throw new Error(data.error || "Failed to update leave type");
       }
 
-      // ✅ Show summary of changes if available
       if (data.changes && Object.keys(data.changes).length > 0) {
         const changedFields = Object.keys(data.changes).join(", ");
         toast.success(`Leave type updated: ${changedFields} changed`);
@@ -372,7 +369,7 @@ function HeadClerkDashboardContent() {
       hasExpiry: false,
       expiryInDays: "",
       maxConsecutiveDays: "",
-      addToPolicy: false, // ✅ Reset to false
+      addToPolicy: false,
     });
   };
 
@@ -400,6 +397,7 @@ function HeadClerkDashboardContent() {
 
   const academicYears = getAcademicYears();
 
+  // ✅ FIXED: Edit button opens dialog with policy data
   const handleEditPolicy = (policy: Policy) => {
     setEditingPolicy(policy);
     setPolicyForm({
@@ -410,6 +408,23 @@ function HeadClerkDashboardContent() {
     setShowPolicyDialog(true);
   };
 
+  // ✅ FIXED: Smart "New Policy" button - checks if policy exists first
+  const handleNewPolicyClick = () => {
+    const currentYear = getAcademicYears()[2]; // Current year
+    const existingPolicy = policies.find(p => p.academicYear === currentYear);
+    
+    if (existingPolicy) {
+      // ✅ Automatically switch to edit mode
+      handleEditPolicy(existingPolicy);
+      toast.info(`Editing existing policy for ${currentYear}`);
+    } else {
+      // No policy exists, create new
+      resetPolicyForm();
+      setShowPolicyDialog(true);
+    }
+  };
+
+  // ✅ FIXED: Uses PUT for editing, POST for creating
   const handleSavePolicy = async () => {
     if (!policyForm.academicYear) {
       toast.error("Please select an academic year");
@@ -418,8 +433,11 @@ function HeadClerkDashboardContent() {
 
     setSaving(true);
     try {
+      // ✅ CRITICAL: Use PUT if editing, POST if creating
+      const method = editingPolicy ? "PUT" : "POST";
+      
       const response = await fetch("/api/headclerk/leave-policies", {
-        method: "POST",
+        method: method, // ← This was the bug! Now correctly uses PUT
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           academicYear: policyForm.academicYear,
@@ -431,13 +449,39 @@ function HeadClerkDashboardContent() {
       const data = await response.json();
 
       if (!response.ok) {
+        // ✅ Better error handling for duplicate policies
+        if (response.status === 409 && data.existing) {
+          toast.error(`A policy for ${policyForm.academicYear} already exists. Use the Edit button.`);
+          // Auto-switch to edit mode if possible
+          const existingPolicy = policies.find(p => p.academicYear === policyForm.academicYear);
+          if (existingPolicy) {
+            handleEditPolicy(existingPolicy);
+          }
+          return;
+        }
         throw new Error(data.error || "Failed to save policy");
       }
 
-      toast.success("Leave policy saved successfully");
+      toast.success(
+        editingPolicy 
+          ? "✅ Leave policy updated successfully! All user balances have been recalculated." 
+          : "✅ Leave policy created successfully!"
+      );
+      
       setShowPolicyDialog(false);
       resetPolicyForm();
       await fetchPolicies();
+      
+      // ✅ Show additional info if balance updates were applied
+      if (data.balanceUpdate) {
+        const { usersUpdated, errors } = data.balanceUpdate;
+        if (usersUpdated > 0) {
+          toast.success(`📊 ${usersUpdated} user balance(s) updated`);
+        }
+        if (errors && errors.length > 0) {
+          toast.warning(`⚠️ ${errors.length} error(s) occurred during balance update`);
+        }
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save policy";
       toast.error(errorMessage);
@@ -841,9 +885,10 @@ function HeadClerkDashboardContent() {
                 <CardTitle>Leave Policies</CardTitle>
                 <CardDescription>Configure leave quotas per role for each academic year</CardDescription>
               </div>
-              <Button onClick={() => setShowPolicyDialog(true)}>
+              {/* ✅ FIXED: Smart New Policy button */}
+              <Button onClick={handleNewPolicyClick}>
                 <Plus className="h-4 w-4 mr-2" />
-                New Policy
+                {policies.length > 0 ? "Edit Current Policy" : "New Policy"}
               </Button>
             </CardHeader>
             <CardContent>
@@ -1344,7 +1389,6 @@ function HeadClerkDashboardContent() {
               />
             </div>
 
-            {/* ✅ NEW: Add to Policy Checkbox */}
             <div className="space-y-2 border-t pt-4 mt-2">
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -1480,16 +1524,18 @@ function HeadClerkDashboardContent() {
         </DialogContent>
       </Dialog>
 
-      {/* CREATE/EDIT POLICY DIALOG */}
+      {/* ✅ FIXED: CREATE/EDIT POLICY DIALOG - Shows correct title and button */}
       <Dialog open={showPolicyDialog} onOpenChange={(open) => {
         if (!open) resetPolicyForm();
         setShowPolicyDialog(open);
       }}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingPolicy ? "Edit Leave Policy" : "Create Leave Policy"}</DialogTitle>
+            <DialogTitle>{editingPolicy ? "✏️ Edit Leave Policy" : "📝 Create Leave Policy"}</DialogTitle>
             <DialogDescription>
-              Configure leave quotas for each role. Quotas are in days per academic year.
+              {editingPolicy 
+                ? `Updating policy for ${editingPolicy.academicYear}. Changes will be applied to all users.` 
+                : "Configure leave quotas for each role. Quotas are in days per academic year."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
@@ -1717,7 +1763,7 @@ function HeadClerkDashboardContent() {
               Cancel
             </Button>
             <Button onClick={handleSavePolicy} disabled={saving}>
-              {saving ? "Saving..." : editingPolicy ? "Update" : "Create"}
+              {saving ? "Saving..." : editingPolicy ? "Update Policy" : "Create Policy"}
             </Button>
           </DialogFooter>
         </DialogContent>
