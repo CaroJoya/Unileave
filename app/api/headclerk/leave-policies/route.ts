@@ -1,4 +1,4 @@
-// app/api/headclerk/leave-policies/route.ts - COMPLETE FIXED FILE WITH CORRECT FIREBASE TYPES
+// app/api/headclerk/leave-policies/route.ts - COMPLETE FIXED FILE
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -199,56 +199,60 @@ export async function POST(request: Request) {
   }
 }
 
-// ============ HELPER FUNCTION TO UPDATE USER BALANCES ============
-async function updateUserBalancesForPolicy(
+// ============ CORE BALANCE RECALCULATION FUNCTION ============
+async function recalculateAllUserBalances(
   rtdb: Database,
   collegeId: string,
   academicYear: string,
-  leaveAllocations: Record<string, Record<string, number>>
-): Promise<{ updated: number; errors: string[] }> {
+  newAllocations: Record<string, Record<string, number>>
+): Promise<{ updated: number; errors: string[]; details: string[] }> {
   const errors: string[] = [];
+  const details: string[] = [];
   let updated = 0;
 
   try {
+    // 1. Get all active users in the college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, UserRecord> | null || {};
     
-    const collegeUserIds = Object.entries(allUsers)
+    const collegeUsers = Object.entries(allUsers)
       .filter(([, user]) => user.collegeId === collegeId && user.status === "active")
-      .map(([uid]) => uid);
+      .map(([uid, user]) => ({ ...user, uid }));
 
-    if (collegeUserIds.length === 0) {
-      console.log(`ℹ️ No active users found in college ${collegeId} to update balances.`);
-      return { updated: 0, errors: [] };
+    if (collegeUsers.length === 0) {
+      details.push(`ℹ️ No active users found in college ${collegeId}`);
+      return { updated: 0, errors: [], details };
     }
 
-    console.log(`📊 Updating balances for ${collegeUserIds.length} users in college ${collegeId} for year ${academicYear}`);
+    details.push(`📊 Processing ${collegeUsers.length} users in college ${collegeId} for year ${academicYear}`);
 
-    for (const userId of collegeUserIds) {
+    // 2. Process each user
+    for (const user of collegeUsers) {
       try {
-        const user = allUsers[userId];
         const userRole = user.roles?.[0] || "faculty";
-        const roleAllocation = leaveAllocations[userRole] || leaveAllocations.faculty || {};
+        const roleAllocation = newAllocations[userRole] || newAllocations.faculty || {};
 
-        const balanceKey = `${userId}_${academicYear}`;
+        const balanceKey = `${user.uid}_${academicYear}`;
         const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
         const balanceSnapshot = await balanceRef.once("value");
         const existingBalance = balanceSnapshot.val() as LeaveBalancesDoc | null;
 
-        if (existingBalance) {
-          console.log(`🔄 Updating balance for user ${userId} (${user.name})`);
-          
-          const newBalances: Record<string, LeaveBalance> = {};
-          let hasChanges = false;
+        const newBalances: Record<string, LeaveBalance> = {};
+        let hasChanges = false;
 
+        if (existingBalance) {
+          // ✅ UPDATE EXISTING BALANCE
+          // Process all leave types in the new policy
           for (const [leaveType, newAllocated] of Object.entries(roleAllocation)) {
             const oldBalance = existingBalance.balances[leaveType];
             
             if (oldBalance) {
+              // Preserve used and pending days
               const used = oldBalance.used || 0;
               const pending = oldBalance.pending || 0;
               const newAvailable = Math.max(0, newAllocated - used - pending);
               
+              // Check if anything changed
               if (oldBalance.allocated !== newAllocated || oldBalance.available !== newAvailable) {
                 newBalances[leaveType] = {
                   allocated: newAllocated,
@@ -261,7 +265,8 @@ async function updateUserBalancesForPolicy(
                 newBalances[leaveType] = { ...oldBalance };
               }
             } else {
-              console.log(`➕ Adding new leave type ${leaveType} for user ${userId}`);
+              // New leave type added
+              details.push(`➕ ${user.name}: Added ${leaveType} with ${newAllocated} days`);
               newBalances[leaveType] = {
                 allocated: newAllocated,
                 used: 0,
@@ -272,9 +277,10 @@ async function updateUserBalancesForPolicy(
             }
           }
 
-          for (const [oldLeaveType] of Object.entries(existingBalance.balances)) {
-            if (!roleAllocation[oldLeaveType]) {
-              console.log(`➖ Removing leave type ${oldLeaveType} for user ${userId}`);
+          // Handle leave types removed from policy
+          for (const [oldLeaveType, oldBalance] of Object.entries(existingBalance.balances)) {
+            if (!roleAllocation[oldLeaveType] && oldBalance.allocated > 0) {
+              details.push(`➖ ${user.name}: Removed ${oldLeaveType}`);
               newBalances[oldLeaveType] = {
                 allocated: 0,
                 used: 0,
@@ -291,11 +297,14 @@ async function updateUserBalancesForPolicy(
               updatedAt: new Date().toISOString(),
             });
             updated++;
+            details.push(`✅ ${user.name}: Balance updated (${Object.keys(newBalances).length} leave types)`);
+          } else {
+            details.push(`⏭️ ${user.name}: No changes needed`);
           }
         } else {
-          console.log(`🆕 Creating new balance for user ${userId} (${user.name})`);
+          // ✅ CREATE NEW BALANCE
+          details.push(`🆕 ${user.name}: Creating new balance`);
           
-          const newBalances: Record<string, LeaveBalance> = {};
           for (const [leaveType, quota] of Object.entries(roleAllocation)) {
             newBalances[leaveType] = {
               allocated: quota,
@@ -306,7 +315,7 @@ async function updateUserBalancesForPolicy(
           }
 
           const newBalanceDoc: LeaveBalancesDoc = {
-            userId: userId,
+            userId: user.uid,
             academicYear: academicYear,
             balances: newBalances,
             updatedAt: new Date().toISOString(),
@@ -314,25 +323,29 @@ async function updateUserBalancesForPolicy(
 
           await balanceRef.set(newBalanceDoc);
           updated++;
+          details.push(`✅ ${user.name}: New balance created (${Object.keys(newBalances).length} leave types)`);
         }
       } catch (userError) {
-        const errorMsg = `Error processing user ${userId}: ${userError}`;
+        const errorMsg = `❌ Error processing user ${user.name} (${user.uid}): ${userError}`;
         console.error(errorMsg);
         errors.push(errorMsg);
+        details.push(errorMsg);
       }
     }
 
-    console.log(`✅ Balance update completed. Updated: ${updated}, Errors: ${errors.length}`);
+    details.push(`📊 Balance update completed. Updated: ${updated}, Errors: ${errors.length}`);
+    
   } catch (error) {
-    const errorMsg = `Failed to update user balances: ${error}`;
+    const errorMsg = `❌ Failed to update user balances: ${error}`;
     console.error(errorMsg);
     errors.push(errorMsg);
+    details.push(errorMsg);
   }
 
-  return { updated, errors };
+  return { updated, errors, details };
 }
 
-// ============ PUT METHOD ============
+// ============ PUT METHOD WITH FULL RECALCULATION ============
 export async function PUT(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -375,6 +388,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Academic year and leave allocations are required" }, { status: 400 });
     }
 
+    // 1. Get existing policy
     const existingSnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
     const existing = existingSnapshot.val() as Policy | null;
 
@@ -388,6 +402,7 @@ export async function PUT(request: Request) {
       }, { status: 403 });
     }
 
+    // 2. Validate allocations
     const requiredRoles = ["faculty", "lab_assistant", "office_staff", "hod", "registrar", "principal", "head_clerk"];
     for (const role of requiredRoles) {
       if (!leaveAllocations[role]) {
@@ -402,6 +417,7 @@ export async function PUT(request: Request) {
       }
     }
 
+    // 3. Update the policy
     const updatedPolicy = {
       ...existing,
       leaveAllocations,
@@ -411,19 +427,17 @@ export async function PUT(request: Request) {
 
     await rtdb.ref(`leavePolicies/${academicYear}`).set(updatedPolicy);
 
+    // 4. ✅ CRITICAL: Recalculate ALL user balances
     console.log(`🔄 Policy updated. Recalculating balances for college ${collegeId}, year ${academicYear}`);
     
-    const { updated, errors } = await updateUserBalancesForPolicy(
+    const { updated, errors, details } = await recalculateAllUserBalances(
       rtdb,
       collegeId,
       academicYear,
       leaveAllocations
     );
 
-    if (errors.length > 0) {
-      console.warn(`⚠️ Balance update completed with ${errors.length} errors:`, errors);
-    }
-
+    // 5. Log the action with detailed results
     const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     await rtdb.ref(`auditLogs/${auditLogId}`).set({
       id: auditLogId,
@@ -443,21 +457,24 @@ export async function PUT(request: Request) {
         balanceRecalculation: {
           usersUpdated: updated,
           errors: errors,
+          details: details,
         },
         timestamp: new Date().toISOString(),
       }),
       createdAt: new Date().toISOString(),
     });
 
+    // 6. Return comprehensive response
     return NextResponse.json({
       success: true,
       policy: updatedPolicy,
       balanceUpdate: {
         usersUpdated: updated,
         errors: errors,
+        details: details,
         message: errors.length === 0 
-          ? `Policy updated and ${updated} user balance(s) updated successfully.` 
-          : `Policy updated but ${errors.length} error(s) occurred during balance update.`,
+          ? `✅ Policy updated and ${updated} user balance(s) updated successfully.` 
+          : `⚠️ Policy updated but ${errors.length} error(s) occurred during balance update.`,
       }
     });
   } catch (error) {
