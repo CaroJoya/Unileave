@@ -424,72 +424,70 @@ function HeadClerkDashboardContent() {
     }
   };
 
-  // ✅ FIXED: Uses PUT for editing, POST for creating
-  const handleSavePolicy = async () => {
-    if (!policyForm.academicYear) {
-      toast.error("Please select an academic year");
-      return;
+// app/headclerk/dashboard/page.tsx - Updated handleSavePolicy function
+
+const handleSavePolicy = async () => {
+  if (!policyForm.academicYear) {
+    toast.error("Please select an academic year");
+    return;
+  }
+
+  setSaving(true);
+  try {
+    const method = editingPolicy ? "PUT" : "POST";
+    
+    const response = await fetch("/api/headclerk/leave-policies", {
+      method: method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        academicYear: policyForm.academicYear,
+        leaveAllocations: policyForm.leaveAllocations,
+        applyRule: policyForm.applyRule,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 409 && data.existing) {
+        toast.error(`A policy for ${policyForm.academicYear} already exists. Use the Edit button.`);
+        const existingPolicy = policies.find(p => p.academicYear === policyForm.academicYear);
+        if (existingPolicy) {
+          handleEditPolicy(existingPolicy);
+        }
+        return;
+      }
+      throw new Error(data.error || "Failed to save policy");
     }
 
-    setSaving(true);
-    try {
-      // ✅ CRITICAL: Use PUT if editing, POST if creating
-      const method = editingPolicy ? "PUT" : "POST";
+    // ✅ Show detailed success message with balance update info
+    if (data.balanceUpdate) {
+      const { usersUpdated, errors } = data.balanceUpdate;
       
-      const response = await fetch("/api/headclerk/leave-policies", {
-        method: method, // ← This was the bug! Now correctly uses PUT
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          academicYear: policyForm.academicYear,
-          leaveAllocations: policyForm.leaveAllocations,
-          applyRule: policyForm.applyRule,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // ✅ Better error handling for duplicate policies
-        if (response.status === 409 && data.existing) {
-          toast.error(`A policy for ${policyForm.academicYear} already exists. Use the Edit button.`);
-          // Auto-switch to edit mode if possible
-          const existingPolicy = policies.find(p => p.academicYear === policyForm.academicYear);
-          if (existingPolicy) {
-            handleEditPolicy(existingPolicy);
-          }
-          return;
-        }
-        throw new Error(data.error || "Failed to save policy");
+      if (usersUpdated > 0) {
+        toast.success(`✅ Policy updated! ${usersUpdated} user balance(s) updated.`);
+      } else {
+        toast.success("✅ Policy updated successfully!");
       }
-
-      toast.success(
-        editingPolicy 
-          ? "✅ Leave policy updated successfully! All user balances have been recalculated." 
-          : "✅ Leave policy created successfully!"
-      );
       
-      setShowPolicyDialog(false);
-      resetPolicyForm();
-      await fetchPolicies();
-      
-      // ✅ Show additional info if balance updates were applied
-      if (data.balanceUpdate) {
-        const { usersUpdated, errors } = data.balanceUpdate;
-        if (usersUpdated > 0) {
-          toast.success(`📊 ${usersUpdated} user balance(s) updated`);
-        }
-        if (errors && errors.length > 0) {
-          toast.warning(`⚠️ ${errors.length} error(s) occurred during balance update`);
-        }
+      if (errors && errors.length > 0) {
+        toast.warning(`⚠️ ${errors.length} error(s) occurred during balance update. Check logs.`);
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to save policy";
-      toast.error(errorMessage);
-    } finally {
-      setSaving(false);
+    } else {
+      toast.success(editingPolicy ? "✅ Policy updated successfully!" : "✅ Policy created successfully!");
     }
-  };
-
+    
+    setShowPolicyDialog(false);
+    resetPolicyForm();
+    await fetchPolicies();
+    
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to save policy";
+    toast.error(errorMessage);
+  } finally {
+    setSaving(false);
+  }
+};
   const resetPolicyForm = () => {
     setEditingPolicy(null);
     setPolicyForm({

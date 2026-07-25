@@ -188,8 +188,11 @@ export async function POST(request: Request) {
 
     await rtdb.ref(`leavePolicies/${academicYear}`).set(policyData);
 
+    // ✅ Immediately apply balances if applyRule is immediate
     if (applyRule === "immediate") {
       console.log(`✅ Policy ${academicYear} applied immediately for college ${collegeId}`);
+      const result = await recalculateAllUserBalances(rtdb, collegeId, academicYear, leaveAllocations);
+      console.log(`📊 Balance update result: ${result.updated} users updated, ${result.errors.length} errors`);
     }
 
     return NextResponse.json({ success: true, policy: policyData });
@@ -215,6 +218,7 @@ async function recalculateAllUserBalances(
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, UserRecord> | null || {};
     
+    // ✅ CRITICAL FIX: Filter by collegeId AND active status
     const collegeUsers = Object.entries(allUsers)
       .filter(([, user]) => user.collegeId === collegeId && user.status === "active")
       .map(([uid, user]) => ({ ...user, uid }));
@@ -427,7 +431,7 @@ export async function PUT(request: Request) {
 
     await rtdb.ref(`leavePolicies/${academicYear}`).set(updatedPolicy);
 
-    // 4. ✅ CRITICAL: Recalculate ALL user balances
+    // 4. ✅ CRITICAL: Recalculate ALL user balances - THIS IS THE FIX
     console.log(`🔄 Policy updated. Recalculating balances for college ${collegeId}, year ${academicYear}`);
     
     const { updated, errors, details } = await recalculateAllUserBalances(
@@ -464,7 +468,7 @@ export async function PUT(request: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    // 6. Return comprehensive response
+    // 6. Return comprehensive response with balance update results
     return NextResponse.json({
       success: true,
       policy: updatedPolicy,
