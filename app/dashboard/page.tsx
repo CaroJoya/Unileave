@@ -1,3 +1,4 @@
+// app/dashboard/page.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -105,7 +106,7 @@ function DashboardContent() {
     queryFn: fetchBalances,
     enabled: !!user?.uid && !user?.roles?.includes("principal"),
     staleTime: 0,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false, // We'll handle this manually
   });
 
   const { 
@@ -117,7 +118,7 @@ function DashboardContent() {
     queryFn: fetchRequests,
     enabled: !!user?.uid && !user?.roles?.includes("principal"),
     staleTime: 0,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 
   const { 
@@ -129,7 +130,7 @@ function DashboardContent() {
     queryFn: fetchCompOff,
     enabled: !!user?.uid && !user?.roles?.includes("principal"),
     staleTime: 0,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 
   const { 
@@ -141,8 +142,38 @@ function DashboardContent() {
     queryFn: fetchOverwork,
     enabled: !!user?.uid && !user?.roles?.includes("principal"),
     staleTime: 0,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
+
+  // ✅ FORCE REFETCH WHEN TAB BECOMES VISIBLE - FIX FOR STALE DATA
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('🔄 Tab became visible - Refetching balances...');
+        refetchBalances();
+        refetchRequests();
+        refetchCompOff();
+        refetchOverwork();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [refetchBalances, refetchRequests, refetchCompOff, refetchOverwork]);
+
+  // ✅ FORCE REFETCH ON FOCUS
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log('🔄 Window focused - Refetching balances...');
+      refetchBalances();
+      refetchRequests();
+      refetchCompOff();
+      refetchOverwork();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refetchBalances, refetchRequests, refetchCompOff, refetchOverwork]);
 
   // Derived state with proper calculations
   const dashboardData = (() => {
@@ -228,6 +259,7 @@ function DashboardContent() {
 
   // Manual refresh function that invalidates all queries
   const refreshAllData = useCallback(async () => {
+    console.log('🔄 Manual refresh triggered...');
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['balances'] }),
       queryClient.invalidateQueries({ queryKey: ['requests'] }),
@@ -240,16 +272,8 @@ function DashboardContent() {
       refetchCompOff(),
       refetchOverwork(),
     ]);
+    console.log('✅ Manual refresh complete');
   }, [queryClient, refetchBalances, refetchRequests, refetchCompOff, refetchOverwork]);
-
-  // Auto-refresh on focus
-  useEffect(() => {
-    const handleFocus = () => {
-      refreshAllData();
-    };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [refreshAllData]);
 
   // Auth check
   useEffect(() => {

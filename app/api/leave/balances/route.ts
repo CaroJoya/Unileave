@@ -46,6 +46,7 @@ export async function GET() {
       academicYear: balanceData.academicYear,
     });
 
+    // ✅ FORCE NO CACHING - Ensures members see updated balances
     response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');
@@ -142,7 +143,6 @@ export async function PUT(request: Request) {
       };
     }
 
-    // ✅ FIXED: Use / instead of . for Firebase path
     await balanceRef.update({
       [`balances/${leaveType}`]: updatedBalance,
       updatedAt: new Date().toISOString(),
@@ -156,6 +156,7 @@ export async function PUT(request: Request) {
       balances: updatedDoc?.balances || {},
     });
 
+    // ✅ FORCE NO CACHING
     response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
     
     return response;
@@ -233,6 +234,7 @@ export async function POST(request: Request) {
       academicYear: year,
     });
 
+    // ✅ FORCE NO CACHING
     response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
     
     return response;
