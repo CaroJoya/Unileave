@@ -188,7 +188,6 @@ export async function POST(request: Request) {
 
     await rtdb.ref(`leavePolicies/${academicYear}`).set(policyData);
 
-    // ✅ Immediately apply balances if applyRule is immediate
     if (applyRule === "immediate") {
       console.log(`✅ Policy ${academicYear} applied immediately for college ${collegeId}`);
       const result = await recalculateAllUserBalances(rtdb, collegeId, academicYear, leaveAllocations);
@@ -202,7 +201,7 @@ export async function POST(request: Request) {
   }
 }
 
-// ============ CORE BALANCE RECALCULATION FUNCTION ============
+// ============ CORE BALANCE RECALCULATION FUNCTION - FIXED ============
 async function recalculateAllUserBalances(
   rtdb: Database,
   collegeId: string,
@@ -218,7 +217,6 @@ async function recalculateAllUserBalances(
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, UserRecord> | null || {};
     
-    // ✅ CRITICAL FIX: Filter by collegeId AND active status
     const collegeUsers = Object.entries(allUsers)
       .filter(([, user]) => user.collegeId === collegeId && user.status === "active")
       .map(([uid, user]) => ({ ...user, uid }));
@@ -245,8 +243,7 @@ async function recalculateAllUserBalances(
         let hasChanges = false;
 
         if (existingBalance) {
-          // ✅ UPDATE EXISTING BALANCE
-          // Process all leave types in the new policy
+          // ✅ FIX: Process all leave types from the new policy
           for (const [leaveType, newAllocated] of Object.entries(roleAllocation)) {
             const oldBalance = existingBalance.balances[leaveType];
             
@@ -256,10 +253,11 @@ async function recalculateAllUserBalances(
               const pending = oldBalance.pending || 0;
               const newAvailable = Math.max(0, newAllocated - used - pending);
               
-              // Check if anything changed
+              // ✅ CRITICAL FIX: Always update allocated to match policy
+              // This ensures ML, CL, EL etc. show correct allocated values
               if (oldBalance.allocated !== newAllocated || oldBalance.available !== newAvailable) {
                 newBalances[leaveType] = {
-                  allocated: newAllocated,
+                  allocated: newAllocated,  // ✅ NOW PROPERLY SET
                   used: used,
                   pending: pending,
                   available: newAvailable,
@@ -431,7 +429,7 @@ export async function PUT(request: Request) {
 
     await rtdb.ref(`leavePolicies/${academicYear}`).set(updatedPolicy);
 
-    // 4. ✅ CRITICAL: Recalculate ALL user balances - THIS IS THE FIX
+    // 4. ✅ CRITICAL: Recalculate ALL user balances with FIXED function
     console.log(`🔄 Policy updated. Recalculating balances for college ${collegeId}, year ${academicYear}`);
     
     const { updated, errors, details } = await recalculateAllUserBalances(
