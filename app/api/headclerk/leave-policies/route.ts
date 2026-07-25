@@ -242,44 +242,40 @@ async function recalculateAllUserBalances(
         const newBalances: Record<string, LeaveBalance> = {};
         let hasChanges = false;
 
-        if (existingBalance) {
-          // ✅ FIX: Process all leave types from the new policy
-          for (const [leaveType, newAllocated] of Object.entries(roleAllocation)) {
-            const oldBalance = existingBalance.balances[leaveType];
+        // ✅ FIX: Process all leave types from the new policy
+        for (const [leaveType, newAllocated] of Object.entries(roleAllocation)) {
+          const oldBalance = existingBalance?.balances?.[leaveType];
+          
+          if (oldBalance) {
+            // Preserve used and pending days
+            const used = oldBalance.used || 0;
+            const pending = oldBalance.pending || 0;
+            const newAvailable = Math.max(0, newAllocated - used - pending);
             
-            if (oldBalance) {
-              // Preserve used and pending days
-              const used = oldBalance.used || 0;
-              const pending = oldBalance.pending || 0;
-              const newAvailable = Math.max(0, newAllocated - used - pending);
-              
-              // ✅ CRITICAL FIX: Always update allocated to match policy
-              // This ensures ML, CL, EL etc. show correct allocated values
-              if (oldBalance.allocated !== newAllocated || oldBalance.available !== newAvailable) {
-                newBalances[leaveType] = {
-                  allocated: newAllocated,  // ✅ NOW PROPERLY SET
-                  used: used,
-                  pending: pending,
-                  available: newAvailable,
-                };
-                hasChanges = true;
-              } else {
-                newBalances[leaveType] = { ...oldBalance };
-              }
-            } else {
-              // New leave type added
-              details.push(`➕ ${user.name}: Added ${leaveType} with ${newAllocated} days`);
-              newBalances[leaveType] = {
-                allocated: newAllocated,
-                used: 0,
-                pending: 0,
-                available: newAllocated,
-              };
-              hasChanges = true;
-            }
+            // ✅ CRITICAL FIX: ALWAYS update allocated to match new policy
+            // This ensures ML, CL, EL etc. show correct allocated values
+            newBalances[leaveType] = {
+              allocated: newAllocated,  // ✅ NOW PROPERLY SET
+              used: used,
+              pending: pending,
+              available: newAvailable,
+            };
+            hasChanges = true;
+          } else {
+            // New leave type added
+            details.push(`➕ ${user.name}: Added ${leaveType} with ${newAllocated} days`);
+            newBalances[leaveType] = {
+              allocated: newAllocated,
+              used: 0,
+              pending: 0,
+              available: newAllocated,
+            };
+            hasChanges = true;
           }
+        }
 
-          // Handle leave types removed from policy
+        // Handle leave types removed from policy
+        if (existingBalance) {
           for (const [oldLeaveType, oldBalance] of Object.entries(existingBalance.balances)) {
             if (!roleAllocation[oldLeaveType] && oldBalance.allocated > 0) {
               details.push(`➖ ${user.name}: Removed ${oldLeaveType}`);
@@ -292,40 +288,17 @@ async function recalculateAllUserBalances(
               hasChanges = true;
             }
           }
+        }
 
-          if (hasChanges) {
-            await balanceRef.update({
-              balances: newBalances,
-              updatedAt: new Date().toISOString(),
-            });
-            updated++;
-            details.push(`✅ ${user.name}: Balance updated (${Object.keys(newBalances).length} leave types)`);
-          } else {
-            details.push(`⏭️ ${user.name}: No changes needed`);
-          }
-        } else {
-          // ✅ CREATE NEW BALANCE
-          details.push(`🆕 ${user.name}: Creating new balance`);
-          
-          for (const [leaveType, quota] of Object.entries(roleAllocation)) {
-            newBalances[leaveType] = {
-              allocated: quota,
-              used: 0,
-              pending: 0,
-              available: quota,
-            };
-          }
-
-          const newBalanceDoc: LeaveBalancesDoc = {
-            userId: user.uid,
-            academicYear: academicYear,
+        if (hasChanges) {
+          await balanceRef.update({
             balances: newBalances,
             updatedAt: new Date().toISOString(),
-          };
-
-          await balanceRef.set(newBalanceDoc);
+          });
           updated++;
-          details.push(`✅ ${user.name}: New balance created (${Object.keys(newBalances).length} leave types)`);
+          details.push(`✅ ${user.name}: Balance updated (${Object.keys(newBalances).length} leave types)`);
+        } else {
+          details.push(`⏭️ ${user.name}: No changes needed`);
         }
       } catch (userError) {
         const errorMsg = `❌ Error processing user ${user.name} (${user.uid}): ${userError}`;
