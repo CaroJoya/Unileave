@@ -397,7 +397,6 @@ function HeadClerkDashboardContent() {
 
   const academicYears = getAcademicYears();
 
-  // ✅ FIXED: Edit button opens dialog with policy data
   const handleEditPolicy = (policy: Policy) => {
     setEditingPolicy(policy);
     setPolicyForm({
@@ -408,86 +407,81 @@ function HeadClerkDashboardContent() {
     setShowPolicyDialog(true);
   };
 
-  // ✅ FIXED: Smart "New Policy" button - checks if policy exists first
   const handleNewPolicyClick = () => {
-    const currentYear = getAcademicYears()[2]; // Current year
+    const currentYear = getAcademicYears()[2];
     const existingPolicy = policies.find(p => p.academicYear === currentYear);
     
     if (existingPolicy) {
-      // ✅ Automatically switch to edit mode
       handleEditPolicy(existingPolicy);
       toast.info(`Editing existing policy for ${currentYear}`);
     } else {
-      // No policy exists, create new
       resetPolicyForm();
       setShowPolicyDialog(true);
     }
   };
 
-// app/headclerk/dashboard/page.tsx - Updated handleSavePolicy function
+  const handleSavePolicy = async () => {
+    if (!policyForm.academicYear) {
+      toast.error("Please select an academic year");
+      return;
+    }
 
-const handleSavePolicy = async () => {
-  if (!policyForm.academicYear) {
-    toast.error("Please select an academic year");
-    return;
-  }
+    setSaving(true);
+    try {
+      const method = editingPolicy ? "PUT" : "POST";
+      
+      const response = await fetch("/api/headclerk/leave-policies", {
+        method: method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          academicYear: policyForm.academicYear,
+          leaveAllocations: policyForm.leaveAllocations,
+          applyRule: policyForm.applyRule,
+        }),
+      });
 
-  setSaving(true);
-  try {
-    const method = editingPolicy ? "PUT" : "POST";
-    
-    const response = await fetch("/api/headclerk/leave-policies", {
-      method: method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        academicYear: policyForm.academicYear,
-        leaveAllocations: policyForm.leaveAllocations,
-        applyRule: policyForm.applyRule,
-      }),
-    });
+      const data = await response.json();
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      if (response.status === 409 && data.existing) {
-        toast.error(`A policy for ${policyForm.academicYear} already exists. Use the Edit button.`);
-        const existingPolicy = policies.find(p => p.academicYear === policyForm.academicYear);
-        if (existingPolicy) {
-          handleEditPolicy(existingPolicy);
+      if (!response.ok) {
+        if (response.status === 409 && data.existing) {
+          toast.error(`A policy for ${policyForm.academicYear} already exists. Use the Edit button.`);
+          const existingPolicy = policies.find(p => p.academicYear === policyForm.academicYear);
+          if (existingPolicy) {
+            handleEditPolicy(existingPolicy);
+          }
+          return;
         }
-        return;
+        throw new Error(data.error || "Failed to save policy");
       }
-      throw new Error(data.error || "Failed to save policy");
-    }
 
-    // ✅ Show detailed success message with balance update info
-    if (data.balanceUpdate) {
-      const { usersUpdated, errors } = data.balanceUpdate;
-      
-      if (usersUpdated > 0) {
-        toast.success(`✅ Policy updated! ${usersUpdated} user balance(s) updated.`);
+      if (data.balanceUpdate) {
+        const { usersUpdated, errors } = data.balanceUpdate;
+        
+        if (usersUpdated > 0) {
+          toast.success(`✅ Policy updated! ${usersUpdated} user balance(s) updated.`);
+        } else {
+          toast.success("✅ Policy updated successfully!");
+        }
+        
+        if (errors && errors.length > 0) {
+          toast.warning(`⚠️ ${errors.length} error(s) occurred during balance update. Check logs.`);
+        }
       } else {
-        toast.success("✅ Policy updated successfully!");
+        toast.success(editingPolicy ? "✅ Policy updated successfully!" : "✅ Policy created successfully!");
       }
       
-      if (errors && errors.length > 0) {
-        toast.warning(`⚠️ ${errors.length} error(s) occurred during balance update. Check logs.`);
-      }
-    } else {
-      toast.success(editingPolicy ? "✅ Policy updated successfully!" : "✅ Policy created successfully!");
+      setShowPolicyDialog(false);
+      resetPolicyForm();
+      await fetchPolicies();
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to save policy";
+      toast.error(errorMessage);
+    } finally {
+      setSaving(false);
     }
-    
-    setShowPolicyDialog(false);
-    resetPolicyForm();
-    await fetchPolicies();
-    
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to save policy";
-    toast.error(errorMessage);
-  } finally {
-    setSaving(false);
-  }
-};
+  };
+
   const resetPolicyForm = () => {
     setEditingPolicy(null);
     setPolicyForm({
@@ -696,7 +690,8 @@ const handleSavePolicy = async () => {
       hasRedirected.current = true;
       router.push("/login");
     }
-    if (!isLoading && user && !user.roles?.includes("head_clerk") && !hasRedirected.current) {
+    // ✅ Allow Super Admin to access Head Clerk dashboard
+    if (!isLoading && user && !user.roles?.includes("head_clerk") && !user.roles?.includes("super_admin") && !hasRedirected.current) {
       hasRedirected.current = true;
       router.push("/dashboard");
     }
@@ -704,7 +699,8 @@ const handleSavePolicy = async () => {
 
   // ========== DATA FETCH ==========
   useEffect(() => {
-    if (user?.roles?.includes("head_clerk") && !hasFetched.current) {
+    // ✅ Allow both Head Clerk and Super Admin to fetch data
+    if ((user?.roles?.includes("head_clerk") || user?.roles?.includes("super_admin")) && !hasFetched.current) {
       hasFetched.current = true;
       const loadAllData = async () => {
         await Promise.all([
@@ -774,7 +770,8 @@ const handleSavePolicy = async () => {
     );
   }
 
-  if (!user || !user.roles?.includes("head_clerk")) {
+  // ✅ Allow both Head Clerk and Super Admin to see the dashboard
+  if (!user || (!user.roles?.includes("head_clerk") && !user.roles?.includes("super_admin"))) {
     return null;
   }
 
@@ -883,7 +880,6 @@ const handleSavePolicy = async () => {
                 <CardTitle>Leave Policies</CardTitle>
                 <CardDescription>Configure leave quotas per role for each academic year</CardDescription>
               </div>
-              {/* ✅ FIXED: Smart New Policy button */}
               <Button onClick={handleNewPolicyClick}>
                 <Plus className="h-4 w-4 mr-2" />
                 {policies.length > 0 ? "Edit Current Policy" : "New Policy"}
@@ -1522,7 +1518,7 @@ const handleSavePolicy = async () => {
         </DialogContent>
       </Dialog>
 
-      {/* ✅ FIXED: CREATE/EDIT POLICY DIALOG - Shows correct title and button */}
+      {/* CREATE/EDIT POLICY DIALOG */}
       <Dialog open={showPolicyDialog} onOpenChange={(open) => {
         if (!open) resetPolicyForm();
         setShowPolicyDialog(open);

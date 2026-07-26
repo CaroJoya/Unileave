@@ -104,7 +104,7 @@ export function RoleSwitcher() {
       .map(role => roleConfigs[role])
       .filter(Boolean) as RoleOption[];
     
-    // ✅ FIX: If user has super_admin, ALWAYS add head_clerk as an option
+    // ✅ ALWAYS add head_clerk as an option for Super Admin
     if (userRoles.includes("super_admin")) {
       const headClerkConfig = roleConfigs["head_clerk"];
       if (headClerkConfig && !roles.some(r => r.id === "head_clerk")) {
@@ -133,10 +133,11 @@ export function RoleSwitcher() {
     router.push(config.href);
   };
 
-  // ✅ FIX: Always show for Super Admin (even if only 1 role visible)
-  // But hide for normal users with only 1 role
-  const shouldShow = availableRoles.length > 1 || userRoles.includes("super_admin");
+  // ✅ Always show for Super Admin, or when there are multiple roles
+  const isSuperAdmin = userRoles.includes("super_admin");
+  const shouldShow = availableRoles.length > 1 || isSuperAdmin;
 
+  // If no roles or single role and not super admin, hide
   if (!shouldShow) {
     return null;
   }
@@ -147,9 +148,7 @@ export function RoleSwitcher() {
   };
 
   // Check if Super Admin is switching to Head Clerk
-  const isSuperAdminActingAsHeadClerk = 
-    userRoles.includes("super_admin") && 
-    currentRole === "head_clerk";
+  const isSuperAdminActingAsHeadClerk = isSuperAdmin && currentRole === "head_clerk";
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -174,10 +173,7 @@ export function RoleSwitcher() {
         <DropdownMenuSeparator />
         
         {availableRoles.map((role) => {
-          const isSuperAdminToHeadClerk = 
-            userRoles.includes("super_admin") && 
-            role.id === "head_clerk" && 
-            !userRoles.includes("head_clerk");
+          const isSuperAdminToHeadClerk = isSuperAdmin && role.id === "head_clerk";
           
           return (
             <DropdownMenuItem
