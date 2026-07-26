@@ -1,7 +1,8 @@
-// app/api/headclerk/attendance/mark/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
+// app/api/headclerk/attendance/mark/route.ts - WITH SUPER ADMIN SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { hasHeadClerkOrSuperAdminRights, getPerformerRole } from "@/lib/utils/roles";
 
 interface UserRecord {
   uid: string;
@@ -59,15 +60,14 @@ export async function POST(request: Request) {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
     
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -88,7 +88,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // ✅ Verify the target user is in the same college
     if (targetUser.collegeId !== collegeId) {
       return NextResponse.json({ 
         error: "Not authorized to mark attendance for users from other colleges" 
@@ -134,6 +133,23 @@ export async function POST(request: Request) {
         createdAt: new Date().toISOString(),
       });
     }
+
+    const performerRole = getPerformerRole(userData.roles || []);
+    await rtdb.ref("auditLogs").push({
+      userId: decodedToken.uid,
+      userName: userData.name || "Unknown",
+      userRole: performerRole,
+      action: "ATTENDANCE_MARKED",
+      module: "attendance",
+      details: JSON.stringify({
+        targetUser: targetUser.name,
+        date,
+        status,
+        performedBy: performerRole,
+        collegeId,
+      }),
+      createdAt: new Date().toISOString(),
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

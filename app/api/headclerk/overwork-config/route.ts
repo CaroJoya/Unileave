@@ -1,7 +1,8 @@
-// app/api/headclerk/overwork-config/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
+// app/api/headclerk/overwork-config/route.ts - WITH SUPER ADMIN SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { hasHeadClerkOrSuperAdminRights, getPerformerRole } from "@/lib/utils/roles";
 
 interface OverworkConfig {
   id: string;
@@ -11,7 +12,7 @@ interface OverworkConfig {
   autoConversionEnabled: boolean;
   updatedAt: string | null;
   updatedBy: string | null;
-  collegeId: string; // ✅ Add collegeId field
+  collegeId: string;
 }
 
 interface UserRecord {
@@ -48,23 +49,20 @@ export async function GET() {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
 
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
-    // ✅ Store config under college path
     const configRef = rtdb.ref(`colleges/${collegeId}/overworkConfig/overwork_config`);
     const snapshot = await configRef.once("value");
     let config = snapshot.val() as OverworkConfig | null;
 
-    // If no config exists, create default
     if (!config) {
       config = {
         id: "overwork_config",
@@ -111,15 +109,14 @@ export async function PUT(request: Request) {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
 
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -137,11 +134,12 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Maximum hours per day must be between 0.5 and 24" }, { status: 400 });
     }
 
-    // ✅ Store config under college path
     const configRef = rtdb.ref(`colleges/${collegeId}/overworkConfig/overwork_config`);
     const snapshot = await configRef.once("value");
     const existingConfig = snapshot.val() as OverworkConfig | null;
 
+    const performerRole = getPerformerRole(userData.roles || []);
+    
     const updatedConfig = {
       id: "overwork_config",
       conversionHours: conversionHours !== undefined ? conversionHours : (existingConfig?.conversionHours || 5),
@@ -155,10 +153,10 @@ export async function PUT(request: Request) {
 
     await configRef.set(updatedConfig);
 
-    const auditLog = {
+    await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name,
-      userRole: "head_clerk",
+      userRole: performerRole,
       action: "OVERWORK_CONFIG_UPDATED",
       module: "overworkConfig",
       oldData: existingConfig ? {
@@ -173,10 +171,12 @@ export async function PUT(request: Request) {
         maxHoursPerDay: updatedConfig.maxHoursPerDay,
         autoConversionEnabled: updatedConfig.autoConversionEnabled,
       },
+      details: JSON.stringify({
+        performedBy: performerRole,
+        collegeId,
+      }),
       createdAt: new Date().toISOString(),
-    };
-
-    await rtdb.ref("auditLogs").push(auditLog);
+    });
 
     return NextResponse.json({ success: true, config: updatedConfig });
   } catch (error) {

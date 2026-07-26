@@ -1,7 +1,8 @@
-// app/api/headclerk/attendance/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
+// app/api/headclerk/attendance/route.ts - WITH SUPER ADMIN SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { hasHeadClerkOrSuperAdminRights } from "@/lib/utils/roles";
 
 interface AttendanceRecord {
   id?: string;
@@ -68,15 +69,14 @@ export async function GET(request: Request) {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
     
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -90,12 +90,10 @@ export async function GET(request: Request) {
 
     const startDate = new Date(Date.UTC(year, month - 1, 1));
     const endDate = new Date(Date.UTC(year, month, 0));
-    const monthStr = `${year}-${month.toString().padStart(2, "0")}`;
     
     const attendanceSnapshot = await rtdb.ref("attendance").once("value");
     const allAttendance = attendanceSnapshot.val() as Record<string, AttendanceRecord> | null || {};
     
-    // ✅ Get ALL users in the SAME college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, UserRecord> | null || {};
     
@@ -103,7 +101,6 @@ export async function GET(request: Request) {
       .filter(([, user]) => user.collegeId === collegeId)
       .map(([uid]) => uid);
     
-    // ✅ Filter attendance records by college users
     let results = Object.values(allAttendance).filter((record: AttendanceRecord) => {
       if (!record.date) return false;
       if (!collegeUserIds.includes(record.userId)) return false;
@@ -122,7 +119,6 @@ export async function GET(request: Request) {
     const paginatedResults = results.slice(offset, offset + limit);
     const hasMore = offset + limit < totalResults;
 
-    // ✅ Filter staff users by college
     const staffUsers = Object.entries(allUsers)
       .filter(([, user]: [string, UserRecord]) => {
         const roles = user.roles || [];
@@ -141,7 +137,6 @@ export async function GET(request: Request) {
         roles: user.roles,
       }));
 
-    // ✅ Filter departments by college
     const deptsSnapshot = await rtdb.ref("departments").once("value");
     const departments = deptsSnapshot.val() as Record<string, DepartmentRecord> | null || {};
 
@@ -164,7 +159,7 @@ export async function GET(request: Request) {
       users: staffUsers,
       departments: departmentsList,
       summary,
-      month: monthStr,
+      month: `${year}-${month.toString().padStart(2, "0")}`,
       pagination: {
         limit,
         offset,

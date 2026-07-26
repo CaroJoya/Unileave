@@ -1,8 +1,9 @@
-// app/api/headclerk/year-reset/route.ts - COMPLETE FIXED FILE WITH COLLEGE ISOLATION
+// app/api/headclerk/year-reset/route.ts - WITH SUPER ADMIN SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
+import { hasHeadClerkOrSuperAdminRights, getPerformerRole } from "@/lib/utils/roles";
 
 interface LeavePolicy {
   id: string;
@@ -14,7 +15,7 @@ interface LeavePolicy {
   createdAt: string;
   updatedAt: string;
   isArchived?: boolean;
-  collegeId: string; // ✅ Add collegeId
+  collegeId: string;
 }
 
 interface CarryOverRule {
@@ -53,7 +54,7 @@ interface UserData {
   subRole?: string;
   isEmployed: boolean;
   status: string;
-  collegeId: string; // ✅ Add collegeId
+  collegeId: string;
   collegeName: string;
 }
 
@@ -114,20 +115,18 @@ export async function GET() {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as { roles?: string[]; name?: string; collegeId?: string } | null;
 
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const currentYear = getCurrentAcademicYear();
 
-    // ✅ Filter policies by college
     const policiesSnapshot = await rtdb.ref("leavePolicies").once("value");
     const policies = policiesSnapshot.val() as Record<string, LeavePolicy> | null || {};
 
@@ -152,7 +151,6 @@ export async function GET() {
     const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
     const leaveTypes = leaveTypesSnapshot.val() as Record<string, { leaveCode: string; isActive: boolean; collegeId?: string }> | null || {};
 
-    // ✅ Filter leave types by college
     const leaveTypeCodes = Object.values(leaveTypes)
       .filter((type) => {
         if (type.collegeId) {
@@ -212,15 +210,14 @@ export async function POST(request: Request) {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as { roles?: string[]; name?: string; collegeId?: string; collegeName?: string } | null;
 
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
-    // ✅ Get the Head Clerk's college ID
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const body = (await request.json()) as YearResetRequest;
@@ -233,14 +230,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "New academic year is required" }, { status: 400 });
     }
 
-    // ✅ Check if policy exists for this college
     const existingPolicySnapshot = await rtdb
       .ref(`leavePolicies/${body.newAcademicYear}`)
       .once("value");
     const existingPolicy = existingPolicySnapshot.val() as LeavePolicy | null;
 
     if (existingPolicy) {
-      // ✅ Verify policy belongs to this college
       if (existingPolicy.collegeId && existingPolicy.collegeId !== collegeId) {
         return NextResponse.json({ 
           error: `A policy for ${body.newAcademicYear} exists in another college. You cannot access it.` 
@@ -264,7 +259,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Current policy not found" }, { status: 404 });
     }
 
-    // ✅ Verify current policy belongs to this college
     if (currentPolicy.collegeId && currentPolicy.collegeId !== collegeId) {
       return NextResponse.json({ 
         error: "Current policy belongs to another college. Cannot reset." 
@@ -284,7 +278,7 @@ export async function POST(request: Request) {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         isArchived: false,
-        collegeId: collegeId, // ✅ Store college ID
+        collegeId: collegeId,
       };
     } else {
       if (!body.leaveAllocations) {
@@ -303,13 +297,12 @@ export async function POST(request: Request) {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         isArchived: false,
-        collegeId: collegeId, // ✅ Store college ID
+        collegeId: collegeId,
       };
     }
 
     await rtdb.ref(`leavePolicies/${body.newAcademicYear}`).set(newPolicy);
 
-    // ✅ Get only users from the SAME college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, UserData> | null || {};
 
@@ -317,7 +310,7 @@ export async function POST(request: Request) {
       .filter(([, user]) => 
         user.isEmployed !== false && 
         user.status === "active" &&
-        user.collegeId === collegeId // ✅ Critical college filter
+        user.collegeId === collegeId
       )
       .map(([uid, user]) => ({ ...user, uid }));
 
@@ -381,7 +374,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Batch update balances
     const balanceRef = rtdb.ref("leaveBalances");
     const batchUpdates: Record<string, LeaveBalancesDoc> = {};
     for (const [key, value] of Object.entries(balanceUpdates)) {
@@ -389,7 +381,6 @@ export async function POST(request: Request) {
     }
     await balanceRef.update(batchUpdates);
 
-    // ✅ Archive with college ID
     await rtdb.ref(`archivedPolicies/${currentAcademicYear}`).set({
       policy: currentPolicy,
       archivedAt: new Date().toISOString(),
@@ -403,12 +394,12 @@ export async function POST(request: Request) {
       archivedAt: new Date().toISOString(),
     });
 
-    const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-    await rtdb.ref(`auditLogs/${auditLogId}`).set({
-      id: auditLogId,
+    const performerRole = getPerformerRole(userData.roles || []);
+    
+    await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
-      userName: userData.name || "Head Clerk",
-      userRole: "head_clerk",
+      userName: userData.name || "Unknown",
+      userRole: performerRole,
       action: "YEAR_RESET_EXECUTED",
       module: "leavePolicies",
       details: JSON.stringify({
@@ -418,11 +409,11 @@ export async function POST(request: Request) {
         carryOverRules: body.carryOverRules,
         usersAffected: activeUsers.length,
         collegeId: collegeId,
+        performedBy: performerRole,
       }),
       createdAt: new Date().toISOString(),
     });
 
-    // ✅ Send notifications only to users in this college
     const notifications: Record<string, Notification> = {};
     const baseNotificationId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 

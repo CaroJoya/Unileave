@@ -1,4 +1,3 @@
-// components/layout/RoleSwitcher.tsx
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -12,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Check, Users, User, Shield, Building2, Settings } from "lucide-react";
+import { ChevronDown, Check, Users, User, Shield, Building2, LayoutGrid } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useRoleStore } from "@/store/roleStore";
 import { ROLE_PRIORITY } from "@/types/roles";
@@ -32,7 +31,6 @@ export function RoleSwitcher() {
   const { currentRole, setCurrentRole } = useRoleStore();
   const [open, setOpen] = useState(false);
 
-  // ✅ FIX: Wrap roleConfigs in useMemo to prevent recreation on every render
   const roleConfigs = useMemo((): Record<string, RoleOption> => ({
     super_admin: {
       id: "super_admin",
@@ -45,7 +43,7 @@ export function RoleSwitcher() {
     head_clerk: {
       id: "head_clerk",
       label: "Head Clerk",
-      icon: <Settings className="h-4 w-4" />,
+      icon: <LayoutGrid className="h-4 w-4" />,
       href: "/headclerk/dashboard",
       description: "Configure leave policies, manage attendance",
       priority: ROLE_PRIORITY.head_clerk,
@@ -98,30 +96,34 @@ export function RoleSwitcher() {
       description: "Request leave, view status, track overwork",
       priority: ROLE_PRIORITY.office_staff,
     },
-  }), []); // ✅ Empty dependency array - never changes
+  }), []);
 
-  // Get available roles for the user and sort by priority
+  // Get available roles for the user
   const availableRoles = useMemo(() => {
     const roles = userRoles
       .map(role => roleConfigs[role])
       .filter(Boolean) as RoleOption[];
     
-    // Sort by priority (lower number = higher priority)
+    // Special: If user has super_admin, also show head_clerk as an option
+    if (userRoles.includes("super_admin")) {
+      const headClerkConfig = roleConfigs["head_clerk"];
+      if (headClerkConfig && !roles.some(r => r.id === "head_clerk")) {
+        roles.push(headClerkConfig);
+      }
+    }
+    
     return roles.sort((a, b) => a.priority - b.priority);
   }, [userRoles, roleConfigs]);
 
   // Auto-select highest priority role if none selected
   useEffect(() => {
     if (availableRoles.length > 0 && !currentRole) {
-      // First role in sorted list = highest priority
       setCurrentRole(availableRoles[0].id);
     }
   }, [availableRoles, currentRole, setCurrentRole]);
 
-  // Get current role config
   const currentRoleConfig = currentRole ? roleConfigs[currentRole] : null;
 
-  // Handle role switch
   const switchRole = (roleId: string) => {
     const config = roleConfigs[roleId];
     if (!config) return;
@@ -131,16 +133,19 @@ export function RoleSwitcher() {
     router.push(config.href);
   };
 
-  // If only one role, show nothing (or you can show a simple badge)
   if (availableRoles.length <= 1) {
     return null;
   }
 
-  // Get the appropriate icon for the current role
   const getRoleIcon = (roleId: string) => {
     const config = roleConfigs[roleId];
     return config?.icon || <User className="h-4 w-4" />;
   };
+
+  // Check if Super Admin is switching to Head Clerk
+  const isSuperAdminActingAsHeadClerk = 
+    userRoles.includes("super_admin") && 
+    currentRole === "head_clerk";
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -164,28 +169,49 @@ export function RoleSwitcher() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         
-        {availableRoles.map((role) => (
-          <DropdownMenuItem
-            key={role.id}
-            className={`flex items-start gap-3 py-3 px-3 cursor-pointer ${
-              currentRole === role.id ? "bg-primary/5" : ""
-            }`}
-            onClick={() => switchRole(role.id)}
-          >
-            <div className="mt-0.5">{role.icon}</div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{role.label}</span>
-                {currentRole === role.id && (
-                  <Check className="h-4 w-4 text-primary" />
+        {availableRoles.map((role) => {
+          const isSuperAdminToHeadClerk = 
+            userRoles.includes("super_admin") && 
+            role.id === "head_clerk" && 
+            !userRoles.includes("head_clerk");
+          
+          return (
+            <DropdownMenuItem
+              key={role.id}
+              className={`flex items-start gap-3 py-3 px-3 cursor-pointer ${
+                currentRole === role.id ? "bg-primary/5" : ""
+              }`}
+              onClick={() => switchRole(role.id)}
+            >
+              <div className="mt-0.5">{role.icon}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{role.label}</span>
+                  {currentRole === role.id && (
+                    <Check className="h-4 w-4 text-primary" />
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground truncate">
+                  {role.description}
+                </p>
+                {isSuperAdminToHeadClerk && (
+                  <p className="text-[10px] text-blue-600 mt-0.5">
+                    🔑 Acting as Head Clerk
+                  </p>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground truncate">
-                {role.description}
-              </p>
+            </DropdownMenuItem>
+          );
+        })}
+        
+        {isSuperAdminActingAsHeadClerk && (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-3 py-2 text-xs text-blue-600 bg-blue-50 rounded-md mx-2">
+              🔑 You are acting as Head Clerk. All changes affect your college only.
             </div>
-          </DropdownMenuItem>
-        ))}
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

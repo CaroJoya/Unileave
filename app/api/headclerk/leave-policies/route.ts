@@ -1,10 +1,10 @@
-// app/api/headclerk/leave-policies/route.ts - COMPLETE FIXED FILE
+// app/api/headclerk/leave-policies/route.ts - WITH SUPER ADMIN SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import type { Database } from "firebase-admin/database";
+import { hasHeadClerkOrSuperAdminRights, getPerformerRole } from "@/lib/utils/roles";
 
-// ============ TYPES ============
 interface Policy {
   id: string;
   academicYear: string;
@@ -42,7 +42,6 @@ interface LeaveBalancesDoc {
   updatedAt: string;
 }
 
-// ============ GET METHOD ============
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -68,14 +67,14 @@ export async function GET() {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
 
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const policiesSnapshot = await rtdb.ref("leavePolicies").once("value");
@@ -103,7 +102,6 @@ export async function GET() {
   }
 }
 
-// ============ POST METHOD ============
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -129,14 +127,14 @@ export async function POST(request: Request) {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
 
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -173,6 +171,8 @@ export async function POST(request: Request) {
       }
     }
 
+    const performerRole = getPerformerRole(userData.roles || []);
+    
     const policyData = {
       id: academicYear,
       academicYear,
@@ -194,6 +194,22 @@ export async function POST(request: Request) {
       console.log(`📊 Balance update result: ${result.updated} users updated, ${result.errors.length} errors`);
     }
 
+    await rtdb.ref("auditLogs").push({
+      userId: decodedToken.uid,
+      userName: userData.name || "Unknown",
+      userRole: performerRole,
+      action: "POLICY_CREATED",
+      module: "leavePolicies",
+      targetId: academicYear,
+      details: JSON.stringify({
+        academicYear,
+        collegeId,
+        applyRule,
+        performedBy: performerRole,
+      }),
+      createdAt: new Date().toISOString(),
+    });
+
     return NextResponse.json({ success: true, policy: policyData });
   } catch (error) {
     console.error("Error creating leave policy:", error);
@@ -201,7 +217,6 @@ export async function POST(request: Request) {
   }
 }
 
-// ============ CORE BALANCE RECALCULATION FUNCTION - FIXED ============
 async function recalculateAllUserBalances(
   rtdb: Database,
   collegeId: string,
@@ -213,7 +228,6 @@ async function recalculateAllUserBalances(
   let updated = 0;
 
   try {
-    // 1. Get all active users in the college
     const usersSnapshot = await rtdb.ref("users").once("value");
     const allUsers = usersSnapshot.val() as Record<string, UserRecord> | null || {};
     
@@ -228,7 +242,6 @@ async function recalculateAllUserBalances(
 
     details.push(`📊 Processing ${collegeUsers.length} users in college ${collegeId} for year ${academicYear}`);
 
-    // 2. Process each user
     for (const user of collegeUsers) {
       try {
         const userRole = user.roles?.[0] || "faculty";
@@ -242,27 +255,22 @@ async function recalculateAllUserBalances(
         const newBalances: Record<string, LeaveBalance> = {};
         let hasChanges = false;
 
-        // ✅ FIX: Process all leave types from the new policy
         for (const [leaveType, newAllocated] of Object.entries(roleAllocation)) {
           const oldBalance = existingBalance?.balances?.[leaveType];
           
           if (oldBalance) {
-            // Preserve used and pending days
             const used = oldBalance.used || 0;
             const pending = oldBalance.pending || 0;
             const newAvailable = Math.max(0, newAllocated - used - pending);
             
-            // ✅ CRITICAL FIX: ALWAYS update allocated to match new policy
-            // This ensures ML, CL, EL etc. show correct allocated values
             newBalances[leaveType] = {
-              allocated: newAllocated,  // ✅ NOW PROPERLY SET
+              allocated: newAllocated,
               used: used,
               pending: pending,
               available: newAvailable,
             };
             hasChanges = true;
           } else {
-            // New leave type added
             details.push(`➕ ${user.name}: Added ${leaveType} with ${newAllocated} days`);
             newBalances[leaveType] = {
               allocated: newAllocated,
@@ -274,7 +282,6 @@ async function recalculateAllUserBalances(
           }
         }
 
-        // Handle leave types removed from policy
         if (existingBalance) {
           for (const [oldLeaveType, oldBalance] of Object.entries(existingBalance.balances)) {
             if (!roleAllocation[oldLeaveType] && oldBalance.allocated > 0) {
@@ -320,7 +327,6 @@ async function recalculateAllUserBalances(
   return { updated, errors, details };
 }
 
-// ============ PUT METHOD WITH FULL RECALCULATION ============
 export async function PUT(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -346,14 +352,14 @@ export async function PUT(request: Request) {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
     
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -363,7 +369,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Academic year and leave allocations are required" }, { status: 400 });
     }
 
-    // 1. Get existing policy
     const existingSnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
     const existing = existingSnapshot.val() as Policy | null;
 
@@ -377,7 +382,6 @@ export async function PUT(request: Request) {
       }, { status: 403 });
     }
 
-    // 2. Validate allocations
     const requiredRoles = ["faculty", "lab_assistant", "office_staff", "hod", "registrar", "principal", "head_clerk"];
     for (const role of requiredRoles) {
       if (!leaveAllocations[role]) {
@@ -392,7 +396,6 @@ export async function PUT(request: Request) {
       }
     }
 
-    // 3. Update the policy
     const updatedPolicy = {
       ...existing,
       leaveAllocations,
@@ -402,7 +405,6 @@ export async function PUT(request: Request) {
 
     await rtdb.ref(`leavePolicies/${academicYear}`).set(updatedPolicy);
 
-    // 4. ✅ CRITICAL: Recalculate ALL user balances with FIXED function
     console.log(`🔄 Policy updated. Recalculating balances for college ${collegeId}, year ${academicYear}`);
     
     const { updated, errors, details } = await recalculateAllUserBalances(
@@ -412,13 +414,12 @@ export async function PUT(request: Request) {
       leaveAllocations
     );
 
-    // 5. Log the action with detailed results
-    const auditLogId = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-    await rtdb.ref(`auditLogs/${auditLogId}`).set({
-      id: auditLogId,
+    const performerRole = getPerformerRole(userData.roles || []);
+    
+    await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
-      userName: userData.name || "Head Clerk",
-      userRole: "head_clerk",
+      userName: userData.name || "Unknown",
+      userRole: performerRole,
       action: "POLICY_UPDATED",
       module: "leavePolicies",
       targetId: academicYear,
@@ -434,12 +435,11 @@ export async function PUT(request: Request) {
           errors: errors,
           details: details,
         },
-        timestamp: new Date().toISOString(),
+        performedBy: performerRole,
       }),
       createdAt: new Date().toISOString(),
     });
 
-    // 6. Return comprehensive response with balance update results
     return NextResponse.json({
       success: true,
       policy: updatedPolicy,

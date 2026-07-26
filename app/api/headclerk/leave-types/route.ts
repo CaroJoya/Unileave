@@ -1,8 +1,9 @@
-// app/api/headclerk/leave-types/route.ts - COMPLETE FIXED FILE WITH POLICY AUTO-UPDATE
+// app/api/headclerk/leave-types/route.ts - WITH SUPER ADMIN SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
+import { hasHeadClerkOrSuperAdminRights, getPerformerRole } from "@/lib/utils/roles";
 
 interface LeaveType {
   id: string;
@@ -69,20 +70,20 @@ export async function GET() {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
     
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    // ✅ Check for Head Clerk OR Super Admin
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
     const leaveTypes = leaveTypesSnapshot.val() as Record<string, LeaveType> | null || {};
 
-    // Filter leave types by college
     const leaveTypesList = Object.entries(leaveTypes)
       .filter(([, data]) => {
         if (data.collegeId) {
@@ -140,14 +141,15 @@ export async function POST(request: Request) {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
     
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    // ✅ Check for Head Clerk OR Super Admin
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -161,14 +163,13 @@ export async function POST(request: Request) {
       hasExpiry,
       expiryInDays,
       maxConsecutiveDays,
-      addToPolicy = false, // ✅ NEW: Optional flag to add to policy
+      addToPolicy = false,
     } = body;
 
     if (!leaveCode || !leaveName) {
       return NextResponse.json({ error: "Leave code and name are required" }, { status: 400 });
     }
 
-    // ✅ Check for duplicate leave code in the SAME college
     const leaveTypesSnapshot = await rtdb.ref("leaveTypes").once("value");
     const existingTypes = leaveTypesSnapshot.val() as Record<string, LeaveType> | null || {};
     
@@ -201,7 +202,6 @@ export async function POST(request: Request) {
 
     await rtdb.ref(`leaveTypes/${leaveTypeId}`).set(leaveTypeData);
 
-    // ✅ NEW: Add to current policy if requested
     let policyUpdated = false;
     let policyMessage = "";
     
@@ -213,7 +213,6 @@ export async function POST(request: Request) {
         const policy = policySnapshot.val() as Policy | null;
         
         if (policy && policy.collegeId === collegeId) {
-          // ✅ Add new leave type to all role allocations with default 0
           const newLeaveCode = leaveCode.toUpperCase();
           const updatedAllocations = { ...policy.leaveAllocations };
           
@@ -222,7 +221,6 @@ export async function POST(request: Request) {
           
           for (const role of roles) {
             if (updatedAllocations[role]) {
-              // Add the new leave type with 0 default
               updatedAllocations[role] = {
                 ...updatedAllocations[role],
                 [newLeaveCode]: 0,
@@ -248,11 +246,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // ✅ Audit log with policy update info
+    const performerRole = getPerformerRole(userData.roles || []);
     await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",
-      userRole: "head_clerk",
+      userRole: performerRole,
       action: "LEAVE_TYPE_CREATED",
       module: "leaveTypes",
       targetId: leaveTypeId,
@@ -264,6 +262,7 @@ export async function POST(request: Request) {
         addToPolicy: addToPolicy,
         policyUpdated: policyUpdated,
         policyMessage: policyMessage,
+        performedBy: performerRole,
       }),
       createdAt: new Date().toISOString(),
     });

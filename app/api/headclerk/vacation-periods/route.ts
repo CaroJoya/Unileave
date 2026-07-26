@@ -1,7 +1,8 @@
-// app/api/headclerk/vacation-periods/route.ts - COMPLETE FIXED FILE
+// app/api/headclerk/vacation-periods/route.ts - WITH SUPER ADMIN SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { hasHeadClerkOrSuperAdminRights, getPerformerRole } from "@/lib/utils/roles";
 
 interface VacationPeriod {
   id: string;
@@ -51,20 +52,19 @@ export async function GET() {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
     
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const vacationsSnapshot = await rtdb.ref("vacationPeriods").once("value");
     const vacationsData = vacationsSnapshot.val() as Record<string, VacationPeriod> | null || {};
 
-    // ✅ Filter vacation periods by college
     const vacationsList = Object.entries(vacationsData)
       .filter(([, data]) => data.collegeId === collegeId)
       .map(([id, data]) => ({
@@ -104,14 +104,14 @@ export async function POST(request: Request) {
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserRecord | null;
     
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized - Head Clerk only" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -136,12 +136,10 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // ✅ Check for existing vacation in SAME college only
     const vacationsSnapshot = await rtdb.ref("vacationPeriods").once("value");
     const existingVacations = vacationsSnapshot.val() as Record<string, VacationPeriod> | null || {};
     
     for (const [, vacation] of Object.entries(existingVacations)) {
-      // ✅ Only check if same college
       if (vacation.collegeId === collegeId && 
           vacation.vacationType === vacationType && 
           vacation.year === year && 
@@ -162,17 +160,19 @@ export async function POST(request: Request) {
       totalDays,
       paidLeaveQuota: paidLeaveQuota || maxQuota,
       isActive: true,
-      collegeId: collegeId, // ✅ Store college ID
+      collegeId: collegeId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     await rtdb.ref(`vacationPeriods/${vacationId}`).set(vacationData);
 
-    const auditLog = {
+    const performerRole = getPerformerRole(userData.roles || []);
+    
+    await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",
-      userRole: "head_clerk",
+      userRole: performerRole,
       action: "VACATION_PERIOD_CREATED",
       module: "vacationPeriods",
       targetId: vacationId,
@@ -182,10 +182,10 @@ export async function POST(request: Request) {
         totalDays,
         paidLeaveQuota,
         collegeId,
+        performedBy: performerRole,
       }),
       createdAt: new Date().toISOString(),
-    };
-    await rtdb.ref("auditLogs").push(auditLog);
+    });
 
     return NextResponse.json({ 
       success: true, 

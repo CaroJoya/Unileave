@@ -1,8 +1,9 @@
-// app/api/headclerk/employee-leave-card/route.ts
+// app/api/headclerk/employee-leave-card/route.ts - WITH SUPER ADMIN SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
 import { getCurrentAcademicYear } from "@/lib/utils/academicYear";
+import { hasHeadClerkOrSuperAdminRights } from "@/lib/utils/roles";
 
 interface UserProfile {
   uid: string;
@@ -68,19 +69,14 @@ export async function GET(request: Request) {
     const currentUserSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const currentUser = currentUserSnapshot.val();
 
-    if (
-      !currentUser?.roles?.some((r: string) =>
-        ["head_clerk", "super_admin", "registrar", "principal"].includes(r)
-      )
-    ) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    if (!currentUser || !hasHeadClerkOrSuperAdminRights(currentUser.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
     const academicYear = searchParams.get("academicYear") || getCurrentAcademicYear();
 
-    // If no userId requested, return list of employees for selection
     if (!userId) {
       const usersSnapshot = await rtdb.ref("users").once("value");
       const usersMap: Record<string, UserProfile> = usersSnapshot.val() || {};
@@ -98,7 +94,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, employees });
     }
 
-    // Fetch Target Employee Profile
     const userSnapshot = await rtdb.ref(`users/${userId}`).once("value");
     const userData: UserProfile | null = userSnapshot.val();
 
@@ -106,16 +101,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     }
 
-    // Fetch Leave Balances
     const balanceRef = rtdb.ref(`leaveBalances/${userId}_${academicYear}`);
     const balanceSnapshot = await balanceRef.once("value");
     const balances = balanceSnapshot.val()?.balances || {};
 
-    // Fetch Leave Requests
     const requestsSnapshot = await rtdb.ref("leaveRequests").once("value");
     const allRequests: Record<string, LeaveRecord> = requestsSnapshot.val() || {};
 
-    // Fetch Comp-Off Credits (to list worked-on dates)
     const compOffSnapshot = await rtdb.ref("compOffCredits").once("value");
     const allCompOff: Record<string, CompOffCredit> = compOffSnapshot.val() || {};
 
@@ -123,7 +115,6 @@ export async function GET(request: Request) {
       (req) => req.applicantId === userId && req.status === "Approved"
     );
 
-    // Filter requests by type
     const clRecords = userRequests.filter((r) => r.leaveType === "CL");
     const elRecords = userRequests.filter((r) => r.leaveType === "EL");
     const vacationRecords = userRequests.filter(

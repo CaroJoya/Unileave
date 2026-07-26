@@ -1,7 +1,8 @@
-// app/api/headclerk/leave-types/[id]/route.ts - COMPLETE VERIFIED FILE
+// app/api/headclerk/leave-types/[id]/route.ts - WITH SUPER ADMIN SUPPORT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
+import { hasHeadClerkOrSuperAdminRights, getPerformerRole } from "@/lib/utils/roles";
 
 interface LeaveType {
   id: string;
@@ -59,14 +60,14 @@ export async function PUT(
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserData | null;
     
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const body = await request.json();
@@ -90,14 +91,12 @@ export async function PUT(
       return NextResponse.json({ error: "Leave type not found" }, { status: 404 });
     }
 
-    // ✅ CRITICAL FIX: Verify leave type belongs to this college
     if (existing.collegeId && existing.collegeId !== collegeId) {
       return NextResponse.json({ 
         error: "You are not authorized to modify leave types from other colleges" 
       }, { status: 403 });
     }
 
-    // ✅ Track what changed for audit
     const changes: Record<string, { old: unknown; new: unknown }> = {};
     if (leaveName && leaveName !== existing.leaveName) changes.leaveName = { old: existing.leaveName, new: leaveName };
     if (description !== undefined && description !== existing.description) changes.description = { old: existing.description, new: description };
@@ -126,11 +125,11 @@ export async function PUT(
 
     await leaveTypeRef.update(updatedData);
 
-    // ✅ Enhanced audit log with detailed changes
+    const performerRole = getPerformerRole(userData.roles || []);
     await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",
-      userRole: "head_clerk",
+      userRole: performerRole,
       action: "LEAVE_TYPE_UPDATED",
       module: "leaveTypes",
       targetId: id,
@@ -139,8 +138,8 @@ export async function PUT(
         leaveName: updatedData.leaveName,
         isActive: updatedData.isActive,
         collegeId: collegeId,
-        changes: changes, // ✅ Detailed change tracking
-        timestamp: new Date().toISOString(),
+        changes: changes,
+        performedBy: performerRole,
       }),
       createdAt: new Date().toISOString(),
     });
@@ -181,14 +180,14 @@ export async function DELETE(
     const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
     const userData = userSnapshot.val() as UserData | null;
     
-    if (!userData?.roles?.includes("head_clerk")) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
     }
 
     const collegeId = userData.collegeId;
     
     if (!collegeId) {
-      return NextResponse.json({ error: "Head Clerk has no college assigned" }, { status: 400 });
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
     }
 
     const leaveTypeRef = rtdb.ref(`leaveTypes/${id}`);
@@ -199,24 +198,22 @@ export async function DELETE(
       return NextResponse.json({ error: "Leave type not found" }, { status: 404 });
     }
 
-    // ✅ CRITICAL FIX: Verify leave type belongs to this college
     if (existing.collegeId && existing.collegeId !== collegeId) {
       return NextResponse.json({ 
         error: "You are not authorized to modify leave types from other colleges" 
       }, { status: 403 });
     }
 
-    // Soft delete (deactivate) instead of hard delete
     await leaveTypeRef.update({
       isActive: false,
       updatedAt: new Date().toISOString(),
     });
 
-    // ✅ Log the action with college ID and deletion reason
+    const performerRole = getPerformerRole(userData.roles || []);
     await rtdb.ref("auditLogs").push({
       userId: decodedToken.uid,
       userName: userData.name || "Unknown",
-      userRole: "head_clerk",
+      userRole: performerRole,
       action: "LEAVE_TYPE_DELETED",
       module: "leaveTypes",
       targetId: id,
@@ -225,7 +222,7 @@ export async function DELETE(
         leaveName: existing.leaveName,
         collegeId: collegeId,
         action: "Soft deleted (deactivated)",
-        timestamp: new Date().toISOString(),
+        performedBy: performerRole,
       }),
       createdAt: new Date().toISOString(),
     });
