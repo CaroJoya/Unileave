@@ -104,7 +104,7 @@ export function RoleSwitcher() {
       .map(role => roleConfigs[role])
       .filter(Boolean) as RoleOption[];
     
-    // Special: If user has super_admin, also show head_clerk as an option
+    // ✅ FIX: If user has super_admin, ALWAYS add head_clerk as an option
     if (userRoles.includes("super_admin")) {
       const headClerkConfig = roleConfigs["head_clerk"];
       if (headClerkConfig && !roles.some(r => r.id === "head_clerk")) {
@@ -133,7 +133,11 @@ export function RoleSwitcher() {
     router.push(config.href);
   };
 
-  if (availableRoles.length <= 1) {
+  // ✅ FIX: Always show for Super Admin (even if only 1 role visible)
+  // But hide for normal users with only 1 role
+  const shouldShow = availableRoles.length > 1 || userRoles.includes("super_admin");
+
+  if (!shouldShow) {
     return null;
   }
 
