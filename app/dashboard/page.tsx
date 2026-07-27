@@ -1,6 +1,3 @@
-// app/dashboard/page.tsx - COMPLETE FIXED FILE
-"use client";
-
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -9,13 +6,6 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useRoleStore } from "@/store/roleStore";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   CalendarDays,
   FilePlus2,
@@ -30,11 +20,14 @@ import {
   LayoutDashboard,
   RefreshCw,
   AlertTriangle,
+  Users,
+  Activity,
 } from "lucide-react";
 import { RoleNavbar } from "@/components/layout/RoleNavbar";
-import { Progress } from "@/components/ui/progress";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-
+import { SectionHeader } from "@/components/ui/section-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { EnhancedCard } from "@/components/ui/enhanced-card";
 interface LeaveBalance {
   allocated: number;
   used: number;
@@ -106,7 +99,7 @@ function DashboardContent() {
     queryFn: fetchBalances,
     enabled: !!user?.uid && !user?.roles?.includes("principal"),
     staleTime: 0,
-    refetchOnWindowFocus: false, // We'll handle this manually
+    refetchOnWindowFocus: false,
   });
 
   const { 
@@ -145,7 +138,7 @@ function DashboardContent() {
     refetchOnWindowFocus: false,
   });
 
-  // ✅ FORCE REFETCH WHEN TAB BECOMES VISIBLE - FIX FOR STALE DATA
+  // FORCE REFETCH WHEN TAB BECOMES VISIBLE
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -161,7 +154,7 @@ function DashboardContent() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [refetchBalances, refetchRequests, refetchCompOff, refetchOverwork]);
 
-  // ✅ FORCE REFETCH ON FOCUS
+  // FORCE REFETCH ON FOCUS
   useEffect(() => {
     const handleFocus = () => {
       console.log('🔄 Window focused - Refetching balances...');
@@ -379,7 +372,8 @@ function DashboardContent() {
   ];
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="container mx-auto py-8 px-4 max-w-7xl">
+      {/* Navbar */}
       <RoleNavbar
         role={userRoles[0] as Role || "faculty"}
         navItems={navItems}
@@ -388,346 +382,404 @@ function DashboardContent() {
       />
 
       {/* Refresh Button */}
-      <div className="flex justify-end mb-4 gap-2">
+      <div className="flex justify-end mb-6">
         <Button 
           variant="outline" 
           size="sm" 
           onClick={() => refreshAllData()}
           disabled={isLoading}
+          className="gap-2 hover:bg-primary/5 transition-all duration-300"
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           {isLoading ? 'Refreshing...' : 'Refresh All'}
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4 mb-8 mt-6">
+      {/* ========== STATS CARDS ========== */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
         {/* Total Balance Card */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Leave Balance</p>
-                <p className="text-2xl font-bold text-primary">
-                  {dashboardData.totalAvailable?.toFixed(1) || 0}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  of {dashboardData.totalAllocated?.toFixed(1) || 0} allocated
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                <CalendarDays className="h-6 w-6 text-primary" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="flex justify-between text-xs">
-                <span>Utilization</span>
-                <span>{dashboardData.utilization?.toFixed(1) || 0}%</span>
-              </div>
-              <Progress value={Math.min(dashboardData.utilization || 0, 100)} className="mt-1 h-2" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="Total Leave Balance"
+          value={dashboardData.totalAvailable?.toFixed(1) || 0}
+          icon={<CalendarDays className="h-5 w-5" />}
+          color="primary"
+          trend={{
+            value: dashboardData.utilization ? Math.round(dashboardData.utilization) : 0,
+            label: "Utilization",
+            direction: dashboardData.utilization > 80 ? "neutral" : "up"
+          }}
+        />
 
         {/* Comp-Off Balance Card */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Comp-Off Balance</p>
-                <p className="text-2xl font-bold text-teal-600">
-                  {dashboardData.compOffBalance?.toFixed(1) || 0}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {dashboardData.compOffCredits.length} active credit(s)
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-teal-100 flex items-center justify-center">
-                <Award className="h-6 w-6 text-teal-600" />
-              </div>
-            </div>
-            {dashboardData.expiringCompOffCredits.length > 0 && (
-              <div className="mt-2 flex items-center gap-1 text-xs text-amber-600">
-                <AlertTriangle className="h-3 w-3" />
-                {dashboardData.expiringCompOffCredits.length} credit(s) expiring soon
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <StatCard
+          label="Comp-Off Balance"
+          value={dashboardData.compOffBalance?.toFixed(1) || 0}
+          icon={<Award className="h-5 w-5" />}
+          color="teal"
+          trend={{
+            value: dashboardData.expiringCompOffCredits.length || 0,
+            label: "expiring soon",
+            direction: dashboardData.expiringCompOffCredits.length > 0 ? "down" : "neutral"
+          }}
+        />
 
         {/* Pending Approval Card */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Pending Approval</p>
-                <p className="text-2xl font-bold text-amber-600">
-                  {dashboardData.pendingRequests || 0}
-                </p>
-                <p className="text-xs text-muted-foreground">Awaiting approval</p>
-              </div>
-              <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center">
-                <Clock className="h-6 w-6 text-amber-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          label="Pending Approval"
+          value={dashboardData.pendingRequests || 0}
+          icon={<Clock className="h-5 w-5" />}
+          color="amber"
+          trend={{
+            value: dashboardData.revisionRequests || 0,
+            label: "needs revision",
+            direction: dashboardData.revisionRequests > 0 ? "down" : "neutral"
+          }}
+        />
 
         {/* Approved Card */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Approved</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {dashboardData.approvedRequests || 0}
-                </p>
-                <p className="text-xs text-muted-foreground">Total approved</p>
+        <StatCard
+          label="Approved"
+          value={dashboardData.approvedRequests || 0}
+          icon={<CheckCircle className="h-5 w-5" />}
+          color="green"
+        />
+      </div>
+
+      {/* ========== REVISION REQUESTS ALERT ========== */}
+      {dashboardData.revisionRequests > 0 && (
+        <EnhancedCard 
+          variant="elevated" 
+          accentColor="purple"
+          className="mb-6 border-purple-200/50"
+          header={
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-100 text-purple-700">
+                <AlertTriangle className="h-5 w-5" />
               </div>
-              <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-                <CheckCircle className="h-6 w-6 text-green-600" />
+              <div>
+                <h4 className="font-semibold text-purple-800">Needs Revision</h4>
+                <p className="text-sm text-purple-600">
+                  {dashboardData.revisionRequests} request(s) require your attention
+                </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Revision Requests Alert */}
-      {dashboardData.revisionRequests > 0 && (
-        <div className="mb-6">
-          <Card className="border-purple-300 bg-purple-50">
-            <CardContent className="pt-6">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-purple-700 font-medium">Needs Revision</p>
-                  <p className="text-2xl font-bold text-purple-700">
-                    {dashboardData.revisionRequests}
-                  </p>
-                  <p className="text-xs text-purple-600">
-                    {dashboardData.revisionRequests} request(s) require your attention
-                  </p>
-                </div>
-                <div className="h-12 w-12 rounded-full bg-purple-200 flex items-center justify-center">
-                  <Clock className="h-6 w-6 text-purple-700" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <Link href="/status">
-                  <Button variant="outline" size="sm" className="w-full border-purple-300 text-purple-700 hover:bg-purple-100">
-                    Review Revision Requests
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+          }
+          footer={
+            <div className="flex justify-end">
+              <Link href="/status">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-purple-300 text-purple-700 hover:bg-purple-50 hover:border-purple-400 transition-all duration-300"
+                >
+                  Review Revision Requests
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </Link>
+            </div>
+          }
+        >
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-2 bg-purple-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(dashboardData.revisionRequests * 20, 100)}%` }}
+              />
+            </div>
+            <span className="text-sm font-medium text-purple-700">
+              {dashboardData.revisionRequests} pending
+            </span>
+          </div>
+        </EnhancedCard>
       )}
 
-      {/* Quick Actions */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
-          <Link href="/request-leave">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-primary">
-              <CardContent className="pt-6 text-center">
-                <FilePlus2 className="h-8 w-8 mx-auto text-primary mb-2" />
-                <p className="font-medium">Request Leave</p>
-                <p className="text-xs text-muted-foreground">Submit new request</p>
-              </CardContent>
-            </Card>
-          </Link>
+      {/* ========== QUICK ACTIONS ========== */}
+      <SectionHeader
+        title="Quick Actions"
+        subtitle="Common tasks at your fingertips"
+        icon={<Activity className="h-5 w-5" />}
+        className="mb-4"
+      />
 
-          <Link href="/status">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-primary">
-              <CardContent className="pt-6 text-center">
-                <ListChecks className="h-8 w-8 mx-auto text-blue-500 mb-2" />
-                <p className="font-medium">My Status</p>
-                <p className="text-xs text-muted-foreground">Track requests</p>
-              </CardContent>
-            </Card>
-          </Link>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        {/* Request Leave */}
+        <Link href="/request-leave" className="group">
+          <EnhancedCard 
+            variant="elevated" 
+            accentColor="primary"
+            className="h-full hover:border-primary/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
+          >
+            <div className="flex flex-col items-center text-center py-4">
+              <div className="p-3 rounded-full bg-primary/10 text-primary group-hover:bg-primary/20 transition-all duration-300 group-hover:scale-110">
+                <FilePlus2 className="h-6 w-6" />
+              </div>
+              <h4 className="font-semibold mt-3 text-gray-900">Request Leave</h4>
+              <p className="text-xs text-muted-foreground">Submit new leave request</p>
+              <div className="mt-2 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                Click to start →
+              </div>
+            </div>
+          </EnhancedCard>
+        </Link>
 
-          <Link href="/stats">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-primary">
-              <CardContent className="pt-6 text-center">
-                <BarChart3 className="h-8 w-8 mx-auto text-purple-500 mb-2" />
-                <p className="font-medium">Stats</p>
-                <p className="text-xs text-muted-foreground">View analytics</p>
-              </CardContent>
-            </Card>
-          </Link>
+        {/* My Status */}
+        <Link href="/status" className="group">
+          <EnhancedCard 
+            variant="elevated" 
+            accentColor="blue"
+            className="h-full hover:border-blue-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
+          >
+            <div className="flex flex-col items-center text-center py-4">
+              <div className="p-3 rounded-full bg-blue-100 text-blue-600 group-hover:bg-blue-200 transition-all duration-300 group-hover:scale-110">
+                <ListChecks className="h-6 w-6" />
+              </div>
+              <h4 className="font-semibold mt-3 text-gray-900">My Status</h4>
+              <p className="text-xs text-muted-foreground">Track your requests</p>
+              <div className="mt-2 text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                View all →
+              </div>
+            </div>
+          </EnhancedCard>
+        </Link>
 
-          <Link href="/comp-off">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-primary">
-              <CardContent className="pt-6 text-center">
-                <Award className="h-8 w-8 mx-auto text-teal-500 mb-2" />
-                <p className="font-medium">Comp Off</p>
-                <p className="text-xs text-muted-foreground">Manage comp-off credits</p>
-              </CardContent>
-            </Card>
-          </Link>
-        </div>
+        {/* My Stats */}
+        <Link href="/stats" className="group">
+          <EnhancedCard 
+            variant="elevated" 
+            accentColor="purple"
+            className="h-full hover:border-purple-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
+          >
+            <div className="flex flex-col items-center text-center py-4">
+              <div className="p-3 rounded-full bg-purple-100 text-purple-600 group-hover:bg-purple-200 transition-all duration-300 group-hover:scale-110">
+                <BarChart3 className="h-6 w-6" />
+              </div>
+              <h4 className="font-semibold mt-3 text-gray-900">My Stats</h4>
+              <p className="text-xs text-muted-foreground">View analytics</p>
+              <div className="mt-2 text-xs text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                See insights →
+              </div>
+            </div>
+          </EnhancedCard>
+        </Link>
+
+        {/* Comp Off */}
+        <Link href="/comp-off" className="group">
+          <EnhancedCard 
+            variant="elevated" 
+            accentColor="teal"
+            className="h-full hover:border-teal-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
+          >
+            <div className="flex flex-col items-center text-center py-4">
+              <div className="p-3 rounded-full bg-teal-100 text-teal-600 group-hover:bg-teal-200 transition-all duration-300 group-hover:scale-110">
+                <Award className="h-6 w-6" />
+              </div>
+              <h4 className="font-semibold mt-3 text-gray-900">Comp Off</h4>
+              <p className="text-xs text-muted-foreground">Manage comp-off credits</p>
+              <div className="mt-2 text-xs text-teal-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                View credits →
+              </div>
+            </div>
+          </EnhancedCard>
+        </Link>
       </div>
 
+      {/* ========== DETAILED SECTIONS ========== */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Leave Balance Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Leave Balance Details</CardTitle>
-            <CardDescription>Your current leave balances</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {dashboardData.balances && Object.keys(dashboardData.balances).length > 0 ? (
-              <div className="space-y-3">
-                {Object.entries(dashboardData.balances).map(([type, balance]) => {
-                  const b = balance as LeaveBalance;
-                  const available = b?.available ?? 0;
-                  const allocated = b?.allocated ?? 0;
-                  const used = b?.used ?? 0;
-                  const pending = b?.pending ?? 0;
-                  const usedPercent = allocated > 0 ? (used / allocated) * 100 : 0;
-                  
-                  return (
-                    <div key={type}>
-                      <div className="flex justify-between text-sm">
-                        <span className="font-medium">{type}</span>
-                        <span>
-                          {available.toFixed(1)} / {allocated.toFixed(1)} days
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1">
-                        <div
-                          className="h-full bg-primary rounded-full transition-all"
-                          style={{
-                            width: `${Math.min(usedPercent, 100)}%`,
-                          }}
-                        />
-                      </div>
-                      {pending > 0 && (
-                        <p className="text-xs text-amber-600 mt-0.5">
-                          {pending} day(s) pending approval
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
+        <EnhancedCard 
+          variant="elevated"
+          accentColor="primary"
+          header={
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                <CalendarDays className="h-5 w-5" />
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No leave balances available</p>
-            )}
-          </CardContent>
-        </Card>
+              <div>
+                <h3 className="font-semibold text-gray-900">Leave Balance Details</h3>
+                <p className="text-sm text-muted-foreground">Your current leave balances</p>
+              </div>
+            </div>
+          }
+        >
+          {dashboardData.balances && Object.keys(dashboardData.balances).length > 0 ? (
+            <div className="space-y-4">
+              {Object.entries(dashboardData.balances).map(([type, balance]) => {
+                const b = balance as LeaveBalance;
+                const available = b?.available ?? 0;
+                const allocated = b?.allocated ?? 0;
+                const used = b?.used ?? 0;
+                const pending = b?.pending ?? 0;
+                const usedPercent = allocated > 0 ? (used / allocated) * 100 : 0;
+                
+                return (
+                  <div key={type} className="group">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-medium text-gray-700">{type}</span>
+                      <span className="text-gray-600">
+                        {available.toFixed(1)} / {allocated.toFixed(1)} days
+                      </span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary to-primary/70 rounded-full transition-all duration-500 group-hover:from-primary/80 group-hover:to-primary"
+                        style={{
+                          width: `${Math.min(usedPercent, 100)}%`,
+                        }}
+                      />
+                    </div>
+                    {pending > 0 && (
+                      <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {pending} day(s) pending approval
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">No leave balances available</p>
+          )}
+        </EnhancedCard>
 
         {/* Overwork Summary */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Clock className="h-5 w-5 text-yellow-500" />
-              Overwork Summary
-            </CardTitle>
-            <CardDescription>Your overwork hours and earned leave</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {dashboardData.overworkSummary ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-sm text-muted-foreground">Approved Hours</p>
-                    <p className="text-2xl font-bold text-primary">
-                      {dashboardData.overworkSummary.totalApprovedHours?.toFixed(1) || 0}
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-sm text-muted-foreground">Earned Leaves</p>
-                    <p className="text-2xl font-bold text-green-600">
-                      {dashboardData.overworkSummary.earnedLeaves || 0}
-                    </p>
-                  </div>
-                </div>
-
-                {dashboardData.overworkSummary.pendingHours > 0 && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    <p className="text-sm text-amber-800">
-                      <Clock className="inline h-4 w-4 mr-1" />
-                      {dashboardData.overworkSummary.pendingHours.toFixed(1)} hours pending approval
-                    </p>
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span>Progress to next leave day</span>
-                    <span>{dashboardData.overworkSummary.progressPercent?.toFixed(0) || 0}%</span>
-                  </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-yellow-500 rounded-full transition-all"
-                      style={{ width: `${dashboardData.overworkSummary.progressPercent || 0}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground text-right">
-                    {5 - (dashboardData.overworkSummary.totalApprovedHours % 5)} hours to next leave
+        <EnhancedCard 
+          variant="elevated"
+          accentColor="amber"
+          header={
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-600">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Overwork Summary</h3>
+                <p className="text-sm text-muted-foreground">Your overwork hours and earned leave</p>
+              </div>
+            </div>
+          }
+        >
+          {dashboardData.overworkSummary ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-50 rounded-xl p-4 text-center border border-gray-100 hover:border-primary/20 transition-all duration-300">
+                  <p className="text-sm text-muted-foreground">Approved Hours</p>
+                  <p className="text-2xl font-bold text-primary">
+                    {dashboardData.overworkSummary.totalApprovedHours?.toFixed(1) || 0}
                   </p>
                 </div>
-
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => router.push("/overwork")}
-                >
-                  <TrendingUp className="h-4 w-4 mr-2" />
-                  Manage Overwork
-                </Button>
+                <div className="bg-gray-50 rounded-xl p-4 text-center border border-gray-100 hover:border-green-200 transition-all duration-300">
+                  <p className="text-sm text-muted-foreground">Earned Leaves</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {dashboardData.overworkSummary.earnedLeaves || 0}
+                  </p>
+                </div>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No overwork data available</p>
-            )}
-          </CardContent>
-        </Card>
+
+              {dashboardData.overworkSummary.pendingHours > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                  <p className="text-sm text-amber-800">
+                    {dashboardData.overworkSummary.pendingHours.toFixed(1)} hours pending approval
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Progress to next leave day</span>
+                  <span className="font-medium">{dashboardData.overworkSummary.progressPercent?.toFixed(0) || 0}%</span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500"
+                    style={{ width: `${dashboardData.overworkSummary.progressPercent || 0}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground text-right">
+                  {5 - (dashboardData.overworkSummary.totalApprovedHours % 5)} hours to next leave
+                </p>
+              </div>
+
+              <Button
+                variant="outline"
+                className="w-full gap-2 hover:bg-amber-50 hover:border-amber-300 transition-all duration-300"
+                onClick={() => router.push("/overwork")}
+              >
+                <TrendingUp className="h-4 w-4" />
+                Manage Overwork
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">No overwork data available</p>
+          )}
+        </EnhancedCard>
       </div>
 
-      {/* Resources */}
-      <div className="mt-8">
-        <h2 className="text-xl font-semibold mb-4">Other Resources</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Link href="/comp-off">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-              <CardContent className="pt-6 flex items-center gap-4">
-                <Award className="h-8 w-8 text-teal-500" />
-                <div>
-                  <p className="font-medium">Comp Off</p>
-                  <p className="text-xs text-muted-foreground">View and use comp off credits</p>
-                </div>
-                <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
+      {/* ========== OTHER RESOURCES ========== */}
+      <SectionHeader
+        title="Other Resources"
+        subtitle="Additional tools and features"
+        icon={<Users className="h-5 w-5" />}
+        className="mt-8 mb-4"
+      />
 
-          <Link href="/overwork">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-              <CardContent className="pt-6 flex items-center gap-4">
-                <Clock className="h-8 w-8 text-yellow-500" />
-                <div>
-                  <p className="font-medium">Overwork</p>
-                  <p className="text-xs text-muted-foreground">Track extra hours</p>
-                </div>
-                <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Link href="/comp-off" className="group">
+          <EnhancedCard 
+            variant="elevated"
+            accentColor="teal"
+            className="hover:border-teal-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
+          >
+            <div className="flex items-center gap-4 p-2">
+              <div className="p-2 rounded-lg bg-teal-100 text-teal-600 group-hover:bg-teal-200 transition-all duration-300">
+                <Award className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-gray-900">Comp Off</p>
+                <p className="text-xs text-muted-foreground">View and use comp off credits</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-teal-600 group-hover:translate-x-0.5 transition-all duration-300" />
+            </div>
+          </EnhancedCard>
+        </Link>
 
-          <Link href="/vacation">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-              <CardContent className="pt-6 flex items-center gap-4">
-                <Umbrella className="h-8 w-8 text-cyan-500" />
-                <div>
-                  <p className="font-medium">Vacation</p>
-                  <p className="text-xs text-muted-foreground">Apply for vacation leave</p>
-                </div>
-                <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
-              </CardContent>
-            </Card>
-          </Link>
-        </div>
+        <Link href="/overwork" className="group">
+          <EnhancedCard 
+            variant="elevated"
+            accentColor="amber"
+            className="hover:border-amber-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
+          >
+            <div className="flex items-center gap-4 p-2">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-600 group-hover:bg-amber-200 transition-all duration-300">
+                <Clock className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-gray-900">Overwork</p>
+                <p className="text-xs text-muted-foreground">Track extra hours worked</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-amber-600 group-hover:translate-x-0.5 transition-all duration-300" />
+            </div>
+          </EnhancedCard>
+        </Link>
+
+        <Link href="/vacation" className="group">
+          <EnhancedCard 
+            variant="elevated"
+            accentColor="blue"
+            className="hover:border-blue-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
+          >
+            <div className="flex items-center gap-4 p-2">
+              <div className="p-2 rounded-lg bg-blue-100 text-blue-600 group-hover:bg-blue-200 transition-all duration-300">
+                <Umbrella className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-gray-900">Vacation</p>
+                <p className="text-xs text-muted-foreground">Apply for vacation leave</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all duration-300" />
+            </div>
+          </EnhancedCard>
+        </Link>
       </div>
     </div>
   );

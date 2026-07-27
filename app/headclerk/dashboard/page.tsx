@@ -1,10 +1,9 @@
-// app/headclerk/dashboard/page.tsx - COMPLETE FIXED FILE
+// app/headclerk/dashboard/page.tsx - COMPLETE FIXED VERSION
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,11 +34,12 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Plus, Sun, Snowflake, LayoutGrid, CalendarDays, Clock, Award, Users } from "lucide-react";
+import { Pencil, Plus, Sun, Snowflake, LayoutGrid, CalendarDays, Clock, Users, Settings } from "lucide-react";
 import { AttendanceCalendar } from "@/components/headclerk/AttendanceCalendar";
 import { FacultyList } from "@/components/headclerk/FacultyList";
 import { YearReset } from "@/components/headclerk/YearReset";
 import { RoleNavbar } from "@/components/layout/RoleNavbar";
+import { EnhancedCard } from "@/components/ui/enhanced-card";
 import type { Department, StaffUser } from "@/types/attendance";
 
 // ============ TYPES ============
@@ -690,7 +690,6 @@ function HeadClerkDashboardContent() {
       hasRedirected.current = true;
       router.push("/login");
     }
-    // ✅ Allow Super Admin to access Head Clerk dashboard
     if (!isLoading && user && !user.roles?.includes("head_clerk") && !user.roles?.includes("super_admin") && !hasRedirected.current) {
       hasRedirected.current = true;
       router.push("/dashboard");
@@ -699,7 +698,6 @@ function HeadClerkDashboardContent() {
 
   // ========== DATA FETCH ==========
   useEffect(() => {
-    // ✅ Allow both Head Clerk and Super Admin to fetch data
     if ((user?.roles?.includes("head_clerk") || user?.roles?.includes("super_admin")) && !hasFetched.current) {
       hasFetched.current = true;
       const loadAllData = async () => {
@@ -738,7 +736,7 @@ function HeadClerkDashboardContent() {
     { 
       label: "Overwork Config", 
       href: "/headclerk/dashboard", 
-      icon: <Award className="h-4 w-4" />,
+      icon: <Settings className="h-4 w-4" />,
       tab: "overwork"
     },
     { 
@@ -770,13 +768,12 @@ function HeadClerkDashboardContent() {
     );
   }
 
-  // ✅ Allow both Head Clerk and Super Admin to see the dashboard
   if (!user || (!user.roles?.includes("head_clerk") && !user.roles?.includes("super_admin"))) {
     return null;
   }
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="container mx-auto py-8 px-4 max-w-7xl">
       <RoleNavbar
         role="head_clerk"
         navItems={navItems}
@@ -785,176 +782,244 @@ function HeadClerkDashboardContent() {
       />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6 mt-6">
-        <TabsList className="flex flex-wrap">
-          <TabsTrigger value="leave-types">Leave Types</TabsTrigger>
-          <TabsTrigger value="leave-policies">Leave Policies</TabsTrigger>
-          <TabsTrigger value="year-reset">Year Reset</TabsTrigger>
-          <TabsTrigger value="overwork">Overwork Config</TabsTrigger>
-          <TabsTrigger value="vacation">Vacation Periods</TabsTrigger>
-          <TabsTrigger value="attendance">Attendance</TabsTrigger>
-          <TabsTrigger value="faculty">Faculty List</TabsTrigger>
+        <TabsList className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg">
+          <TabsTrigger 
+            value="leave-types" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <LayoutGrid className="h-4 w-4" />
+            Leave Types
+          </TabsTrigger>
+          <TabsTrigger 
+            value="leave-policies" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <CalendarDays className="h-4 w-4" />
+            Policies
+          </TabsTrigger>
+          <TabsTrigger 
+            value="year-reset" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <Clock className="h-4 w-4" />
+            Year Reset
+          </TabsTrigger>
+          <TabsTrigger 
+            value="overwork" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <Settings className="h-4 w-4" />
+            Overwork Config
+          </TabsTrigger>
+          <TabsTrigger 
+            value="vacation" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <Sun className="h-4 w-4" />
+            Vacation Periods
+          </TabsTrigger>
+          <TabsTrigger 
+            value="attendance" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <Users className="h-4 w-4" />
+            Attendance
+          </TabsTrigger>
+          <TabsTrigger 
+            value="faculty" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <Users className="h-4 w-4" />
+            Faculty List
+          </TabsTrigger>
         </TabsList>
 
         {/* LEAVE TYPES TAB */}
-        <TabsContent value="leave-types">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Leave Types</CardTitle>
-                <CardDescription>Configure leave categories and their rules</CardDescription>
+        <TabsContent value="leave-types" className="mt-0">
+          <EnhancedCard 
+            variant="elevated"
+            header={
+              <div className="flex items-center justify-between w-full flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    <LayoutGrid className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Leave Types</h3>
+                    <p className="text-sm text-muted-foreground">Configure leave categories and their rules</p>
+                  </div>
+                </div>
+                <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  New Leave Type
+                </Button>
               </div>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Leave Type
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {leaveTypes.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No leave types found. Create your first leave type.
-                </div>
-              ) : (
-                <div className="border rounded-lg overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Code</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Half Day</TableHead>
-                        <TableHead>Attachment</TableHead>
-                        <TableHead>Deducts Balance</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {leaveTypes.map((type) => (
-                        <TableRow key={type.id}>
-                          <TableCell className="font-mono font-medium">{type.leaveCode}</TableCell>
-                          <TableCell>{type.leaveName}</TableCell>
-                          <TableCell>{type.allowHalfDay ? "✅" : "❌"}</TableCell>
-                          <TableCell>{type.requiresAttachment ? "✅" : "❌"}</TableCell>
-                          <TableCell>{type.deductsBalance ? "✅" : "❌"}</TableCell>
-                          <TableCell>
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                type.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                              }`}
+            }
+          >
+            {leaveTypes.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No leave types found. Create your first leave type.
+              </div>
+            ) : (
+              <div className="border rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Half Day</TableHead>
+                      <TableHead>Attachment</TableHead>
+                      <TableHead>Deducts Balance</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {leaveTypes.map((type) => (
+                      <TableRow key={type.id} className="hover:bg-gray-50 transition-colors">
+                        <TableCell className="font-mono font-medium">{type.leaveCode}</TableCell>
+                        <TableCell>{type.leaveName}</TableCell>
+                        <TableCell>{type.allowHalfDay ? "✅" : "❌"}</TableCell>
+                        <TableCell>{type.requiresAttachment ? "✅" : "❌"}</TableCell>
+                        <TableCell>{type.deductsBalance ? "✅" : "❌"}</TableCell>
+                        <TableCell>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              type.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {type.isActive ? "Active" : "Inactive"}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => openEditDialog(type)}
+                              className="gap-1"
                             >
-                              {type.isActive ? "Active" : "Inactive"}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button 
-                                size="sm" 
-                                variant="outline" 
-                                onClick={() => openEditDialog(type)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="outline" 
-                                onClick={() => handleToggleActive(type)}
-                              >
-                                {type.isActive ? "Deactivate" : "Activate"}
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleToggleActive(type)}
+                              className={type.isActive ? "text-red-600 hover:bg-red-50" : "text-green-600 hover:bg-green-50"}
+                            >
+                              {type.isActive ? "Deactivate" : "Activate"}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </EnhancedCard>
         </TabsContent>
 
         {/* LEAVE POLICIES TAB */}
-        <TabsContent value="leave-policies">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Leave Policies</CardTitle>
-                <CardDescription>Configure leave quotas per role for each academic year</CardDescription>
+        <TabsContent value="leave-policies" className="mt-0">
+          <EnhancedCard 
+            variant="elevated"
+            header={
+              <div className="flex items-center justify-between w-full flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    <CalendarDays className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Leave Policies</h3>
+                    <p className="text-sm text-muted-foreground">Configure leave quotas per role for each academic year</p>
+                  </div>
+                </div>
+                <Button onClick={handleNewPolicyClick} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  {policies.length > 0 ? "Edit Current Policy" : "New Policy"}
+                </Button>
               </div>
-              <Button onClick={handleNewPolicyClick}>
-                <Plus className="h-4 w-4 mr-2" />
-                {policies.length > 0 ? "Edit Current Policy" : "New Policy"}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {policies.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No leave policies found. Create your first policy.
-                </div>
-              ) : (
-                <div className="border rounded-lg overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Academic Year</TableHead>
-                        <TableHead>Effective From</TableHead>
-                        <TableHead>Apply Rule</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
+            }
+          >
+            {policies.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No leave policies found. Create your first policy.
+              </div>
+            ) : (
+              <div className="border rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Academic Year</TableHead>
+                      <TableHead>Effective From</TableHead>
+                      <TableHead>Apply Rule</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {policies.map((policy) => (
+                      <TableRow key={policy.academicYear} className="hover:bg-gray-50 transition-colors">
+                        <TableCell className="font-medium">{policy.academicYear}</TableCell>
+                        <TableCell>
+                          {policy.effectiveFrom ? new Date(policy.effectiveFrom).toLocaleDateString() : "N/A"}
+                        </TableCell>
+                        <TableCell>
+                          <span className="capitalize">{policy.applyRule}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              policy.isActive !== false ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {policy.isActive !== false ? "Active" : "Inactive"}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Button size="sm" variant="outline" onClick={() => handleEditPolicy(policy)} className="gap-1">
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                          </Button>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {policies.map((policy) => (
-                        <TableRow key={policy.academicYear}>
-                          <TableCell className="font-medium">{policy.academicYear}</TableCell>
-                          <TableCell>
-                            {policy.effectiveFrom ? new Date(policy.effectiveFrom).toLocaleDateString() : "N/A"}
-                          </TableCell>
-                          <TableCell>
-                            <span className="capitalize">{policy.applyRule}</span>
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                policy.isActive !== false ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                              }`}
-                            >
-                              {policy.isActive !== false ? "Active" : "Inactive"}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <Button size="sm" variant="outline" onClick={() => handleEditPolicy(policy)}>
-                              <Pencil className="h-4 w-4 mr-1" />
-                              Edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </EnhancedCard>
         </TabsContent>
 
         {/* YEAR RESET TAB */}
-        <TabsContent value="year-reset">
+        <TabsContent value="year-reset" className="mt-0">
           <YearReset />
         </TabsContent>
 
         {/* OVERWORK CONFIG TAB */}
-        <TabsContent value="overwork">
-          <Card>
-            <CardHeader>
-              <CardTitle>Overwork Configuration</CardTitle>
-              <CardDescription>
-                Configure how overwork hours convert to earned leave days
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+        <TabsContent value="overwork" className="mt-0">
+          <EnhancedCard 
+            variant="elevated"
+            header={
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Settings className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">Overwork Configuration</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Configure how overwork hours convert to earned leave days
+                  </p>
+                </div>
+              </div>
+            }
+          >
+            {/* ... overwork config content ... */}
+            <div className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="conversionHours">Conversion Rate</Label>
+                  <Label htmlFor="conversionHours" className="text-sm font-medium">Conversion Rate</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       id="conversionHours"
@@ -979,7 +1044,7 @@ function HeadClerkDashboardContent() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="minHoursPerEntry">Minimum Hours Per Entry</Label>
+                  <Label htmlFor="minHoursPerEntry" className="text-sm font-medium">Minimum Hours Per Entry</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       id="minHoursPerEntry"
@@ -1004,7 +1069,7 @@ function HeadClerkDashboardContent() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="maxHoursPerDay">Maximum Hours Per Day</Label>
+                  <Label htmlFor="maxHoursPerDay" className="text-sm font-medium">Maximum Hours Per Day</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       id="maxHoursPerDay"
@@ -1029,7 +1094,7 @@ function HeadClerkDashboardContent() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Auto-Conversion</Label>
+                  <Label className="text-sm font-medium">Auto-Conversion</Label>
                   <div className="flex items-center space-x-2">
                     <input
                       type="checkbox"
@@ -1043,7 +1108,7 @@ function HeadClerkDashboardContent() {
                       }
                       className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
                     />
-                    <Label htmlFor="autoConversionEnabled" className="font-normal cursor-pointer">
+                    <Label htmlFor="autoConversionEnabled" className="font-normal cursor-pointer text-sm">
                       Automatically convert overwork hours to earned leave when threshold reached
                     </Label>
                   </div>
@@ -1055,7 +1120,7 @@ function HeadClerkDashboardContent() {
 
               <div className="border-t pt-6">
                 <h3 className="text-sm font-medium mb-3">Preview</h3>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div className="bg-gray-50 rounded-xl p-4 space-y-2">
                   <p className="text-sm">
                     <span className="font-medium">Current Rule:</span> Every{" "}
                     <span className="text-primary font-medium">{overworkConfig.conversionHours}</span> hours = 1 earned
@@ -1082,209 +1147,234 @@ function HeadClerkDashboardContent() {
                 <Button variant="outline" onClick={fetchOverworkConfig}>
                   Reset
                 </Button>
-                <Button onClick={saveOverworkConfig} disabled={savingConfig}>
-                  {savingConfig ? "Saving..." : "Save Configuration"}
+                <Button onClick={saveOverworkConfig} disabled={savingConfig} className="gap-2">
+                  {savingConfig ? (
+                    <>
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Configuration"
+                  )}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </EnhancedCard>
         </TabsContent>
 
         {/* VACATION PERIODS TAB */}
-        <TabsContent value="vacation">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Vacation Periods</CardTitle>
-                <CardDescription>Configure Summer and Winter vacation periods (40 days each)</CardDescription>
+        <TabsContent value="vacation" className="mt-0">
+          <EnhancedCard 
+            variant="elevated"
+            header={
+              <div className="flex items-center justify-between w-full flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    <Sun className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Vacation Periods</h3>
+                    <p className="text-sm text-muted-foreground">Configure Summer and Winter vacation periods (40 days each)</p>
+                  </div>
+                </div>
+                <Button onClick={() => setShowVacationDialog(true)} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  New Vacation Period
+                </Button>
               </div>
-              <Button onClick={() => setShowVacationDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Vacation Period
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {vacations.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No vacation periods configured. Create Summer and Winter vacation periods.
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                      <Sun className="h-5 w-5 text-yellow-500" />
-                      Summer Vacation
-                    </h3>
-                    <div className="border rounded-lg overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Year</TableHead>
-                            <TableHead>Period</TableHead>
-                            <TableHead>Total Days</TableHead>
-                            <TableHead>Paid Quota</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {vacations
-                            .filter((v) => v.vacationType === "Summer Vacation")
-                            .map((vacation) => (
-                              <TableRow key={vacation.id}>
-                                <TableCell className="font-medium">{vacation.year}</TableCell>
-                                <TableCell>
-                                  {new Date(vacation.startDate).toLocaleDateString()} -{" "}
-                                  {new Date(vacation.endDate).toLocaleDateString()}
-                                </TableCell>
-                                <TableCell>{vacation.totalDays} days</TableCell>
-                                <TableCell>{vacation.paidLeaveQuota} days</TableCell>
-                                <TableCell>
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                      vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                                    }`}
+            }
+          >
+            {/* ... vacation periods content ... */}
+            <div className="space-y-6">
+              {/* Summer Vacation */}
+              <div>
+                <h4 className="text-lg font-semibold mb-3 flex items-center gap-2 text-yellow-700">
+                  <Sun className="h-5 w-5 text-yellow-500" />
+                  Summer Vacation
+                </h4>
+                <div className="border rounded-lg overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Year</TableHead>
+                        <TableHead>Period</TableHead>
+                        <TableHead>Total Days</TableHead>
+                        <TableHead>Paid Quota</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {vacations
+                        .filter((v) => v.vacationType === "Summer Vacation")
+                        .map((vacation) => (
+                          <TableRow key={vacation.id} className="hover:bg-gray-50 transition-colors">
+                            <TableCell className="font-medium">{vacation.year}</TableCell>
+                            <TableCell>
+                              {new Date(vacation.startDate).toLocaleDateString()} — {new Date(vacation.endDate).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>{vacation.totalDays} days</TableCell>
+                            <TableCell>{vacation.paidLeaveQuota} days</TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {vacation.isActive ? "Active" : "Inactive"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)} className="gap-1">
+                                  <Pencil className="h-4 w-4" />
+                                  Edit
+                                </Button>
+                                {vacation.isActive && (
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeactivateVacation(vacation.id)}
                                   >
-                                    {vacation.isActive ? "Active" : "Inactive"}
-                                  </span>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex gap-2">
-                                    <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)}>
-                                      <Pencil className="h-4 w-4 mr-1" />
-                                      Edit
-                                    </Button>
-                                    {vacation.isActive && (
-                                      <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        onClick={() => handleDeactivateVacation(vacation.id)}
-                                      >
-                                        Deactivate
-                                      </Button>
-                                    )}
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          {vacations.filter((v) => v.vacationType === "Summer Vacation").length === 0 && (
-                            <TableRow>
-                              <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                                No Summer Vacation periods configured
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
+                                    Deactivate
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      {vacations.filter((v) => v.vacationType === "Summer Vacation").length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                            No Summer Vacation periods configured
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
 
-                  <div>
-                    <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                      <Snowflake className="h-5 w-5 text-blue-500" />
-                      Winter Vacation
-                    </h3>
-                    <div className="border rounded-lg overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Year</TableHead>
-                            <TableHead>Period</TableHead>
-                            <TableHead>Total Days</TableHead>
-                            <TableHead>Paid Quota</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {vacations
-                            .filter((v) => v.vacationType === "Winter Vacation")
-                            .map((vacation) => (
-                              <TableRow key={vacation.id}>
-                                <TableCell className="font-medium">{vacation.year}</TableCell>
-                                <TableCell>
-                                  {new Date(vacation.startDate).toLocaleDateString()} -{" "}
-                                  {new Date(vacation.endDate).toLocaleDateString()}
-                                </TableCell>
-                                <TableCell>{vacation.totalDays} days</TableCell>
-                                <TableCell>{vacation.paidLeaveQuota} days</TableCell>
-                                <TableCell>
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                      vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                                    }`}
+              {/* Winter Vacation */}
+              <div>
+                <h4 className="text-lg font-semibold mb-3 flex items-center gap-2 text-blue-700">
+                  <Snowflake className="h-5 w-5 text-blue-500" />
+                  Winter Vacation
+                </h4>
+                <div className="border rounded-lg overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Year</TableHead>
+                        <TableHead>Period</TableHead>
+                        <TableHead>Total Days</TableHead>
+                        <TableHead>Paid Quota</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {vacations
+                        .filter((v) => v.vacationType === "Winter Vacation")
+                        .map((vacation) => (
+                          <TableRow key={vacation.id} className="hover:bg-gray-50 transition-colors">
+                            <TableCell className="font-medium">{vacation.year}</TableCell>
+                            <TableCell>
+                              {new Date(vacation.startDate).toLocaleDateString()} — {new Date(vacation.endDate).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>{vacation.totalDays} days</TableCell>
+                            <TableCell>{vacation.paidLeaveQuota} days</TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {vacation.isActive ? "Active" : "Inactive"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)} className="gap-1">
+                                  <Pencil className="h-4 w-4" />
+                                  Edit
+                                </Button>
+                                {vacation.isActive && (
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeactivateVacation(vacation.id)}
                                   >
-                                    {vacation.isActive ? "Active" : "Inactive"}
-                                  </span>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex gap-2">
-                                    <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)}>
-                                      <Pencil className="h-4 w-4 mr-1" />
-                                      Edit
-                                    </Button>
-                                    {vacation.isActive && (
-                                      <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        onClick={() => handleDeactivateVacation(vacation.id)}
-                                      >
-                                        Deactivate
-                                      </Button>
-                                    )}
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          {vacations.filter((v) => v.vacationType === "Winter Vacation").length === 0 && (
-                            <TableRow>
-                              <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                                No Winter Vacation periods configured
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
+                                    Deactivate
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      {vacations.filter((v) => v.vacationType === "Winter Vacation").length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                            No Winter Vacation periods configured
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            </div>
+          </EnhancedCard>
         </TabsContent>
 
         {/* ATTENDANCE TAB */}
-        <TabsContent value="attendance">
-          <Card>
-            <CardHeader>
-              <CardTitle>Attendance Management</CardTitle>
-              <CardDescription>
-                Mark daily attendance for faculty, lab assistants, and office staff
-              </CardDescription>
-            </CardHeader>
-            <CardContent key={attendanceKey}>
+        <TabsContent value="attendance" className="mt-0">
+          <EnhancedCard 
+            variant="elevated"
+            header={
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">Attendance Management</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Mark daily attendance for faculty, lab assistants, and office staff
+                  </p>
+                </div>
+              </div>
+            }
+          >
+            <div key={attendanceKey}>
               <AttendanceCalendar
                 departments={departmentsList}
                 staffUsers={staffUsers}
                 onRefresh={handleAttendanceRefresh}
               />
-            </CardContent>
-          </Card>
+            </div>
+          </EnhancedCard>
         </TabsContent>
 
         {/* FACULTY LIST TAB */}
-        <TabsContent value="faculty">
-          <Card>
-            <CardHeader>
-              <CardTitle>Faculty & Staff Directory</CardTitle>
-              <CardDescription>
-                View all faculty, lab assistants, and office staff members
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FacultyList departments={departmentsList} />
-            </CardContent>
-          </Card>
+        <TabsContent value="faculty" className="mt-0">
+          <EnhancedCard 
+            variant="elevated"
+            header={
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">Faculty & Staff Directory</h3>
+                  <p className="text-sm text-muted-foreground">
+                    View all faculty, lab assistants, and office staff members
+                  </p>
+                </div>
+              </div>
+            }
+          >
+            <FacultyList departments={departmentsList} />
+          </EnhancedCard>
         </TabsContent>
       </Tabs>
 
@@ -1300,7 +1390,7 @@ function HeadClerkDashboardContent() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="leaveCode">Leave Code *</Label>
+              <Label htmlFor="leaveCode" className="text-sm font-medium">Leave Code *</Label>
               <Input
                 id="leaveCode"
                 placeholder="e.g., CL, EL, ML"
@@ -1309,7 +1399,7 @@ function HeadClerkDashboardContent() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="leaveName">Leave Name *</Label>
+              <Label htmlFor="leaveName" className="text-sm font-medium">Leave Name *</Label>
               <Input
                 id="leaveName"
                 placeholder="e.g., Casual Leave"
@@ -1318,7 +1408,7 @@ function HeadClerkDashboardContent() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description" className="text-sm font-medium">Description</Label>
               <Input
                 id="description"
                 placeholder="Optional description"
@@ -1333,7 +1423,7 @@ function HeadClerkDashboardContent() {
                   checked={formData.allowHalfDay}
                   onCheckedChange={(checked) => setFormData({ ...formData, allowHalfDay: checked === true })}
                 />
-                <Label htmlFor="allowHalfDay">Allow Half Day</Label>
+                <Label htmlFor="allowHalfDay" className="text-sm">Allow Half Day</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -1341,7 +1431,7 @@ function HeadClerkDashboardContent() {
                   checked={formData.requiresAttachment}
                   onCheckedChange={(checked) => setFormData({ ...formData, requiresAttachment: checked === true })}
                 />
-                <Label htmlFor="requiresAttachment">Requires Attachment</Label>
+                <Label htmlFor="requiresAttachment" className="text-sm">Requires Attachment</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -1349,7 +1439,7 @@ function HeadClerkDashboardContent() {
                   checked={formData.deductsBalance}
                   onCheckedChange={(checked) => setFormData({ ...formData, deductsBalance: checked === true })}
                 />
-                <Label htmlFor="deductsBalance">Deducts from Balance</Label>
+                <Label htmlFor="deductsBalance" className="text-sm">Deducts from Balance</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -1357,12 +1447,12 @@ function HeadClerkDashboardContent() {
                   checked={formData.hasExpiry}
                   onCheckedChange={(checked) => setFormData({ ...formData, hasExpiry: checked === true })}
                 />
-                <Label htmlFor="hasExpiry">Has Expiry</Label>
+                <Label htmlFor="hasExpiry" className="text-sm">Has Expiry</Label>
               </div>
             </div>
             {formData.hasExpiry && (
               <div className="space-y-2">
-                <Label htmlFor="expiryInDays">Expiry (days)</Label>
+                <Label htmlFor="expiryInDays" className="text-sm font-medium">Expiry (days)</Label>
                 <Input
                   id="expiryInDays"
                   type="number"
@@ -1373,7 +1463,7 @@ function HeadClerkDashboardContent() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="maxConsecutiveDays">Max Consecutive Days</Label>
+              <Label htmlFor="maxConsecutiveDays" className="text-sm font-medium">Max Consecutive Days</Label>
               <Input
                 id="maxConsecutiveDays"
                 type="number"
@@ -1390,7 +1480,7 @@ function HeadClerkDashboardContent() {
                   checked={formData.addToPolicy}
                   onCheckedChange={(checked) => setFormData({ ...formData, addToPolicy: checked === true })}
                 />
-                <Label htmlFor="addToPolicy" className="cursor-pointer">
+                <Label htmlFor="addToPolicy" className="cursor-pointer text-sm">
                   Add to Current Policy
                   <span className="text-xs text-muted-foreground ml-2 block font-normal">
                     (Adds this leave type with 0 quota to all roles)
@@ -1428,7 +1518,7 @@ function HeadClerkDashboardContent() {
           </DialogHeader>
           <form onSubmit={handleEditSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="editLeaveName">Leave Name *</Label>
+              <Label htmlFor="editLeaveName" className="text-sm font-medium">Leave Name *</Label>
               <Input
                 id="editLeaveName"
                 value={editFormData.leaveName}
@@ -1438,7 +1528,7 @@ function HeadClerkDashboardContent() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="editDescription">Description</Label>
+              <Label htmlFor="editDescription" className="text-sm font-medium">Description</Label>
               <Input
                 id="editDescription"
                 value={editFormData.description}
@@ -1454,7 +1544,7 @@ function HeadClerkDashboardContent() {
                   checked={editFormData.allowHalfDay}
                   onCheckedChange={(checked) => setEditFormData({ ...editFormData, allowHalfDay: checked === true })}
                 />
-                <Label htmlFor="editAllowHalfDay">Allow Half Day</Label>
+                <Label htmlFor="editAllowHalfDay" className="text-sm">Allow Half Day</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -1462,7 +1552,7 @@ function HeadClerkDashboardContent() {
                   checked={editFormData.requiresAttachment}
                   onCheckedChange={(checked) => setEditFormData({ ...editFormData, requiresAttachment: checked === true })}
                 />
-                <Label htmlFor="editRequiresAttachment">Requires Attachment</Label>
+                <Label htmlFor="editRequiresAttachment" className="text-sm">Requires Attachment</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -1470,7 +1560,7 @@ function HeadClerkDashboardContent() {
                   checked={editFormData.deductsBalance}
                   onCheckedChange={(checked) => setEditFormData({ ...editFormData, deductsBalance: checked === true })}
                 />
-                <Label htmlFor="editDeductsBalance">Deducts from Balance</Label>
+                <Label htmlFor="editDeductsBalance" className="text-sm">Deducts from Balance</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -1478,13 +1568,13 @@ function HeadClerkDashboardContent() {
                   checked={editFormData.hasExpiry}
                   onCheckedChange={(checked) => setEditFormData({ ...editFormData, hasExpiry: checked === true })}
                 />
-                <Label htmlFor="editHasExpiry">Has Expiry</Label>
+                <Label htmlFor="editHasExpiry" className="text-sm">Has Expiry</Label>
               </div>
             </div>
 
             {editFormData.hasExpiry && (
               <div className="space-y-2">
-                <Label htmlFor="editExpiryInDays">Expiry (days)</Label>
+                <Label htmlFor="editExpiryInDays" className="text-sm font-medium">Expiry (days)</Label>
                 <Input
                   id="editExpiryInDays"
                   type="number"
@@ -1496,7 +1586,7 @@ function HeadClerkDashboardContent() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="editMaxConsecutiveDays">Max Consecutive Days</Label>
+              <Label htmlFor="editMaxConsecutiveDays" className="text-sm font-medium">Max Consecutive Days</Label>
               <Input
                 id="editMaxConsecutiveDays"
                 type="number"
@@ -1534,7 +1624,7 @@ function HeadClerkDashboardContent() {
           </DialogHeader>
           <div className="space-y-6">
             <div className="space-y-2">
-              <Label>Academic Year</Label>
+              <Label className="text-sm font-medium">Academic Year</Label>
               <Select
                 value={policyForm.academicYear}
                 onValueChange={(value) => setPolicyForm({ ...policyForm, academicYear: value })}
@@ -1554,7 +1644,7 @@ function HeadClerkDashboardContent() {
             </div>
 
             <div className="space-y-2">
-              <Label>Apply Rule</Label>
+              <Label className="text-sm font-medium">Apply Rule</Label>
               <div className="flex gap-4">
                 <div className="flex items-center space-x-2">
                   <input
@@ -1565,7 +1655,7 @@ function HeadClerkDashboardContent() {
                     onChange={(e) => setPolicyForm({ ...policyForm, applyRule: e.target.value })}
                     className="w-4 h-4"
                   />
-                  <Label htmlFor="immediate">Apply Immediately</Label>
+                  <Label htmlFor="immediate" className="text-sm">Apply Immediately</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <input
@@ -1576,7 +1666,7 @@ function HeadClerkDashboardContent() {
                     onChange={(e) => setPolicyForm({ ...policyForm, applyRule: e.target.value })}
                     className="w-4 h-4"
                   />
-                  <Label htmlFor="next-year">Apply from Next Academic Year</Label>
+                  <Label htmlFor="next-year" className="text-sm">Apply from Next Academic Year</Label>
                 </div>
               </div>
             </div>
@@ -1777,7 +1867,7 @@ function HeadClerkDashboardContent() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Vacation Type *</Label>
+              <Label className="text-sm font-medium">Vacation Type *</Label>
               <Select
                 value={vacationForm.vacationType}
                 onValueChange={(value) => {
@@ -1810,7 +1900,7 @@ function HeadClerkDashboardContent() {
             </div>
 
             <div className="space-y-2">
-              <Label>Year *</Label>
+              <Label className="text-sm font-medium">Year *</Label>
               <Select
                 value={vacationForm.year.toString()}
                 onValueChange={(value) => setVacationForm({ ...vacationForm, year: parseInt(value) })}
@@ -1830,7 +1920,7 @@ function HeadClerkDashboardContent() {
             </div>
 
             <div className="space-y-2">
-              <Label>Start Date *</Label>
+              <Label className="text-sm font-medium">Start Date *</Label>
               <Input
                 type="date"
                 value={vacationForm.startDate}
@@ -1840,7 +1930,7 @@ function HeadClerkDashboardContent() {
             </div>
 
             <div className="space-y-2">
-              <Label>End Date *</Label>
+              <Label className="text-sm font-medium">End Date *</Label>
               <Input
                 type="date"
                 value={vacationForm.endDate}
@@ -1853,7 +1943,7 @@ function HeadClerkDashboardContent() {
             </div>
 
             <div className="space-y-2">
-              <Label>Paid Leave Quota (days) *</Label>
+              <Label className="text-sm font-medium">Paid Leave Quota (days) *</Label>
               <Input
                 type="number"
                 min="0"

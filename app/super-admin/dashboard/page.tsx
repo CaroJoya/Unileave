@@ -1,3 +1,4 @@
+// app/super-admin/dashboard/page.tsx - COMPLETE FIXED VERSION
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -12,11 +13,20 @@ import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { RoleNavbar } from "@/components/layout/RoleNavbar";
-import { Building2, Users, Database, FileText } from "lucide-react";
+import { Building2, Users, FileText, Shield, Activity, Settings } from "lucide-react";
+import { StatCard } from "@/components/ui/stat-card";
 
 interface Department {
   id: string;
   name: string;
+}
+
+interface User {
+  uid: string;
+  name: string;
+  email: string;
+  roles: string[];
+  status: string;
 }
 
 // Get initial tab from URL hash
@@ -34,10 +44,13 @@ function SuperAdminDashboardContent() {
   const { user, isLoading, hydrationComplete } = useAuthStore();
   const router = useRouter();
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [isLoadingDepartments, setIsLoadingDepartments] = useState(true);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [activeTab, setActiveTab] = useState(getInitialTab);
   const initialLoadDone = useRef(false);
 
+  // Auth check
   useEffect(() => {
     if (!hydrationComplete) return;
     if (!isLoading && (!user || !user.roles?.includes("super_admin"))) {
@@ -45,6 +58,7 @@ function SuperAdminDashboardContent() {
     }
   }, [user, isLoading, router, hydrationComplete]);
 
+  // Fetch departments
   useEffect(() => {
     if (!hydrationComplete) return;
     if (!user?.collegeId || initialLoadDone.current) {
@@ -87,6 +101,28 @@ function SuperAdminDashboardContent() {
 
     loadDepartments();
   }, [user, user?.collegeId, hydrationComplete]);
+
+  // Fetch users for stats
+  useEffect(() => {
+    if (!hydrationComplete || !user?.collegeId) return;
+
+    const loadUsers = async () => {
+      setIsLoadingUsers(true);
+      try {
+        const response = await fetch("/api/super-admin/users");
+        const data = await response.json();
+        if (response.ok) {
+          setUsers(data.users || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch users:", error);
+      } finally {
+        setIsLoadingUsers(false);
+      }
+    };
+
+    loadUsers();
+  }, [user, hydrationComplete]);
 
   const refreshDepartments = useCallback(async () => {
     const { user: currentUser } = useAuthStore.getState();
@@ -146,7 +182,7 @@ function SuperAdminDashboardContent() {
     { 
       label: "System", 
       href: "/super-admin/dashboard", 
-      icon: <Database className="h-4 w-4" />,
+      icon: <Settings className="h-4 w-4" />,
       tab: "system"
     },
   ];
@@ -156,6 +192,11 @@ function SuperAdminDashboardContent() {
     setActiveTab(tab);
     window.location.hash = tab;
   };
+
+  // Calculate stats
+  const activeUsers = users.filter(u => u.status === "active").length;
+  const deletedUsers = users.filter(u => u.status === "deleted").length;
+  const totalDepartments = departments.length;
 
   if (!hydrationComplete || isLoading) {
     return (
@@ -175,7 +216,8 @@ function SuperAdminDashboardContent() {
   console.log("Dashboard - departments count:", departments.length);
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="container mx-auto py-8 px-4 max-w-7xl">
+      {/* Navbar */}
       <RoleNavbar
         role="super_admin"
         navItems={navItems}
@@ -183,36 +225,100 @@ function SuperAdminDashboardContent() {
         subtitle={`Managing: ${user?.collegeName || "College"} • College ID: ${user?.collegeId || "Not set"}`}
       />
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6 mt-6">
-        <TabsList>
-          <TabsTrigger value="college">College Profile</TabsTrigger>
-          <TabsTrigger value="departments">Departments</TabsTrigger>
-          <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="audit-logs">Audit Logs</TabsTrigger>
-          <TabsTrigger value="system">System</TabsTrigger>
+      {/* Quick Stats */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6 mb-8">
+        <StatCard
+          label="Total Departments"
+          value={totalDepartments}
+          icon={<Building2 className="h-5 w-5" />}
+          color="primary"
+          trend={{
+            value: totalDepartments,
+            label: "departments",
+            direction: "neutral"
+          }}
+        />
+        <StatCard
+          label="Active Users"
+          value={activeUsers}
+          icon={<Users className="h-5 w-5" />}
+          color="green"
+        />
+        <StatCard
+          label="Deactivated Users"
+          value={deletedUsers}
+          icon={<Shield className="h-5 w-5" />}
+          color="amber"
+        />
+        <StatCard
+          label="System Status"
+          value="Online"
+          icon={<Activity className="h-5 w-5" />}
+          color="teal"
+        />
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+        <TabsList className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg">
+          <TabsTrigger 
+            value="college" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <Building2 className="h-4 w-4" />
+            College Profile
+          </TabsTrigger>
+          <TabsTrigger 
+            value="departments" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <Building2 className="h-4 w-4" />
+            Departments
+          </TabsTrigger>
+          <TabsTrigger 
+            value="users" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <Users className="h-4 w-4" />
+            Users
+          </TabsTrigger>
+          <TabsTrigger 
+            value="audit-logs" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <FileText className="h-4 w-4" />
+            Audit Logs
+          </TabsTrigger>
+          <TabsTrigger 
+            value="system" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
+          >
+            <Settings className="h-4 w-4" />
+            System
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="college">
+        <TabsContent value="college" className="mt-0">
           <CollegeProfile />
         </TabsContent>
 
-        <TabsContent value="departments">
+        <TabsContent value="departments" className="mt-0">
           <DepartmentManager onRefresh={refreshDepartments} />
         </TabsContent>
 
-        <TabsContent value="users">
+        <TabsContent value="users" className="mt-0">
           <UserManager 
             departments={departments} 
             onRefresh={refreshDepartments}
-            isLoading={isLoadingDepartments}
+            isLoading={isLoadingDepartments || isLoadingUsers}
           />
         </TabsContent>
 
-        <TabsContent value="audit-logs">
+        <TabsContent value="audit-logs" className="mt-0">
           <AuditLogsContent />
         </TabsContent>
 
-        <TabsContent value="system">
+        <TabsContent value="system" className="mt-0">
           <SystemTools />
         </TabsContent>
       </Tabs>

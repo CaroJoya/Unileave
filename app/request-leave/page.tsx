@@ -1,22 +1,18 @@
-// app/request-leave/page.tsx - FIXED ESLint ERRORS
-"use client";
-
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CalendarIcon, CheckCircle, Info, Briefcase, MapPin } from "lucide-react";
+import { CalendarIcon, CheckCircle, Info, Briefcase, MapPin, FileText, Clock, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
+import { EnhancedCard } from "@/components/ui/enhanced-card";
 interface LeaveType {
   id: string;
   leaveCode: string;
@@ -173,10 +169,6 @@ export default function RequestLeavePage() {
       setAttachmentFile(e.target.files[0]);
     }
   };
-
-  // Clear OD details when switching away from OD - FIXED: use useMemo or remove the effect
-  // Instead of using useEffect with setState, we handle this in handleLeaveTypeChange
-  // The effect below is removed to avoid the cascading render warning
 
   const handleSubmit = async () => {
     toast.dismiss();
@@ -405,26 +397,50 @@ export default function RequestLeavePage() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-3xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Request Leave</h1>
-        <p className="text-muted-foreground mt-2">
-          Submit a new leave request for approval
-        </p>
+      {/* Page Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+            <FileText className="h-8 w-8 text-primary" />
+            Request Leave
+          </h1>
+          <p className="text-muted-foreground mt-1.5 text-base">
+            Submit a new leave request for approval
+          </p>
+        </div>
+        <Button 
+          variant="outline" 
+          onClick={() => router.push("/status")}
+          className="gap-2"
+        >
+          <Clock className="h-4 w-4" />
+          View Status
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Leave Application</CardTitle>
-          <CardDescription>
-            Fill in the details below to request leave
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      {/* Main Form */}
+      <EnhancedCard 
+        variant="elevated"
+        padding="lg"
+        className="mb-6"
+        header={
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Leave Application</h3>
+              <p className="text-sm text-muted-foreground">Fill in the details below to request leave</p>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-6">
           {/* Leave Type Selection */}
           <div className="space-y-2">
-            <Label htmlFor="leaveType">Leave Type *</Label>
+            <Label htmlFor="leaveType" className="text-sm font-medium">Leave Type *</Label>
             <Select value={selectedLeaveType} onValueChange={handleLeaveTypeChange}>
-              <SelectTrigger>
+              <SelectTrigger id="leaveType">
                 <SelectValue placeholder="Select leave type" />
               </SelectTrigger>
               <SelectContent>
@@ -454,12 +470,15 @@ export default function RequestLeavePage() {
               </SelectContent>
             </Select>
             {selectedLeaveTypeConfig && selectedBalance && !isOD && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                <Info className="h-4 w-4" />
+              <div className={cn(
+                "flex items-center gap-2 text-sm mt-1 p-2 rounded-lg",
+                selectedBalance.available >= totalDays ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"
+              )}>
+                <Info className="h-4 w-4 flex-shrink-0" />
                 <span>
                   Available balance: <strong>{selectedBalance.available}</strong> days
                   {selectedLeaveTypeConfig.deductsBalance && selectedBalance.available < totalDays && (
-                    <span className="text-red-500 ml-2">
+                    <span className="text-red-500 ml-2 font-medium">
                       (Insufficient: need {totalDays - selectedBalance.available} more days)
                     </span>
                   )}
@@ -470,7 +489,7 @@ export default function RequestLeavePage() {
 
           {/* OD Info Alert */}
           {isOD && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
               <div className="flex items-start gap-3">
                 <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div>
@@ -486,7 +505,7 @@ export default function RequestLeavePage() {
 
           {/* Leave Duration */}
           <div className="space-y-2">
-            <Label>Leave Duration *</Label>
+            <Label className="text-sm font-medium">Leave Duration *</Label>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <Label className="text-xs text-muted-foreground">Start Date</Label>
@@ -495,7 +514,7 @@ export default function RequestLeavePage() {
                     <Button
                       variant="outline"
                       className={cn(
-                        "w-full justify-start text-left font-normal",
+                        "w-full justify-start text-left font-normal mt-1",
                         !startDate && "text-muted-foreground"
                       )}
                     >
@@ -525,7 +544,7 @@ export default function RequestLeavePage() {
                     <Button
                       variant="outline"
                       className={cn(
-                        "w-full justify-start text-left font-normal",
+                        "w-full justify-start text-left font-normal mt-1",
                         !endDate && "text-muted-foreground",
                         isHalfDay && "opacity-50 cursor-not-allowed"
                       )}
@@ -552,11 +571,14 @@ export default function RequestLeavePage() {
               </div>
             </div>
             {totalDays > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Total days: <strong>{isHalfDay ? 0.5 : totalDays}</strong> day
-                {(!isHalfDay && totalDays !== 1) ? "s" : ""}
-                {isOD && <span className="text-blue-600 ml-2">(No balance deduction)</span>}
-              </p>
+              <div className="flex items-center gap-2 text-sm bg-gray-50 p-2 rounded-lg mt-1">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span>
+                  Total days: <strong>{isHalfDay ? 0.5 : totalDays}</strong> day
+                  {(!isHalfDay && totalDays !== 1) ? "s" : ""}
+                  {isOD && <span className="text-blue-600 ml-2">(No balance deduction)</span>}
+                </span>
+              </div>
             )}
           </div>
 
@@ -582,12 +604,12 @@ export default function RequestLeavePage() {
                   }}
                   className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
                 />
-                <Label htmlFor="halfDay" className="cursor-pointer">
+                <Label htmlFor="halfDay" className="cursor-pointer text-sm font-medium">
                   Half Day Leave
                 </Label>
               </div>
               {isHalfDay && (
-                <div className="flex gap-4 mt-2">
+                <div className="flex gap-4 mt-2 p-3 bg-gray-50 rounded-lg">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
@@ -598,7 +620,7 @@ export default function RequestLeavePage() {
                       }
                       className="w-4 h-4"
                     />
-                    <span>First Half</span>
+                    <span className="text-sm">First Half</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -610,7 +632,7 @@ export default function RequestLeavePage() {
                       }
                       className="w-4 h-4"
                     />
-                    <span>Second Half</span>
+                    <span className="text-sm">Second Half</span>
                   </label>
                 </div>
               )}
@@ -619,20 +641,20 @@ export default function RequestLeavePage() {
 
           {/* OD Event Details */}
           {isOD && (
-            <div className="space-y-4 border rounded-lg p-4 bg-blue-50 border-blue-200">
+            <div className="space-y-4 border rounded-xl p-4 bg-blue-50 border-blue-200">
               <div className="flex items-center gap-2 text-blue-800 font-medium">
                 <Briefcase className="h-5 w-5" />
                 <h4>On Duty Event Details</h4>
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="eventName">Event Name *</Label>
+                <Label htmlFor="eventName" className="text-sm font-medium">Event Name *</Label>
                 <Input
                   id="eventName"
                   placeholder="e.g., AI Faculty Development Program"
                   value={odDetails.eventName}
                   onChange={(e) => setOdDetails({ ...odDetails, eventName: e.target.value })}
-                  className="border-blue-300 focus:border-blue-500"
+                  className="border-blue-300 focus:border-blue-500 bg-white"
                 />
                 {odDetails.eventName && odDetails.eventName.length < 3 && (
                   <p className="text-xs text-red-500">Minimum 3 characters required</p>
@@ -640,13 +662,13 @@ export default function RequestLeavePage() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="organization">Organization *</Label>
+                <Label htmlFor="organization" className="text-sm font-medium">Organization *</Label>
                 <Input
                   id="organization"
                   placeholder="e.g., IIT Bombay"
                   value={odDetails.organization}
                   onChange={(e) => setOdDetails({ ...odDetails, organization: e.target.value })}
-                  className="border-blue-300 focus:border-blue-500"
+                  className="border-blue-300 focus:border-blue-500 bg-white"
                 />
                 {odDetails.organization && odDetails.organization.length < 2 && (
                   <p className="text-xs text-red-500">Minimum 2 characters required</p>
@@ -654,7 +676,7 @@ export default function RequestLeavePage() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="location">Location *</Label>
+                <Label htmlFor="location" className="text-sm font-medium">Location *</Label>
                 <div className="relative">
                   <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -662,7 +684,7 @@ export default function RequestLeavePage() {
                     placeholder="e.g., Mumbai"
                     value={odDetails.location}
                     onChange={(e) => setOdDetails({ ...odDetails, location: e.target.value })}
-                    className="pl-9 border-blue-300 focus:border-blue-500"
+                    className="pl-9 border-blue-300 focus:border-blue-500 bg-white"
                   />
                 </div>
                 {odDetails.location && odDetails.location.length < 2 && (
@@ -671,14 +693,14 @@ export default function RequestLeavePage() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="purpose">Purpose *</Label>
+                <Label htmlFor="purpose" className="text-sm font-medium">Purpose *</Label>
                 <Textarea
                   id="purpose"
                   placeholder="Describe the purpose of this duty (e.g., Faculty Training, Research Collaboration, etc.)"
                   value={odDetails.purpose}
                   onChange={(e) => setOdDetails({ ...odDetails, purpose: e.target.value })}
                   rows={3}
-                  className="border-blue-300 focus:border-blue-500"
+                  className="border-blue-300 focus:border-blue-500 bg-white"
                 />
                 {odDetails.purpose && odDetails.purpose.length < 5 && (
                   <p className="text-xs text-red-500">Minimum 5 characters required</p>
@@ -695,21 +717,22 @@ export default function RequestLeavePage() {
 
           {/* Reason */}
           <div className="space-y-2">
-            <Label htmlFor="reason">Reason</Label>
+            <Label htmlFor="reason" className="text-sm font-medium">Reason <span className="text-muted-foreground font-normal">(Optional)</span></Label>
             <Textarea
               id="reason"
               placeholder="Briefly describe the reason for leave"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
+              className="resize-none"
             />
           </div>
 
           {/* Alternate Faculty */}
           <div className="space-y-2">
-            <Label htmlFor="alternateFaculty">
+            <Label htmlFor="alternateFaculty" className="text-sm font-medium">
               Alternate Faculty Name *
-              <span className="text-xs text-muted-foreground ml-2">
+              <span className="text-xs text-muted-foreground ml-2 font-normal">
                 (Who will cover your duties?)
               </span>
             </Label>
@@ -719,6 +742,9 @@ export default function RequestLeavePage() {
               value={alternateFacultyName}
               onChange={(e) => setAlternateFacultyName(e.target.value)}
               required
+              className={cn(
+                alternateFacultyName.trim() && alternateFacultyName.trim().length < 3 && "border-red-300 focus:border-red-500"
+              )}
             />
             {alternateFacultyName.trim() && alternateFacultyName.trim().length < 3 && (
               <p className="text-xs text-red-500">Name must be at least 3 characters</p>
@@ -728,59 +754,71 @@ export default function RequestLeavePage() {
           {/* Attachment */}
           {(selectedLeaveTypeConfig?.requiresAttachment || isOD) && (
             <div className="space-y-2">
-              <Label htmlFor="attachment">
+              <Label htmlFor="attachment" className="text-sm font-medium">
                 Attachment {isOD ? "* (Required)" : "*"}
-                <span className="text-xs text-muted-foreground ml-2">
+                <span className="text-xs text-muted-foreground ml-2 font-normal">
                   (PDF, DOC, JPG, PNG - Max 16MB)
                 </span>
               </Label>
-              <Input
-                id="attachment"
-                type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                onChange={handleFileChange}
-                className="cursor-pointer"
-                required={isOD}
-              />
-              {attachmentFile && (
-                <p className="text-sm text-green-600">
-                  <CheckCircle className="inline h-4 w-4 mr-1" />
-                  File selected: {attachmentFile.name}
-                </p>
-              )}
-              {isOD && !attachmentFile && (
-                <p className="text-xs text-red-500">Attachment is required for On Duty leave</p>
-              )}
+              <div className={cn(
+                "border-2 border-dashed rounded-lg p-4 transition-colors",
+                attachmentFile ? "border-green-300 bg-green-50" : "border-gray-300 hover:border-primary/50"
+              )}>
+                <Input
+                  id="attachment"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={handleFileChange}
+                  className="cursor-pointer"
+                  required={isOD}
+                />
+                {attachmentFile && (
+                  <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                    <CheckCircle className="h-4 w-4" />
+                    <span>File selected: <strong>{attachmentFile.name}</strong></span>
+                    <span className="text-xs text-muted-foreground">
+                      ({(attachmentFile.size / 1024).toFixed(1)} KB)
+                    </span>
+                  </div>
+                )}
+                {isOD && !attachmentFile && (
+                  <p className="text-xs text-red-500 mt-1">Attachment is required for On Duty leave</p>
+                )}
+              </div>
             </div>
           )}
 
           {/* Submit Buttons */}
-          <div className="flex gap-4 pt-4 border-t">
+          <div className="flex gap-4 pt-4 border-t border-gray-100">
             <Button
               variant="outline"
               onClick={() => router.push("/dashboard")}
               disabled={submitting}
+              className="flex-1"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={isSubmitDisabled}
-              className="flex-1"
+              className="flex-[2] gap-2"
             >
               {submitting ? (
                 <>
-                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
                   {uploading ? "Uploading..." : "Submitting..."}
                 </>
               ) : (
-                "Submit Leave Request"
+                <>
+                  Submit Leave Request
+                  <ArrowRight className="h-4 w-4" />
+                </>
               )}
             </Button>
           </div>
 
           {/* Info Box */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
             <div className="flex items-start gap-3">
               <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
               <div>
@@ -790,9 +828,8 @@ export default function RequestLeavePage() {
                   <li>You can edit or cancel your request before it is approved</li>
                   <li>You will receive email and in-app notifications for status updates</li>
                   {!isOD && selectedLeaveTypeConfig?.deductsBalance && (
-                    <li>
-                      This leave type deducts from your balance. Make sure you have enough
-                      days available.
+                    <li className="text-blue-800">
+                      This leave type deducts from your balance. Make sure you have enough days available.
                     </li>
                   )}
                   {isOD && (
@@ -804,8 +841,8 @@ export default function RequestLeavePage() {
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </EnhancedCard>
     </div>
   );
 }

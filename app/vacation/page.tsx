@@ -1,21 +1,17 @@
-// app/vacation/page.tsx
-"use client";
-
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { CalendarIcon, Sun, Snowflake, AlertCircle, Info, CheckCircle, XCircle, Clock } from "lucide-react";
+import { CalendarIcon, Sun, Snowflake, AlertCircle, Info, CheckCircle, XCircle, Clock, Umbrella, CalendarDays, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
+import { EnhancedCard } from "@/components/ui/enhanced-card";
 interface VacationPeriod {
   id: string;
   vacationType: "Summer Vacation" | "Winter Vacation";
@@ -232,7 +228,6 @@ export default function VacationPage() {
       });
       await fetchData();
 
-      // ✅ SMART REDIRECT: Go to status page to see the vacation request
       toast.success("🎯 Redirecting to your vacation status...");
       setTimeout(() => {
         router.push("/status");
@@ -263,7 +258,7 @@ export default function VacationPage() {
     switch (status) {
       case "Approved":
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
             <CheckCircle className="h-3 w-3 mr-1" />
             Approved
           </span>
@@ -272,21 +267,21 @@ export default function VacationPage() {
       case "Rejected_Registrar":
       case "Rejected_Principal":
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
             <XCircle className="h-3 w-3 mr-1" />
             Rejected
           </span>
         );
       case "Pending_Revision":
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
             <AlertCircle className="h-3 w-3 mr-1" />
             Needs Revision
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
             <Clock className="h-3 w-3 mr-1" />
             Pending
           </span>
@@ -306,91 +301,182 @@ export default function VacationPage() {
     return null;
   }
 
+  const totalHistoryDays = history.reduce((sum, r) => sum + r.totalDays, 0);
+  const totalPaidDays = history.reduce((sum, r) => sum + (r.paidDays || 0), 0);
+  const totalUnpaidDays = history.reduce((sum, r) => sum + (r.unpaidDays || 0), 0);
+
   return (
     <div className="container mx-auto py-8 px-4 max-w-3xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Vacation Leave</h1>
-        <p className="text-muted-foreground mt-2">
-          Apply for paid vacation during Summer or Winter breaks
-        </p>
+      {/* Page Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+            <Umbrella className="h-8 w-8 text-primary" />
+            Vacation Leave
+          </h1>
+          <p className="text-muted-foreground mt-1.5 text-base">
+            Apply for paid vacation during Summer or Winter breaks
+          </p>
+        </div>
+        <Button 
+          variant="outline" 
+          onClick={() => router.push("/status")}
+          className="gap-2"
+        >
+          <Clock className="h-4 w-4" />
+          View Status
+        </Button>
       </div>
 
       {/* Info Card */}
-      <Card className="mb-8 bg-blue-50 border-blue-200">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+      <EnhancedCard 
+        variant="elevated" 
+        accentColor="blue"
+        className="mb-8"
+        header={
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
+              <Info className="h-5 w-5" />
+            </div>
             <div>
-              <p className="text-sm text-blue-800 font-medium">About Vacation Leave</p>
-              <p className="text-sm text-blue-700 mt-1">
-                Summer Vacation: 40 days total, up to 27 paid days. Winter Vacation: 40 days total,
-                up to 21 paid days. Any days beyond the paid quota will be treated as unpaid leave.
-              </p>
+              <h3 className="font-semibold text-gray-900">About Vacation Leave</h3>
+              <p className="text-sm text-muted-foreground">Understand how vacation leave works</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        }
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+            <div className="flex items-center gap-2 text-yellow-800 font-medium">
+              <Sun className="h-4 w-4" />
+              Summer Vacation
+            </div>
+            <p className="text-sm text-yellow-700 mt-1">
+              40 days total, up to <strong>27 paid days</strong>
+            </p>
+          </div>
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-2 text-blue-800 font-medium">
+              <Snowflake className="h-4 w-4" />
+              Winter Vacation
+            </div>
+            <p className="text-sm text-blue-700 mt-1">
+              40 days total, up to <strong>21 paid days</strong>
+            </p>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mt-3">
+          Any days beyond the paid quota will be treated as unpaid leave.
+        </p>
+      </EnhancedCard>
 
       {/* Active Vacation Periods */}
       {vacations.length > 0 && (
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Active Vacation Periods</CardTitle>
-            <CardDescription>Select the vacation period you want to apply for</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4">
-              {vacations.map((vacation) => (
-                <div
-                  key={vacation.id}
-                  className={cn(
-                    "p-4 rounded-lg border-2 cursor-pointer transition-all",
-                    selectedVacation?.id === vacation.id
-                      ? "border-primary bg-primary/5"
-                      : "border-gray-200 hover:border-gray-300"
-                  )}
-                  onClick={() => handleVacationChange(vacation.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      handleVacationChange(vacation.id);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    {getVacationIcon(vacation.vacationType)}
-                    <h3 className="font-semibold">{vacation.vacationType} {vacation.year}</h3>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(vacation.startDate).toLocaleDateString()} -{" "}
-                    {new Date(vacation.endDate).toLocaleDateString()}
-                  </p>
-                  <div className="flex gap-4 mt-2 text-sm">
-                    <span>Total: <strong>{vacation.totalDays} days</strong></span>
-                    <span>Paid Quota: <strong>{vacation.paidLeaveQuota} days</strong></span>
-                  </div>
-                </div>
-              ))}
+        <EnhancedCard 
+          variant="elevated"
+          className="mb-8"
+          header={
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                <CalendarDays className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Active Vacation Periods</h3>
+                <p className="text-sm text-muted-foreground">Select the vacation period you want to apply for</p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          }
+        >
+          <div className="grid gap-3">
+            {vacations.map((vacation) => (
+              <div
+                key={vacation.id}
+                className={cn(
+                  "p-4 rounded-xl border-2 cursor-pointer transition-all duration-300",
+                  selectedVacation?.id === vacation.id
+                    ? "border-primary bg-primary/5 shadow-md"
+                    : "border-gray-200 hover:border-gray-300 hover:shadow-md"
+                )}
+                onClick={() => handleVacationChange(vacation.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    handleVacationChange(vacation.id);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "p-2 rounded-lg",
+                    vacation.vacationType === "Summer Vacation" ? "bg-yellow-100" : "bg-blue-100"
+                  )}>
+                    {getVacationIcon(vacation.vacationType)}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-semibold text-gray-900">
+                        {vacation.vacationType} {vacation.year}
+                      </h4>
+                      {selectedVacation?.id === vacation.id && (
+                        <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full font-medium">
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(vacation.startDate).toLocaleDateString()} — {new Date(vacation.endDate).toLocaleDateString()}
+                    </p>
+                    <div className="flex gap-4 mt-1 text-sm">
+                      <span>Total: <strong>{vacation.totalDays} days</strong></span>
+                      <span>Paid Quota: <strong>{vacation.paidLeaveQuota} days</strong></span>
+                    </div>
+                  </div>
+                  {vacation.vacationType === "Summer Vacation" ? (
+                    <Sun className="h-6 w-6 text-yellow-500 opacity-40" />
+                  ) : (
+                    <Snowflake className="h-6 w-6 text-blue-500 opacity-40" />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </EnhancedCard>
       )}
 
       {/* Application Form */}
       {selectedVacation && (
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Vacation Application</CardTitle>
-            <CardDescription>
-              Apply for {selectedVacation.vacationType} {selectedVacation.year}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <EnhancedCard 
+          variant="elevated"
+          accentColor={selectedVacation.vacationType === "Summer Vacation" ? "amber" : "blue"}
+          className="mb-8"
+          header={
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "p-2 rounded-lg",
+                selectedVacation.vacationType === "Summer Vacation" ? "bg-yellow-100 text-yellow-600" : "bg-blue-100 text-blue-600"
+              )}>
+                {getVacationIcon(selectedVacation.vacationType)}
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">
+                  {selectedVacation.vacationType} {selectedVacation.year}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(selectedVacation.startDate).toLocaleDateString()} — {new Date(selectedVacation.endDate).toLocaleDateString()}
+                </p>
+              </div>
+              <div className="ml-auto text-sm text-muted-foreground">
+                <span className="font-medium">{selectedVacation.paidLeaveQuota}</span> paid days available
+              </div>
+            </div>
+          }
+        >
+          <div className="space-y-6">
             {/* Date Selection */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Start Date *</Label>
+                <Label className="text-sm font-medium">Start Date *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -418,7 +504,7 @@ export default function VacationPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>End Date *</Label>
+                <Label className="text-sm font-medium">End Date *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -455,23 +541,39 @@ export default function VacationPage() {
             {calculation && (
               <div
                 className={cn(
-                  "p-4 rounded-lg",
+                  "p-4 rounded-xl transition-all duration-300",
                   calculation.isValid ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
                 )}
               >
                 {calculation.isValid ? (
-                  <>
-                    <p className="font-medium text-green-800 mb-2">Leave Calculation</p>
-                    <div className="space-y-1 text-sm">
-                      <p>Total days requested: <strong>{calculation.totalDays} days</strong></p>
-                      <p>Paid days (within quota): <strong className="text-green-600">{calculation.paidDays} days</strong></p>
-                      {calculation.unpaidDays > 0 && (
-                        <p>Unpaid days (exceeds quota): <strong className="text-amber-600">{calculation.unpaidDays} days</strong></p>
-                      )}
+                  <div>
+                    <div className="flex items-center gap-2 text-green-800 font-medium mb-2">
+                      <CheckCircle className="h-5 w-5" />
+                      Leave Calculation
+                    </div>
+                    <div className="grid gap-1 text-sm md:grid-cols-3">
+                      <div className="p-2 bg-white/50 rounded-lg text-center">
+                        <span className="text-muted-foreground">Total Days</span>
+                        <p className="text-lg font-bold text-gray-900">{calculation.totalDays} days</p>
+                      </div>
+                      <div className="p-2 bg-white/50 rounded-lg text-center">
+                        <span className="text-muted-foreground">Paid Days</span>
+                        <p className="text-lg font-bold text-green-600">{calculation.paidDays} days</p>
+                      </div>
+                      <div className="p-2 bg-white/50 rounded-lg text-center">
+                        <span className="text-muted-foreground">Unpaid Days</span>
+                        <p className={cn(
+                          "text-lg font-bold",
+                          calculation.unpaidDays > 0 ? "text-amber-600" : "text-green-600"
+                        )}>
+                          {calculation.unpaidDays} days
+                        </p>
+                      </div>
                     </div>
                     {calculation.unpaidDays === 0 && (
-                      <p className="text-xs text-green-700 mt-2">
-                        ✓ Within paid leave quota. No deduction from salary.
+                      <p className="text-xs text-green-700 mt-2 flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" />
+                        Within paid leave quota. No deduction from salary.
                       </p>
                     )}
                     {calculation.unpaidDays > 0 && (
@@ -480,39 +582,54 @@ export default function VacationPage() {
                         {calculation.unpaidDays} day(s) will be treated as unpaid leave.
                       </p>
                     )}
-                  </>
+                  </div>
                 ) : (
-                  <p className="text-red-700 text-sm">{calculation.error}</p>
+                  <p className="text-red-700 text-sm flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    {calculation.error}
+                  </p>
                 )}
               </div>
             )}
 
             {/* Alternate Faculty */}
             <div className="space-y-2">
-              <Label htmlFor="alternateFaculty">Alternate Faculty Name *</Label>
+              <Label htmlFor="alternateFaculty" className="text-sm font-medium">
+                Alternate Faculty Name *
+                <span className="text-xs text-muted-foreground ml-2 font-normal">
+                  (Who will cover your duties during vacation?)
+                </span>
+              </Label>
               <Input
                 id="alternateFaculty"
                 placeholder="Name of the faculty member covering your duties during vacation"
                 value={formData.alternateFacultyName}
                 onChange={(e) => setFormData({ ...formData, alternateFacultyName: e.target.value })}
                 required
+                className={cn(
+                  formData.alternateFacultyName.trim() && formData.alternateFacultyName.trim().length < 3 && "border-red-300 focus:border-red-500"
+                )}
               />
+              {formData.alternateFacultyName.trim() && formData.alternateFacultyName.trim().length < 3 && (
+                <p className="text-xs text-red-500">Name must be at least 3 characters</p>
+              )}
             </div>
 
             {/* Reason */}
             <div className="space-y-2">
-              <Label htmlFor="reason">Additional Comments (Optional)</Label>
+              <Label htmlFor="reason" className="text-sm font-medium">Additional Comments <span className="text-muted-foreground font-normal">(Optional)</span></Label>
               <Textarea
                 id="reason"
                 placeholder="Any additional information about your vacation request"
                 value={formData.reason}
                 onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                 rows={3}
+                className="resize-none"
               />
             </div>
 
             {/* Submit Button */}
-            <div className="flex gap-4 pt-4">
+            <div className="flex gap-4 pt-2">
               <Button
                 variant="outline"
                 onClick={() => {
@@ -524,73 +641,113 @@ export default function VacationPage() {
                     reason: "",
                   });
                 }}
+                className="flex-1"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmit}
                 disabled={submitting || !calculation?.isValid}
-                className="flex-1"
+                className="flex-[2] gap-2"
               >
-                {submitting ? "Submitting..." : "Submit Vacation Request"}
+                {submitting ? (
+                  <>
+                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    Submit Vacation Request
+                    <CalendarDays className="h-4 w-4" />
+                  </>
+                )}
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </EnhancedCard>
       )}
 
+      {/* No Active Vacations */}
       {vacations.length === 0 && (
-        <Card className="mb-8">
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <CalendarIcon className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-            <p>No active vacation periods available</p>
-            <p className="text-sm mt-1">Please check back during vacation season</p>
-          </CardContent>
-        </Card>
+        <EnhancedCard 
+          variant="elevated"
+          padding="lg"
+          className="text-center"
+        >
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="p-4 rounded-full bg-gray-100">
+              <CalendarDays className="h-12 w-12 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900">No Active Vacation Periods</h3>
+            <p className="text-sm text-muted-foreground">Please check back during vacation season</p>
+          </div>
+        </EnhancedCard>
       )}
 
       {/* Vacation History */}
       {history.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Vacation History</CardTitle>
-            <CardDescription>Your past and current vacation requests</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="border rounded-lg overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left p-3">Period</th>
-                    <th className="text-left p-3">Type</th>
-                    <th className="text-left p-3">Total Days</th>
-                    <th className="text-left p-3">Paid/Unpaid</th>
-                    <th className="text-left p-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((request) => (
-                    <tr key={request.id} className="border-t">
-                      <td className="p-3">
-                        {new Date(request.startDate).toLocaleDateString()} -{" "}
-                        {new Date(request.endDate).toLocaleDateString()}
-                      </td>
-                      <td className="p-3">{request.vacationType || "Vacation"}</td>
-                      <td className="p-3 font-medium">{request.totalDays} days</td>
-                      <td className="p-3">
-                        <span className="text-green-600">{request.paidDays} paid</span>
-                        {request.unpaidDays > 0 && (
-                          <span className="text-amber-600 ml-2">{request.unpaidDays} unpaid</span>
-                        )}
-                      </td>
-                      <td className="p-3">{getStatusBadge(request.status)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <EnhancedCard 
+          variant="elevated"
+          className="mt-8"
+          header={
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Vacation History</h3>
+                <p className="text-sm text-muted-foreground">Your past and current vacation requests</p>
+              </div>
+              <div className="ml-auto flex gap-3 text-sm">
+                <span className="text-muted-foreground">Total: <strong className="text-gray-900">{totalHistoryDays} days</strong></span>
+                <span className="text-green-600">Paid: <strong>{totalPaidDays} days</strong></span>
+                {totalUnpaidDays > 0 && (
+                  <span className="text-amber-600">Unpaid: <strong>{totalUnpaidDays} days</strong></span>
+                )}
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          }
+        >
+          <div className="border rounded-lg overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Period</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Type</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Total Days</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Paid/Unpaid</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((request) => (
+                  <tr key={request.id} className="border-t hover:bg-gray-50 transition-colors">
+                    <td className="p-3">
+                      {new Date(request.startDate).toLocaleDateString()} — {new Date(request.endDate).toLocaleDateString()}
+                    </td>
+                    <td className="p-3">
+                      <span className={cn(
+                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
+                        request.vacationType === "Summer Vacation" ? "bg-yellow-100 text-yellow-800" : "bg-blue-100 text-blue-800"
+                      )}>
+                        {request.vacationType === "Summer Vacation" ? <Sun className="h-3 w-3" /> : <Snowflake className="h-3 w-3" />}
+                        {request.vacationType || "Vacation"}
+                      </span>
+                    </td>
+                    <td className="p-3 font-medium">{request.totalDays} days</td>
+                    <td className="p-3">
+                      <span className="text-green-600">{request.paidDays} paid</span>
+                      {request.unpaidDays > 0 && (
+                        <span className="text-amber-600 ml-2">{request.unpaidDays} unpaid</span>
+                      )}
+                    </td>
+                    <td className="p-3">{getStatusBadge(request.status)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </EnhancedCard>
       )}
     </div>
   );

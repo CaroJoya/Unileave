@@ -1,11 +1,11 @@
-// app/status/page.tsx - COMPLETE FIXED FILE WITH OD SUPPORT
+// app/status/page.tsx - COMPLETE ENHANCED VERSION
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+//import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -15,10 +15,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Edit, XCircle, ChevronDown, ChevronUp, FileText, AlertCircle, History, CheckCircle, Clock, Ban, RefreshCw, Briefcase } from "lucide-react";
+import { CalendarIcon, Edit, XCircle, ChevronDown, ChevronUp, FileText, AlertCircle, History, CheckCircle, Clock, Ban, RefreshCw, Briefcase, Filter, LayoutGrid } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { EnhancedCard } from "@/components/ui/enhanced-card";
+//import { SectionHeader } from "@/components/ui/section-header";
+import { StatCard } from "@/components/ui/stat-card";
 
 interface LeaveRequest {
   id: string;
@@ -519,373 +522,452 @@ export default function StatusPage() {
   }
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Leave Status</h1>
-        <p className="text-muted-foreground mt-2">
-          Track and manage your leave requests
-        </p>
+    <div className="container mx-auto py-8 px-4 max-w-6xl">
+      {/* Page Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+            <LayoutGrid className="h-8 w-8 text-primary" />
+            Leave Status
+          </h1>
+          <p className="text-muted-foreground mt-1.5 text-base">
+            Track and manage your leave requests
+          </p>
+        </div>
+        <Button 
+          onClick={() => router.push("/request-leave")}
+          className="gap-2"
+        >
+          <FileText className="h-4 w-4" />
+          New Request
+        </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-5 mb-6">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Pending</p>
-            <p className="text-2xl font-bold text-yellow-600">{counts.pending}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Approved</p>
-            <p className="text-2xl font-bold text-green-600">{counts.approved}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Rejected</p>
-            <p className="text-2xl font-bold text-red-600">{counts.rejected}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Needs Revision</p>
-            <p className="text-2xl font-bold text-purple-600">{counts.revision}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Cancelled</p>
-            <p className="text-2xl font-bold text-gray-600">{counts.cancelled}</p>
-          </CardContent>
-        </Card>
+      {/* Stats Cards - Enhanced */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 mb-6">
+        <StatCard
+          label="Pending"
+          value={counts.pending}
+          icon={<Clock className="h-5 w-5" />}
+          color="amber"
+        />
+        <StatCard
+          label="Approved"
+          value={counts.approved}
+          icon={<CheckCircle className="h-5 w-5" />}
+          color="green"
+        />
+        <StatCard
+          label="Rejected"
+          value={counts.rejected}
+          icon={<Ban className="h-5 w-5" />}
+          color="red"
+        />
+        <StatCard
+          label="Needs Revision"
+          value={counts.revision}
+          icon={<AlertCircle className="h-5 w-5" />}
+          color="purple"
+        />
+        <StatCard
+          label="Cancelled"
+          value={counts.cancelled}
+          icon={<XCircle className="h-5 w-5" />}
+          color="primary"
+        />
       </div>
 
-      {/* Filters */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div>
-              <Label>Leave Type</Label>
-              <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {Object.entries(LEAVE_TYPE_LABELS).map(([code, name]) => (
-                    <SelectItem key={code} value={code}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      {/* Filters - Enhanced */}
+      <EnhancedCard 
+        variant="elevated" 
+        padding="default"
+        className="mb-6"
+        header={
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <Filter className="h-5 w-5" />
             </div>
-            
             <div>
-              <Label>Date Range (Start)</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !dateRange.from && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateRange.from ? format(dateRange.from, "PPP") : "Pick start date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={dateRange.from}
-                    onSelect={(date) => setDateRange({ ...dateRange, from: date })}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            <div>
-              <Label>Date Range (End)</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !dateRange.to && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateRange.to ? format(dateRange.to, "PPP") : "Pick end date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={dateRange.to}
-                    onSelect={(date) => setDateRange({ ...dateRange, to: date })}
-                  />
-                </PopoverContent>
-              </Popover>
+              <h3 className="font-semibold text-gray-900">Filter Requests</h3>
+              <p className="text-sm text-muted-foreground">Narrow down your leave requests</p>
             </div>
           </div>
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-3">
+          <div>
+            <Label className="text-sm font-medium">Leave Type</Label>
+            <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {Object.entries(LEAVE_TYPE_LABELS).map(([code, name]) => (
+                  <SelectItem key={code} value={code}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           
-          {(leaveTypeFilter !== "all" || dateRange.from || dateRange.to) && (
-            <div className="mt-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setLeaveTypeFilter("all");
-                  setDateRange({ from: undefined, to: undefined });
-                }}
-              >
-                Clear filters
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <div>
+            <Label className="text-sm font-medium">Date Range (Start)</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal mt-1",
+                    !dateRange.from && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateRange.from ? format(dateRange.from, "PPP") : "Pick start date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={dateRange.from}
+                  onSelect={(date) => setDateRange({ ...dateRange, from: date })}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+          
+          <div>
+            <Label className="text-sm font-medium">Date Range (End)</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal mt-1",
+                    !dateRange.to && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateRange.to ? format(dateRange.to, "PPP") : "Pick end date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={dateRange.to}
+                  onSelect={(date) => setDateRange({ ...dateRange, to: date })}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+        
+        {(leaveTypeFilter !== "all" || dateRange.from || dateRange.to) && (
+          <div className="mt-4 flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setLeaveTypeFilter("all");
+                setDateRange({ from: undefined, to: undefined });
+              }}
+              className="text-muted-foreground hover:text-primary transition-colors"
+            >
+              Clear filters
+            </Button>
+          </div>
+        )}
+      </EnhancedCard>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="flex flex-wrap">
-          <TabsTrigger value="all">All ({requests.length})</TabsTrigger>
-          <TabsTrigger value="pending">Pending ({counts.pending})</TabsTrigger>
-          <TabsTrigger value="approved">Approved ({counts.approved})</TabsTrigger>
-          <TabsTrigger value="rejected">Rejected ({counts.rejected})</TabsTrigger>
-          <TabsTrigger value="revision">Needs Revision ({counts.revision})</TabsTrigger>
-          <TabsTrigger value="cancelled">Cancelled ({counts.cancelled})</TabsTrigger>
+        <TabsList className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg">
+          <TabsTrigger 
+            value="all" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+          >
+            All ({requests.length})
+          </TabsTrigger>
+          <TabsTrigger 
+            value="pending" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+          >
+            Pending ({counts.pending})
+          </TabsTrigger>
+          <TabsTrigger 
+            value="approved" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+          >
+            Approved ({counts.approved})
+          </TabsTrigger>
+          <TabsTrigger 
+            value="rejected" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+          >
+            Rejected ({counts.rejected})
+          </TabsTrigger>
+          <TabsTrigger 
+            value="revision" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Revision ({counts.revision})
+          </TabsTrigger>
+          <TabsTrigger 
+            value="cancelled" 
+            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+          >
+            Cancelled ({counts.cancelled})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab}>
           {filteredRequests.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <div className="flex flex-col items-center gap-2">
-                  <FileText className="h-12 w-12 text-muted-foreground" />
-                  <p className="text-lg font-medium">No leave requests found</p>
-                  <p className="text-sm">Try adjusting your filters or submit a new request</p>
-                  <Button className="mt-4" onClick={() => router.push("/request-leave")}>
-                    Request Leave
-                  </Button>
+            <EnhancedCard 
+              variant="elevated"
+              padding="lg"
+              className="text-center"
+            >
+              <div className="flex flex-col items-center gap-3 py-8">
+                <div className="p-4 rounded-full bg-gray-100">
+                  <FileText className="h-12 w-12 text-gray-400" />
                 </div>
-              </CardContent>
-            </Card>
+                <h3 className="text-lg font-medium text-gray-900">No leave requests found</h3>
+                <p className="text-sm text-muted-foreground">Try adjusting your filters or submit a new request</p>
+                <Button className="mt-2 gap-2" onClick={() => router.push("/request-leave")}>
+                  <FileText className="h-4 w-4" />
+                  Request Leave
+                </Button>
+              </div>
+            </EnhancedCard>
           ) : (
             <div className="space-y-4">
               {filteredRequests.map((request) => {
                 const isOD = request.leaveType === "OD";
                 return (
-                  <Card key={request.id} className="overflow-hidden">
-                    <CardContent className="p-6">
-                      <div className="flex flex-wrap justify-between items-start gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <h3 className="font-semibold text-lg">
-                              {isOD ? "On Duty (OD)" : (LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType)}
-                            </h3>
-                            {getStatusBadge(request.status, request.revisionCount)}
-                            {request.isHalfDay && (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                                Half Day ({request.halfDaySession})
-                              </Badge>
-                            )}
-                            {isOD && (
-                              <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
-                                No Balance Deduction
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
-                          </p>
-                          <p className="text-sm mt-1">
-                            Total: <span className="font-medium">{request.totalDays}</span> day{request.totalDays !== 1 ? "s" : ""}
-                            {isOD && <span className="text-blue-600 ml-2">(No balance deducted)</span>}
-                          </p>
-                          <p className="text-sm mt-2">
-                            Alternate Faculty: <span className="font-medium">{request.alternateFacultyName}</span>
-                          </p>
-                          
-                          {/* OD Details */}
-                          {isOD && request.odDetails && (
-                            <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                              <h4 className="font-medium text-blue-800 flex items-center gap-2 mb-2">
-                                <Briefcase className="h-4 w-4" />
-                                On Duty Details
-                              </h4>
-                              <div className="grid grid-cols-2 gap-2 text-sm">
-                                <div>
-                                  <span className="text-muted-foreground">Event:</span>
-                                  <p className="font-medium">{request.odDetails.eventName}</p>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">Organization:</span>
-                                  <p className="font-medium">{request.odDetails.organization}</p>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">Location:</span>
-                                  <p className="font-medium">{request.odDetails.location}</p>
-                                </div>
-                                <div className="col-span-2">
-                                  <span className="text-muted-foreground">Purpose:</span>
-                                  <p className="font-medium">{request.odDetails.purpose}</p>
-                                </div>
-                              </div>
-                              <div className="mt-2 text-xs text-blue-600">
-                                ℹ️ On Duty leave does not deduct from balance
-                              </div>
-                            </div>
+                  <EnhancedCard 
+                    key={request.id}
+                    variant="elevated"
+                    accentColor={
+                      request.status === "Approved" ? "green" :
+                      request.status === "Pending_Revision" ? "purple" :
+                      request.status.includes("Pending") ? "amber" :
+                      request.status.includes("Rejected") ? "red" :
+                      "none"
+                    }
+                    className="hover:shadow-lg transition-all duration-300"
+                  >
+                    {/* Card Header */}
+                    <div className="flex flex-wrap justify-between items-start gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <h3 className="font-semibold text-lg text-gray-900">
+                            {isOD ? "On Duty (OD)" : (LEAVE_TYPE_LABELS[request.leaveType] || request.leaveType)}
+                          </h3>
+                          {getStatusBadge(request.status, request.revisionCount)}
+                          {request.isHalfDay && (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              Half Day ({request.halfDaySession})
+                            </Badge>
                           )}
-
-                          {request.status === "Pending_Revision" && request.revisionHistory && request.revisionHistory.length > 0 && (
-                            <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                              <p className="text-sm text-purple-800 font-medium flex items-center gap-2">
-                                <AlertCircle className="h-4 w-4" />
-                                Latest Remarks:
-                              </p>
-                              <p className="text-sm text-purple-700 mt-1">
-                                {request.revisionHistory[request.revisionHistory.length - 1].remarkText}
-                              </p>
-                              <p className="text-xs text-purple-500 mt-1">
-                                From: {request.revisionHistory[request.revisionHistory.length - 1].remarkSentByName}
-                              </p>
-                            </div>
+                          {isOD && (
+                            <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                              No Balance Deduction
+                            </Badge>
                           )}
                         </div>
                         
-                        <div className="flex flex-wrap gap-2">
-                          {isEditable(request.status) && (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => openEditDialog(request)}
-                            >
-                              <Edit className="h-4 w-4 mr-1" />
-                              {request.status === "Pending_Revision" ? "Edit & Resubmit" : "Edit"}
-                            </Button>
-                          )}
-                          {isCancellable(request.status) && (
-                            <Button 
-                              size="sm" 
-                              variant="destructive"
-                              onClick={() => {
-                                setCancellingRequest(request);
-                                setCancelDialogOpen(true);
-                              }}
-                            >
-                              <XCircle className="h-4 w-4 mr-1" />
-                              Cancel
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setExpandedRequest(expandedRequest === request.id ? null : request.id)}
-                          >
-                            {expandedRequest === request.id ? (
-                              <ChevronUp className="h-4 w-4" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4" />
-                            )}
-                            Details
-                          </Button>
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                          <span className="text-muted-foreground">
+                            📅 {new Date(request.startDate).toLocaleDateString()} → {new Date(request.endDate).toLocaleDateString()}
+                          </span>
+                          <span className="text-gray-700">
+                            Total: <span className="font-semibold">{request.totalDays}</span> day{request.totalDays !== 1 ? "s" : ""}
+                            {isOD && <span className="text-blue-600 ml-2">(No balance deducted)</span>}
+                          </span>
+                          <span className="text-muted-foreground">
+                            👤 {request.alternateFacultyName}
+                          </span>
                         </div>
-                      </div>
-
-                      {/* Expanded Details */}
-                      {expandedRequest === request.id && (
-                        <div className="mt-6 pt-4 border-t space-y-6">
-                          {/* Reason */}
-                          {request.reason && (
-                            <div>
-                              <h4 className="font-medium flex items-center gap-2 mb-2">
-                                <FileText className="h-4 w-4" />
-                                Reason
-                              </h4>
-                              <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-                                {request.reason}
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Approval Timeline */}
-                          {request.approvalLogs && request.approvalLogs.length > 0 && (
-                            <div>
-                              <h4 className="font-medium flex items-center gap-2 mb-3">
-                                <History className="h-4 w-4" />
-                                Approval Timeline
-                              </h4>
-                              <div className="space-y-3">
-                                {request.approvalLogs.map((log) => (
-                                  <div key={log.id} className="flex items-start gap-3 text-sm">
-                                    <div className="w-28 flex-shrink-0 text-muted-foreground">
-                                      {new Date(log.actionAt).toLocaleDateString()}
-                                    </div>
-                                    <div className="flex-1">
-                                      <span className="font-medium">{log.actionByName}</span>
-                                      <span className="text-muted-foreground"> ({log.actionRole}) </span>
-                                      <span>{getActionLabel(log.action)}</span>
-                                      {log.remark && (
-                                        <p className="text-muted-foreground mt-1 text-xs bg-gray-50 p-2 rounded">
-                                          &quot;{log.remark}&quot;
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
+                        
+                        {/* OD Details */}
+                        {isOD && request.odDetails && (
+                          <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                            <h4 className="font-medium text-blue-800 flex items-center gap-2 mb-2">
+                              <Briefcase className="h-4 w-4" />
+                              On Duty Details
+                            </h4>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">Event:</span>
+                                <p className="font-medium">{request.odDetails.eventName}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Organization:</span>
+                                <p className="font-medium">{request.odDetails.organization}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Location:</span>
+                                <p className="font-medium">{request.odDetails.location}</p>
+                              </div>
+                              <div className="col-span-2">
+                                <span className="text-muted-foreground">Purpose:</span>
+                                <p className="font-medium">{request.odDetails.purpose}</p>
                               </div>
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {/* Revision History */}
-                          {request.revisionHistory && request.revisionHistory.length > 0 && (
-                            <div>
-                              <h4 className="font-medium flex items-center gap-2 mb-3">
-                                <AlertCircle className="h-4 w-4" />
-                                Revision History
-                              </h4>
-                              <div className="space-y-3">
-                                {request.revisionHistory.map((rev) => (
-                                  <div key={rev.id} className="bg-amber-50 p-3 rounded-lg">
-                                    <p className="text-sm font-medium">Revision #{rev.cycleNumber}</p>
-                                    <p className="text-sm text-amber-800 mt-1">
-                                      <strong>Remarks:</strong> {rev.remarkText}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      Sent by: {rev.remarkSentByName}
-                                    </p>
-                                    {rev.resubmittedAt && (
-                                      <p className="text-xs text-green-600 mt-1">
-                                        Resubmitted on: {new Date(rev.resubmittedAt).toLocaleDateString()}
+                        {/* Revision Remarks */}
+                        {request.status === "Pending_Revision" && request.revisionHistory && request.revisionHistory.length > 0 && (
+                          <div className="mt-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
+                            <p className="text-sm text-purple-800 font-medium flex items-center gap-2">
+                              <AlertCircle className="h-4 w-4" />
+                              Latest Remarks:
+                            </p>
+                            <p className="text-sm text-purple-700 mt-1">
+                              {request.revisionHistory[request.revisionHistory.length - 1].remarkText}
+                            </p>
+                            <p className="text-xs text-purple-500 mt-1">
+                              From: {request.revisionHistory[request.revisionHistory.length - 1].remarkSentByName}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Action Buttons */}
+                      <div className="flex flex-wrap gap-2 flex-shrink-0">
+                        {isEditable(request.status) && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => openEditDialog(request)}
+                            className="gap-1 hover:bg-primary/5 transition-colors"
+                          >
+                            <Edit className="h-4 w-4" />
+                            {request.status === "Pending_Revision" ? "Edit & Resubmit" : "Edit"}
+                          </Button>
+                        )}
+                        {isCancellable(request.status) && (
+                          <Button 
+                            size="sm" 
+                            variant="destructive"
+                            onClick={() => {
+                              setCancellingRequest(request);
+                              setCancelDialogOpen(true);
+                            }}
+                            className="gap-1"
+                          >
+                            <XCircle className="h-4 w-4" />
+                            Cancel
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setExpandedRequest(expandedRequest === request.id ? null : request.id)}
+                          className="gap-1"
+                        >
+                          {expandedRequest === request.id ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                          Details
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Expanded Details */}
+                    {expandedRequest === request.id && (
+                      <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
+                        {/* Reason */}
+                        {request.reason && (
+                          <div>
+                            <h4 className="font-medium flex items-center gap-2 mb-2 text-gray-700">
+                              <FileText className="h-4 w-4" />
+                              Reason
+                            </h4>
+                            <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
+                              {request.reason}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Approval Timeline */}
+                        {request.approvalLogs && request.approvalLogs.length > 0 && (
+                          <div>
+                            <h4 className="font-medium flex items-center gap-2 mb-3 text-gray-700">
+                              <History className="h-4 w-4" />
+                              Approval Timeline
+                            </h4>
+                            <div className="space-y-2">
+                              {request.approvalLogs.map((log) => (
+                                <div key={log.id} className="flex items-start gap-3 text-sm p-3 bg-gray-50 rounded-lg">
+                                  <div className="w-24 flex-shrink-0 text-muted-foreground">
+                                    {new Date(log.actionAt).toLocaleDateString()}
+                                  </div>
+                                  <div className="flex-1">
+                                    <span className="font-medium">{log.actionByName}</span>
+                                    <span className="text-muted-foreground"> ({log.actionRole}) </span>
+                                    <span>{getActionLabel(log.action)}</span>
+                                    {log.remark && (
+                                      <p className="text-sm text-purple-700 mt-1">
+                                          {request.revisionHistory?.[request.revisionHistory.length - 1].remarkText}
                                       </p>
                                     )}
                                   </div>
-                                ))}
-                              </div>
+                                </div>
+                              ))}
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {/* Attachment */}
-                          {request.attachmentUrl && (
-                            <div>
-                              <h4 className="font-medium mb-2">Attachment</h4>
-                              <a
-                                href={request.attachmentUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline text-sm"
-                              >
-                                View Attachment
-                              </a>
+                        {/* Revision History */}
+                        {request.revisionHistory && request.revisionHistory.length > 0 && (
+                          <div>
+                            <h4 className="font-medium flex items-center gap-2 mb-3 text-gray-700">
+                              <AlertCircle className="h-4 w-4" />
+                              Revision History
+                            </h4>
+                            <div className="space-y-2">
+                              {request.revisionHistory.map((rev) => (
+                                <div key={rev.id} className="bg-amber-50 p-3 rounded-lg border border-amber-200">
+                                  <p className="text-sm font-medium text-amber-800">Revision #{rev.cycleNumber}</p>
+                                  <p className="text-sm text-amber-700 mt-1">
+                                    <strong>Remarks:</strong> {rev.remarkText}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Sent by: {rev.remarkSentByName}
+                                  </p>
+                                  {rev.resubmittedAt && (
+                                    <p className="text-xs text-green-600 mt-1">
+                                      Resubmitted on: {new Date(rev.resubmittedAt).toLocaleDateString()}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                          </div>
+                        )}
+
+                        {/* Attachment */}
+                        {request.attachmentUrl && (
+                          <div>
+                            <h4 className="font-medium mb-2 text-gray-700">Attachment</h4>
+                            <a
+                              href={request.attachmentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline text-sm inline-flex items-center gap-1"
+                            >
+                              <FileText className="h-4 w-4" />
+                              View Attachment
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </EnhancedCard>
                 );
               })}
             </div>

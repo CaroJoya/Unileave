@@ -1,4 +1,4 @@
-// app/comp-off/page.tsx - COMPLETE FIXED VERSION (Badge errors fixed)
+// app/comp-off/page.tsx - COMPLETE ENHANCED VERSION
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -7,15 +7,19 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+//import { Card, CardContent } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CalendarIcon, Award, AlertTriangle, CheckCircle, XCircle, Clock } from "lucide-react";
+import { CalendarIcon, Award, AlertTriangle, CheckCircle, XCircle, Clock, TrendingUp, CalendarDays, Info, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { EnhancedCard } from "@/components/ui/enhanced-card";
+import { SectionHeader } from "@/components/ui/section-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { SectionDivider } from "@/components/ui/section-divider";
 
 interface CompOffCredit {
   id: string;
@@ -184,7 +188,7 @@ export default function CompOffPage() {
     }
   };
 
-  // ✅ Get status badge - FIXED: No 'warning' variant
+  // Get status badge
   const getStatusBadge = (credit: CompOffCredit) => {
     const isExpired = new Date(credit.expiryDate) < new Date();
     const availableDays = getAvailableDays(credit);
@@ -201,7 +205,6 @@ export default function CompOffPage() {
         }
         const daysUntilExpiry = getDaysUntilExpiry(credit.expiryDate);
         if (daysUntilExpiry <= 30 && daysUntilExpiry > 0) {
-          // ✅ FIXED: Use 'secondary' with custom className instead of 'warning'
           return <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200">Expiring Soon</Badge>;
         }
         return <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-200 border-green-200">Active</Badge>;
@@ -210,10 +213,8 @@ export default function CompOffPage() {
       case "expired":
         return <Badge variant="destructive">Expired</Badge>;
       case "pending_approval":
-        // ✅ FIXED: Use 'secondary' with custom className instead of 'warning'
         return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200 border-yellow-200">Pending Approval</Badge>;
       case "pending_usage":
-        // ✅ FIXED: Use 'secondary' with custom className instead of 'warning'
         return <Badge variant="secondary" className="bg-blue-100 text-blue-800 hover:bg-blue-200 border-blue-200">Pending Usage</Badge>;
       case "rejected":
         return <Badge variant="destructive">Rejected</Badge>;
@@ -236,6 +237,10 @@ export default function CompOffPage() {
     return c.status === "active" && daysUntilExpiry <= 30 && daysUntilExpiry > 0 && getAvailableDays(c) > 0;
   });
 
+  const totalUsedDays = credits.reduce((sum, c) => sum + c.usedDays, 0);
+  const totalCreditedDays = credits.reduce((sum, c) => sum + c.creditedDays, 0);
+  const utilization = totalCreditedDays > 0 ? (totalUsedDays / totalCreditedDays) * 100 : 0;
+
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -250,57 +255,138 @@ export default function CompOffPage() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Compensatory Off</h1>
-        <p className="text-muted-foreground mt-2">
-          Track and apply for compensatory leave earned from overwork
-        </p>
+      {/* Page Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+            <Award className="h-8 w-8 text-primary" />
+            Compensatory Off
+          </h1>
+          <p className="text-muted-foreground mt-1.5 text-base">
+            Track and apply for compensatory leave earned from overwork
+          </p>
+        </div>
+        <Button 
+          variant="outline" 
+          onClick={() => router.push("/overwork")}
+          className="gap-2"
+        >
+          <Clock className="h-4 w-4" />
+          Track Overwork
+        </Button>
       </div>
 
-      {/* Summary Card */}
-      <Card className="mb-8 bg-gradient-to-r from-teal-50 to-emerald-50">
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Total Available Comp-Off Days</p>
-              <p className="text-3xl font-bold text-teal-600">{totalAvailableDays.toFixed(1)} days</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Active Credits</p>
-              <p className="text-2xl font-semibold">{activeCredits.length}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Used Credits</p>
-              <p className="text-2xl font-semibold">
-                {credits.filter((c) => c.status === "fully_used").length}
-              </p>
-            </div>
-            {expiringCredits.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
-                <p className="text-sm text-amber-800 flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4" />
-                  {expiringCredits.length} credit(s) expiring in 30 days
+      {/* Summary Stats */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <StatCard
+          label="Total Available"
+          value={`${totalAvailableDays.toFixed(1)} days`}
+          icon={<Award className="h-5 w-5" />}
+          color="teal"
+        />
+        <StatCard
+          label="Active Credits"
+          value={activeCredits.length}
+          icon={<CheckCircle className="h-5 w-5" />}
+          color="green"
+        />
+        <StatCard
+          label="Used Credits"
+          value={credits.filter((c) => c.status === "fully_used").length}
+          icon={<TrendingUp className="h-5 w-5" />}
+          color="primary"
+          trend={{
+            value: Math.round(utilization),
+            label: "utilization",
+            direction: utilization > 80 ? "neutral" : "up"
+          }}
+        />
+        <StatCard
+          label="Expiring Soon"
+          value={expiringCredits.length}
+          icon={<AlertTriangle className="h-5 w-5" />}
+          color="amber"
+          trend={{
+            value: expiringCredits.length,
+            label: "need attention",
+            direction: expiringCredits.length > 0 ? "down" : "neutral"
+          }}
+        />
+      </div>
+
+      {/* Expiring Credits Alert */}
+      {expiringCredits.length > 0 && (
+        <EnhancedCard 
+          variant="elevated" 
+          accentColor="amber"
+          className="mb-6 border-amber-200/50"
+          header={
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-700">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-amber-800">⚠️ Credits Expiring Soon</h4>
+                <p className="text-sm text-amber-600">
+                  You have {expiringCredits.length} credit(s) expiring within 30 days
                 </p>
               </div>
-            )}
+            </div>
+          }
+        >
+          <div className="flex flex-wrap gap-3">
+            {expiringCredits.map((credit) => (
+              <div key={credit.id} className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 flex items-center gap-3">
+                <span className="text-sm font-medium text-amber-800">
+                  {getAvailableDays(credit)} days
+                </span>
+                <span className="text-xs text-amber-600">
+                  Expires: {new Date(credit.expiryDate).toLocaleDateString()}
+                </span>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                  onClick={() => openApplyDialog(credit)}
+                >
+                  Apply Now
+                </Button>
+              </div>
+            ))}
           </div>
-        </CardContent>
-      </Card>
+        </EnhancedCard>
+      )}
 
       {/* Credits List */}
-      <h2 className="text-xl font-semibold mb-4">Your Comp-Off Credits</h2>
+      <SectionHeader
+        title="Your Comp-Off Credits"
+        subtitle={`${credits.length} credit${credits.length !== 1 ? "s" : ""} available`}
+        icon={<Award className="h-5 w-5" />}
+        className="mb-4"
+      />
 
       {credits.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Award className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-            <p>No comp-off credits available</p>
-            <p className="text-sm mt-1">Credits are earned from approved overwork hours</p>
-            <Button className="mt-4" variant="outline" onClick={() => router.push("/overwork")}>
+        <EnhancedCard 
+          variant="elevated"
+          padding="lg"
+          className="text-center"
+        >
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="p-4 rounded-full bg-gray-100">
+              <Award className="h-12 w-12 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900">No comp-off credits available</h3>
+            <p className="text-sm text-muted-foreground">Credits are earned from approved overwork hours</p>
+            <Button 
+              className="mt-2 gap-2" 
+              variant="outline" 
+              onClick={() => router.push("/overwork")}
+            >
+              <Clock className="h-4 w-4" />
               Track Overwork
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </EnhancedCard>
       ) : (
         <div className="space-y-4">
           {credits.map((credit) => {
@@ -312,116 +398,189 @@ export default function CompOffPage() {
             const isPending = credit.status === "pending_approval" || credit.status === "pending_usage";
 
             return (
-              <Card key={credit.id} className={cn(
-                isExpired && "opacity-60",
-                isExpiringSoon && "border-amber-300 bg-amber-50/30"
-              )}>
-                <CardContent className="p-6">
-                  <div className="flex flex-wrap justify-between items-start gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <Award
-                          className={cn(
-                            "h-5 w-5",
-                            credit.status === "active" && !isExpired ? "text-teal-600" : "text-gray-400"
-                          )}
-                        />
-                        <h3 className="font-semibold">
-                          {credit.creditedDays} Day{credit.creditedDays !== 1 ? "s" : ""} Credit
-                        </h3>
-                        {getStatusBadge(credit)}
-                      </div>
-
-                      <p className="text-sm text-muted-foreground mb-2">
-                        <strong>Reason:</strong> {credit.reason}
-                      </p>
-
-                      <div className="flex flex-wrap gap-4 text-sm">
-                        <span className="text-muted-foreground">
-                          Earned: {new Date(credit.earnedDate).toLocaleDateString()}
-                        </span>
-                        <span className={cn(
-                          "text-muted-foreground",
-                          isExpired && "text-red-600"
-                        )}>
-                          Expires: {new Date(credit.expiryDate).toLocaleDateString()}
-                        </span>
-                        {credit.hoursWorked && (
-                          <span className="text-muted-foreground">
-                            Hours Worked: {credit.hoursWorked}
-                          </span>
+              <EnhancedCard 
+                key={credit.id}
+                variant="elevated"
+                accentColor={
+                  isExpired ? "red" :
+                  isExpiringSoon ? "amber" :
+                  credit.status === "active" ? "teal" :
+                  credit.status === "fully_used" ? "none" :
+                  isPending ? "blue" :
+                  "none"
+                }
+                className={cn(
+                  "transition-all duration-300",
+                  isExpired && "opacity-60",
+                  isExpiringSoon && "border-amber-300 bg-amber-50/30",
+                  credit.status === "active" && !isExpired && "hover:shadow-lg"
+                )}
+              >
+                <div className="flex flex-wrap justify-between items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <Award
+                        className={cn(
+                          "h-5 w-5",
+                          credit.status === "active" && !isExpired ? "text-teal-600" : "text-gray-400"
                         )}
-                      </div>
-
-                      {isExpiringSoon && !isExpired && (
-                        <div className="mt-2 flex items-center gap-1 text-amber-600 text-sm">
-                          <AlertTriangle className="h-4 w-4" />
-                          <span>Expires in {daysUntilExpiry} days</span>
-                        </div>
-                      )}
-
-                      {isPending && (
-                        <div className="mt-2 flex items-center gap-1 text-blue-600 text-sm">
-                          <Clock className="h-4 w-4" />
-                          <span>Awaiting approval</span>
-                        </div>
-                      )}
-
-                      <div className="mt-3">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-muted-foreground">Usage:</span>
-                          <div className="flex-1 max-w-xs bg-gray-200 rounded-full h-2">
-                            <div
-                              className={cn(
-                                "h-2 rounded-full transition-all",
-                                progress > 80 ? "bg-red-500" : "bg-teal-500"
-                              )}
-                              style={{ width: `${Math.min(progress, 100)}%` }}
-                            />
-                          </div>
-                          <span className="font-medium">
-                            {credit.usedDays} / {credit.creditedDays} days
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            ({availableDays.toFixed(1)} remaining)
-                          </span>
-                        </div>
-                      </div>
+                      />
+                      <h3 className="font-semibold text-gray-900">
+                        {credit.creditedDays} Day{credit.creditedDays !== 1 ? "s" : ""} Credit
+                      </h3>
+                      {getStatusBadge(credit)}
                     </div>
 
-                    {credit.status === "active" && !isExpired && availableDays > 0 && (
-                      <Button 
-                        onClick={() => openApplyDialog(credit)} 
-                        className="bg-teal-600 hover:bg-teal-700 shrink-0"
-                      >
-                        Apply for Leave
-                      </Button>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      <strong>Reason:</strong> {credit.reason}
+                    </p>
+
+                    <div className="flex flex-wrap gap-4 text-sm">
+                      <span className="text-muted-foreground">
+                        📅 Earned: {new Date(credit.earnedDate).toLocaleDateString()}
+                      </span>
+                      <span className={cn(
+                        "text-muted-foreground",
+                        isExpired && "text-red-600",
+                        isExpiringSoon && "text-amber-600 font-medium"
+                      )}>
+                        ⏰ Expires: {new Date(credit.expiryDate).toLocaleDateString()}
+                        {isExpiringSoon && !isExpired && ` (${daysUntilExpiry} days left)`}
+                      </span>
+                      {credit.hoursWorked && (
+                        <span className="text-muted-foreground">
+                          ⏱ Hours Worked: {credit.hoursWorked}
+                        </span>
+                      )}
+                    </div>
+
+                    {isPending && (
+                      <div className="mt-2 flex items-center gap-1 text-blue-600 text-sm bg-blue-50 p-2 rounded-lg">
+                        <Clock className="h-4 w-4" />
+                        <span>Awaiting approval</span>
+                      </div>
                     )}
+
+                    <div className="mt-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">Usage:</span>
+                        <div className="flex-1 max-w-xs bg-gray-200 rounded-full h-2">
+                          <div
+                            className={cn(
+                              "h-2 rounded-full transition-all duration-500",
+                              progress > 80 ? "bg-red-500" : "bg-teal-500"
+                            )}
+                            style={{ width: `${Math.min(progress, 100)}%` }}
+                          />
+                        </div>
+                        <span className="font-medium">
+                          {credit.usedDays} / {credit.creditedDays} days
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          ({availableDays.toFixed(1)} remaining)
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
+
+                  {credit.status === "active" && !isExpired && availableDays > 0 && (
+                    <Button 
+                      onClick={() => openApplyDialog(credit)} 
+                      className="bg-teal-600 hover:bg-teal-700 shrink-0 gap-2"
+                    >
+                      Apply for Leave
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </EnhancedCard>
             );
           })}
         </div>
       )}
 
+      {/* Usage History */}
+      {usageHistory.length > 0 && (
+        <>
+          <SectionDivider label="Usage History" variant="gradient" className="my-8" />
+          
+          <EnhancedCard 
+            variant="elevated"
+            header={
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <CalendarDays className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">Comp Off Usage History</h3>
+                  <p className="text-sm text-muted-foreground">Track when you have used comp-off credits</p>
+                </div>
+              </div>
+            }
+          >
+            <div className="border rounded-lg overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left p-3 font-medium text-muted-foreground">Date Used</th>
+                    <th className="text-left p-3 font-medium text-muted-foreground">Days Used</th>
+                    <th className="text-left p-3 font-medium text-muted-foreground">Reason</th>
+                    <th className="text-left p-3 font-medium text-muted-foreground">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usageHistory.map((usage) => (
+                    <tr key={usage.id} className="border-t hover:bg-gray-50 transition-colors">
+                      <td className="p-3">{new Date(usage.usedAt).toLocaleDateString()}</td>
+                      <td className="p-3 font-medium">{usage.daysUsed} day(s)</td>
+                      <td className="p-3">{usage.reason || "-"}</td>
+                      <td className="p-3">
+                        {usage.status === "approved" ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Approved
+                          </span>
+                        ) : usage.status === "rejected" ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Rejected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            <Clock className="h-3 w-3 mr-1" />
+                            Pending
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </EnhancedCard>
+        </>
+      )}
+
       {/* Apply Dialog */}
       <Dialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Apply Compensatory Off</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Award className="h-5 w-5 text-teal-600" />
+              Apply Compensatory Off
+            </DialogTitle>
             <DialogDescription>
               {selectedCredit && (
                 <>
-                  You have {getAvailableDays(selectedCredit)} day(s) available from this credit.
-                  Credit expires on {new Date(selectedCredit.expiryDate).toLocaleDateString()}.
+                  You have <strong>{getAvailableDays(selectedCredit)}</strong> day(s) available from this credit.
+                  Credit expires on <strong>{new Date(selectedCredit.expiryDate).toLocaleDateString()}</strong>.
                 </>
               )}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Days to Use</Label>
+              <Label className="text-sm font-medium">Days to Use</Label>
               <Input
                 type="number"
                 min={0.5}
@@ -429,6 +588,7 @@ export default function CompOffPage() {
                 step={0.5}
                 value={formData.daysToUse}
                 onChange={(e) => setFormData({ ...formData, daysToUse: parseFloat(e.target.value) || 0 })}
+                className="w-full"
               />
               <p className="text-xs text-muted-foreground">
                 Max: {selectedCredit ? getAvailableDays(selectedCredit) : 0} days
@@ -436,7 +596,7 @@ export default function CompOffPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Start Date *</Label>
+              <Label className="text-sm font-medium">Start Date *</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -464,7 +624,7 @@ export default function CompOffPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>End Date</Label>
+              <Label className="text-sm font-medium">End Date</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -496,24 +656,39 @@ export default function CompOffPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="alternateFaculty">Alternate Faculty Name *</Label>
+              <Label htmlFor="alternateFaculty" className="text-sm font-medium">Alternate Faculty Name *</Label>
               <Input
                 id="alternateFaculty"
                 placeholder="Name of the faculty member covering your duties"
                 value={formData.alternateFacultyName}
                 onChange={(e) => setFormData({ ...formData, alternateFacultyName: e.target.value })}
                 required
+                className={cn(
+                  formData.alternateFacultyName.trim() && formData.alternateFacultyName.trim().length < 3 && "border-red-300 focus:border-red-500"
+                )}
               />
+              {formData.alternateFacultyName.trim() && formData.alternateFacultyName.trim().length < 3 && (
+                <p className="text-xs text-red-500">Name must be at least 3 characters</p>
+              )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="reason">Reason (Optional)</Label>
+              <Label htmlFor="reason" className="text-sm font-medium">Reason <span className="text-muted-foreground font-normal">(Optional)</span></Label>
               <Input
                 id="reason"
                 placeholder="Additional reason for taking comp-off"
                 value={formData.reason}
                 onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
               />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-blue-700">
+                  Your comp-off request will be sent for approval. You will be notified once approved.
+                </p>
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -529,63 +704,23 @@ export default function CompOffPage() {
                 formData.daysToUse <= 0 ||
                 !!(selectedCredit && formData.daysToUse > getAvailableDays(selectedCredit))
               }
-              className="bg-teal-600 hover:bg-teal-700"
+              className="bg-teal-600 hover:bg-teal-700 gap-2"
             >
-              {submitting ? "Submitting..." : "Submit Request"}
+              {submitting ? (
+                <>
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  Submit Request
+                  <ChevronRight className="h-4 w-4" />
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Usage History */}
-      {usageHistory.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Comp Off Usage History</h2>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="border rounded-lg overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="text-left p-3">Date Used</th>
-                      <th className="text-left p-3">Days Used</th>
-                      <th className="text-left p-3">Reason</th>
-                      <th className="text-left p-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usageHistory.map((usage) => (
-                      <tr key={usage.id} className="border-t">
-                        <td className="p-3">{new Date(usage.usedAt).toLocaleDateString()}</td>
-                        <td className="p-3">{usage.daysUsed} day(s)</td>
-                        <td className="p-3">{usage.reason || "-"}</td>
-                        <td className="p-3">
-                          {usage.status === "approved" ? (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Approved
-                            </span>
-                          ) : usage.status === "rejected" ? (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              <XCircle className="h-3 w-3 mr-1" />
-                              Rejected
-                            </span>
-                          ) : (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                              <Clock className="h-3 w-3 mr-1" />
-                              Pending
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,17 +1,15 @@
-// app/overwork/page.tsx
-"use client";
-
 import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Clock, TrendingUp, Award, Info, CheckCircle, XCircle } from "lucide-react";
-
+import { Clock, TrendingUp, Award, Info, CheckCircle, XCircle, CalendarDays, PlusCircle, History } from "lucide-react";
+import { EnhancedCard } from "@/components/ui/enhanced-card";
+import { SectionHeader } from "@/components/ui/section-header";
+import { StatCard } from "@/components/ui/stat-card";
 interface OverworkEntry {
   id: string;
   hours: number;
@@ -158,11 +156,8 @@ export default function OverworkPage() {
       toast.success("Overwork hours submitted successfully");
       setFormData({ workDate: "", hours: "", reason: "" });
       
-      // ✅ SMART REDIRECT: Refresh the page to see updated data
-      // The page already stays on the same page and refreshes data
       await fetchData();
       
-      // Extra toast to confirm refresh
       toast.success("📊 Overwork data updated");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to submit";
@@ -176,27 +171,33 @@ export default function OverworkPage() {
     switch (status) {
       case "approved":
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
             <CheckCircle className="h-3 w-3 mr-1" />
             Approved
           </span>
         );
       case "rejected":
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
             <XCircle className="h-3 w-3 mr-1" />
             Rejected
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
             <Clock className="h-3 w-3 mr-1" />
             Pending
           </span>
         );
     }
   };
+
+
+  const totalEntries = entries.length;
+  const approvedEntries = entries.filter(e => e.status === "approved").length;
+  const pendingEntries = entries.filter(e => e.status === "pending").length;
+  const rejectedEntries = entries.filter(e => e.status === "rejected").length;
 
   if (authLoading || loading) {
     return (
@@ -212,221 +213,293 @@ export default function OverworkPage() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Overwork Tracking</h1>
-        <p className="text-muted-foreground mt-2">
-          Track your extra work hours and earn compensatory leave
-        </p>
+      {/* Page Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+            <Clock className="h-8 w-8 text-primary" />
+            Overwork Tracking
+          </h1>
+          <p className="text-muted-foreground mt-1.5 text-base">
+            Track your extra work hours and earn compensatory leave
+          </p>
+        </div>
+        <Button 
+          variant="outline" 
+          onClick={() => router.push("/comp-off")}
+          className="gap-2"
+        >
+          <Award className="h-4 w-4" />
+          View Comp-Off
+        </Button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4 mb-8">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Approved Hours</p>
-                <p className="text-2xl font-bold text-primary">
-                  {summary?.totalApprovedHours.toFixed(1) || "0"}
-                </p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Pending Hours</p>
-                <p className="text-2xl font-bold text-yellow-600">
-                  {summary?.pendingHours.toFixed(1) || "0"}
-                </p>
-              </div>
-              <Clock className="h-8 w-8 text-yellow-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Earned Leaves</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {summary?.earnedLeaves || 0}
-                </p>
-              </div>
-              <Award className="h-8 w-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div>
-              <p className="text-sm text-muted-foreground">Conversion Rate</p>
-              <p className="text-2xl font-bold">{config?.conversionHours || 5}h</p>
-              <p className="text-xs text-muted-foreground">= 1 earned leave day</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Summary Stats */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <StatCard
+          label="Approved Hours"
+          value={`${summary?.totalApprovedHours.toFixed(1) || "0"}`}
+          icon={<CheckCircle className="h-5 w-5" />}
+          color="green"
+          trend={{
+            value: summary ? Math.round((summary.totalApprovedHours / (summary.totalApprovedHours + summary.pendingHours + summary.rejectedHours)) * 100) : 0,
+            label: "of total",
+            direction: "up"
+          }}
+        />
+        <StatCard
+          label="Pending Hours"
+          value={`${summary?.pendingHours.toFixed(1) || "0"}`}
+          icon={<Clock className="h-5 w-5" />}
+          color="amber"
+        />
+        <StatCard
+          label="Earned Leaves"
+          value={summary?.earnedLeaves || 0}
+          icon={<Award className="h-5 w-5" />}
+          color="teal"
+        />
+        <StatCard
+          label="Conversion Rate"
+          value={`${config?.conversionHours || 5}h`}
+          icon={<TrendingUp className="h-5 w-5" />}
+          color="primary"
+        />
       </div>
 
       {/* Progress Bar */}
       {summary && summary.totalApprovedHours > 0 && (
-        <Card className="mb-8">
-          <CardContent className="pt-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Progress to next leave day</span>
-                <span>{summary.progressPercent.toFixed(0)}%</span>
+        <EnhancedCard 
+          variant="elevated"
+          accentColor="amber"
+          className="mb-8"
+          header={
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-600">
+                <TrendingUp className="h-5 w-5" />
               </div>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-yellow-500 rounded-full transition-all"
-                  style={{ width: `${summary.progressPercent}%` }}
-                />
+              <div>
+                <h4 className="font-semibold text-gray-900">Progress to Next Leave Day</h4>
+                <p className="text-sm text-muted-foreground">
+                  {summary.remainingHoursForNext.toFixed(1)} hours needed for 1 more leave day
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {summary.remainingHoursForNext.toFixed(1)} hours to next leave day
-                ({(summary.totalApprovedHours % (config?.conversionHours || 5)).toFixed(1)} /{" "}
-                {config?.conversionHours || 5} hours)
-              </p>
+              <div className="ml-auto text-lg font-bold text-amber-600">
+                {summary.progressPercent.toFixed(0)}%
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          }
+        >
+          <div className="space-y-2">
+            <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500"
+                style={{ width: `${summary.progressPercent}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>0%</span>
+              <span className="font-medium text-amber-700">
+                {summary.remainingHoursForNext.toFixed(1)} hours remaining
+              </span>
+              <span>100%</span>
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground pt-1">
+              <span>Hours worked: {summary.totalApprovedHours.toFixed(1)}</span>
+              <span>Next leave at: {(Math.floor(summary.totalApprovedHours / (config?.conversionHours || 5)) + 1) * (config?.conversionHours || 5)}h</span>
+            </div>
+          </div>
+        </EnhancedCard>
       )}
 
       {/* Add Overwork Form */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Add Overwork Hours</CardTitle>
-          <CardDescription>
-            Record extra work hours for approval. Every {config?.conversionHours || 5} hours = 1 earned leave day.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="workDate">Work Date *</Label>
-                <Input
-                  id="workDate"
-                  type="date"
-                  value={formData.workDate}
-                  onChange={(e) => setFormData({ ...formData, workDate: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="hours">Hours *</Label>
-                <Input
-                  id="hours"
-                  type="number"
-                  step="0.5"
-                  min="0.5"
-                  max="24"
-                  placeholder="e.g., 5"
-                  value={formData.hours}
-                  onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Min: 0.5 | Max: 24 hours/day
-                </p>
-              </div>
+      <EnhancedCard 
+        variant="elevated"
+        className="mb-8"
+        header={
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <PlusCircle className="h-5 w-5" />
             </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Add Overwork Hours</h3>
+              <p className="text-sm text-muted-foreground">
+                Every {config?.conversionHours || 5} hours = 1 earned leave day
+              </p>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="reason">Reason</Label>
-              <Textarea
-                id="reason"
-                placeholder="Describe why you worked extra hours (e.g., Exam duty on Sunday)"
-                value={formData.reason}
-                onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                rows={3}
+              <Label htmlFor="workDate" className="text-sm font-medium">Work Date *</Label>
+              <Input
+                id="workDate"
+                type="date"
+                value={formData.workDate}
+                onChange={(e) => setFormData({ ...formData, workDate: e.target.value })}
+                required
+                className="w-full"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="hours" className="text-sm font-medium">Hours *</Label>
+              <Input
+                id="hours"
+                type="number"
+                step="0.5"
+                min="0.5"
+                max="24"
+                placeholder="e.g., 5"
+                value={formData.hours}
+                onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
+                required
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                Min: 0.5 | Max: 24 hours/day
+              </p>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="reason" className="text-sm font-medium">Reason <span className="text-muted-foreground font-normal">(Optional)</span></Label>
+            <Textarea
+              id="reason"
+              placeholder="Describe why you worked extra hours (e.g., Exam duty on Sunday)"
+              value={formData.reason}
+              onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+              rows={3}
+              className="resize-none"
+            />
+          </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm text-blue-800 font-medium">About Overwork</p>
-                  <ul className="text-sm text-blue-700 mt-1 list-disc list-inside space-y-1">
-                    <li>Every {config?.conversionHours || 5} approved hours = 1 earned leave day</li>
-                    <li>Your overwork request will be sent for approval</li>
-                    <li>Once approved, comp-off credits will be added to your account</li>
-                  </ul>
-                </div>
+          {/* Info Box */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-blue-800 font-medium">About Overwork</p>
+                <ul className="text-sm text-blue-700 mt-1 list-disc list-inside space-y-1">
+                  <li>Every <strong>{config?.conversionHours || 5}</strong> approved hours = 1 earned leave day</li>
+                  <li>Your overwork request will be sent for approval</li>
+                  <li>Once approved, comp-off credits will be added to your account</li>
+                </ul>
               </div>
             </div>
-
-            <Button onClick={handleSubmit} disabled={submitting} className="w-full">
-              {submitting ? (
-                <>
-                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
-                  Submitting...
-                </>
-              ) : (
-                "Submit Overwork"
-              )}
-            </Button>
           </div>
-        </CardContent>
-      </Card>
+
+          <Button 
+            onClick={handleSubmit} 
+            disabled={submitting} 
+            className="w-full gap-2"
+          >
+            {submitting ? (
+              <>
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                Submitting...
+              </>
+            ) : (
+              <>
+                <PlusCircle className="h-4 w-4" />
+                Submit Overwork
+              </>
+            )}
+          </Button>
+        </div>
+      </EnhancedCard>
 
       {/* Overwork History */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Overwork History</CardTitle>
-          <CardDescription>View all your submitted overwork entries</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {entries.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Clock className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-              <p>No overwork entries found</p>
-              <p className="text-sm mt-1">Submit your first entry above</p>
+      <SectionHeader
+        title="Overwork History"
+        subtitle={`${totalEntries} entry${totalEntries !== 1 ? "s" : ""} • ${approvedEntries} approved • ${pendingEntries} pending • ${rejectedEntries} rejected`}
+        icon={<History className="h-5 w-5" />}
+        className="mb-4"
+      />
+
+      <EnhancedCard 
+        variant="elevated"
+      >
+        {entries.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="flex flex-col items-center gap-3">
+              <div className="p-4 rounded-full bg-gray-100">
+                <Clock className="h-12 w-12 text-gray-400" />
+              </div>
+              <h4 className="text-lg font-medium text-gray-900">No overwork entries found</h4>
+              <p className="text-sm text-muted-foreground">Submit your first entry above to start tracking</p>
             </div>
-          ) : (
-            <div className="border rounded-lg overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left p-3">Date</th>
-                    <th className="text-left p-3">Hours</th>
-                    <th className="text-left p-3">Reason</th>
-                    <th className="text-left p-3">Status</th>
-                    <th className="text-left p-3">Earned Leave</th>
+          </div>
+        ) : (
+          <div className="border rounded-lg overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Date</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Hours</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Reason</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Status</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Earned Leave</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="border-t hover:bg-gray-50 transition-colors">
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                        {new Date(entry.workDate).toLocaleDateString()}
+                      </div>
+                    </td>
+                    <td className="p-3 font-semibold text-gray-900">
+                      {entry.hours}
+                    </td>
+                    <td className="p-3 max-w-xs truncate text-muted-foreground">
+                      {entry.reason || "-"}
+                    </td>
+                    <td className="p-3">
+                      {getStatusBadge(entry.status)}
+                    </td>
+                    <td className="p-3">
+                      {entry.convertedToLeave && entry.earnedLeaveDays ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                          <Award className="h-3 w-3" />
+                          {entry.earnedLeaveDays} day(s)
+                        </span>
+                      ) : entry.status === "approved" ? (
+                        <span className="text-muted-foreground text-xs">
+                          {Math.floor(entry.hours / (config?.conversionHours || 5))} days
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">-</span>
+                      )}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry) => (
-                    <tr key={entry.id} className="border-t">
-                      <td className="p-3">{new Date(entry.workDate).toLocaleDateString()}</td>
-                      <td className="p-3 font-medium">{entry.hours}</td>
-                      <td className="p-3 max-w-xs truncate">{entry.reason || "-"}</td>
-                      <td className="p-3">{getStatusBadge(entry.status)}</td>
-                      <td className="p-3">
-                        {entry.convertedToLeave && entry.earnedLeaveDays ? (
-                          <span className="text-green-600 font-medium">
-                            {entry.earnedLeaveDays} day(s)
-                          </span>
-                        ) : entry.status === "approved" ? (
-                          <span className="text-muted-foreground text-xs">
-                            {Math.floor(entry.hours / (config?.conversionHours || 5))} days
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </EnhancedCard>
+
+      {/* Quick Stats Footer */}
+      {entries.length > 0 && (
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+            <p className="text-sm text-green-700">Approved Entries</p>
+            <p className="text-2xl font-bold text-green-600">{approvedEntries}</p>
+          </div>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
+            <p className="text-sm text-yellow-700">Pending Entries</p>
+            <p className="text-2xl font-bold text-yellow-600">{pendingEntries}</p>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+            <p className="text-sm text-red-700">Rejected Entries</p>
+            <p className="text-2xl font-bold text-red-600">{rejectedEntries}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
