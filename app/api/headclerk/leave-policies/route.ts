@@ -1,4 +1,4 @@
-// app/api/headclerk/leave-policies/route.ts - COMPLETE FIXED VERSION
+// app/api/headclerk/leave-policies/route.ts - COMPLETE WITH DELETE ENDPOINT
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -42,7 +42,7 @@ interface LeaveBalancesDoc {
   updatedAt: string;
 }
 
-// ============ GET HANDLER - FIXED ============
+// ============ GET HANDLER ============
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -81,14 +81,12 @@ export async function GET() {
     const policiesSnapshot = await rtdb.ref("leavePolicies").once("value");
     const policies = policiesSnapshot.val() as Record<string, Policy> | null || {};
 
-    // 🔥 FIX: Handle both old and new policies
+    // Handle both old and new policies
     const policiesList = Object.entries(policies)
       .filter(([, data]) => {
-        // If policy has collegeId, check if it matches
         if (data.collegeId) {
           return data.collegeId === collegeId;
         }
-        // If policy doesn't have collegeId (legacy), include it
         return true;
       })
       .map(([id, data]) => ({
@@ -232,7 +230,7 @@ export async function POST(request: Request) {
   }
 }
 
-// ============ PUT HANDLER (Update) - COMPLETE FIXED ============
+// ============ PUT HANDLER (Update) ============
 export async function PUT(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -275,7 +273,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Academic year and leave allocations are required" }, { status: 400 });
     }
 
-    // 🔥 CRITICAL: Get existing policy
     const existingSnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once("value");
     const existing = existingSnapshot.val() as Policy | null;
 
@@ -303,7 +300,6 @@ export async function PUT(request: Request) {
       }
     }
 
-    // 🔥 FIX: Complete policy object with ALL fields
     const updatedPolicy = {
       id: academicYear,
       academicYear: academicYear,
@@ -317,14 +313,12 @@ export async function PUT(request: Request) {
       updatedAt: new Date().toISOString(),
     };
 
-    // 🔥 CRITICAL: Write to the EXACT path using set() to ensure complete overwrite
     const policyPath = `leavePolicies/${academicYear}`;
     console.log(`📝 Writing to: ${policyPath}`);
     console.log(`📝 Data:`, JSON.stringify(updatedPolicy, null, 2));
     
     await rtdb.ref(policyPath).set(updatedPolicy);
 
-    // 🔥 CRITICAL: Verify the write
     const verifySnapshot = await rtdb.ref(policyPath).once('value');
     const verified = verifySnapshot.val();
     console.log(`✅ Verified write:`, JSON.stringify(verified, null, 2));
@@ -337,7 +331,6 @@ export async function PUT(request: Request) {
       }, { status: 500 });
     }
 
-    // 🔥 Update user balances
     console.log(`🔄 Recalculating balances for ${academicYear}...`);
     const { updated, errors, details } = await recalculateAllUserBalances(
       rtdb,
@@ -382,6 +375,114 @@ export async function PUT(request: Request) {
   } catch (error) {
     console.error("Error updating leave policy:", error);
     return NextResponse.json({ error: "Failed to update leave policy" }, { status: 500 });
+  }
+}
+
+// ============ DELETE HANDLER ============
+export async function DELETE(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get("session")?.value;
+
+    if (!sessionCookie) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const auth = getAuth();
+    const rtdb = getRTDB();
+
+    if (!auth || !rtdb) {
+      console.error('Firebase Admin not initialized');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
+    const decodedToken = await auth.verifySessionCookie(sessionCookie);
+    
+    const userSnapshot = await rtdb.ref(`users/${decodedToken.uid}`).once("value");
+    const userData = userSnapshot.val() as UserRecord | null;
+    
+    if (!userData || !hasHeadClerkOrSuperAdminRights(userData.roles || [])) {
+      return NextResponse.json({ error: "Not authorized - Head Clerk or Super Admin only" }, { status: 403 });
+    }
+
+    const collegeId = userData.collegeId;
+    
+    if (!collegeId) {
+      return NextResponse.json({ error: "User has no college assigned" }, { status: 400 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const academicYear = searchParams.get("academicYear");
+
+    if (!academicYear) {
+      return NextResponse.json({ error: "Academic year is required" }, { status: 400 });
+    }
+
+    // Get the policy to check if it exists and belongs to this college
+    const policyRef = rtdb.ref(`leavePolicies/${academicYear}`);
+    const snapshot = await policyRef.once("value");
+    const policy = snapshot.val() as Policy | null;
+
+    if (!policy) {
+      return NextResponse.json({ error: "Policy not found" }, { status: 404 });
+    }
+
+    // Check if it belongs to this college
+    if (policy.collegeId && policy.collegeId !== collegeId) {
+      return NextResponse.json({ 
+        error: "You are not authorized to delete policies from other colleges" 
+      }, { status: 403 });
+    }
+
+    // Delete the policy
+    await policyRef.remove();
+
+    // Find and delete all user balances for this academic year
+    const balancesSnapshot = await rtdb.ref("leaveBalances").once("value");
+    const allBalances = balancesSnapshot.val() as Record<string, LeaveBalancesDoc> | null || {};
+    
+    let balancesDeleted = 0;
+    for (const [key, balance] of Object.entries(allBalances)) {
+      if (balance.academicYear === academicYear && balance.userId) {
+        const userSnap = await rtdb.ref(`users/${balance.userId}`).once("value");
+        const user = userSnap.val() as { collegeId?: string } | null;
+        if (user?.collegeId === collegeId) {
+          await rtdb.ref(`leaveBalances/${key}`).remove();
+          balancesDeleted++;
+        }
+      }
+    }
+
+    // Log the action
+    await rtdb.ref("auditLogs").push({
+      userId: decodedToken.uid,
+      userName: userData.name || "Unknown",
+      userRole: "head_clerk",
+      action: "POLICY_DELETED",
+      module: "leavePolicies",
+      targetId: academicYear,
+      details: JSON.stringify({
+        academicYear,
+        collegeId: collegeId,
+        balancesDeleted,
+        deletedBy: userData.name,
+        timestamp: new Date().toISOString(),
+      }),
+      createdAt: new Date().toISOString(),
+    });
+
+    return NextResponse.json({ 
+      success: true, 
+      message: `Policy ${academicYear} deleted successfully`,
+      balancesDeleted,
+      deletedPolicy: academicYear,
+    });
+  } catch (error) {
+    console.error("Error deleting leave policy:", error);
+    return NextResponse.json({ error: "Failed to delete leave policy" }, { status: 500 });
   }
 }
 

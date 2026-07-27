@@ -33,7 +33,7 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Plus, Sun, Snowflake, LayoutGrid, CalendarDays, Clock, Users, Settings } from "lucide-react";
+import { Pencil, Plus, Sun, Snowflake, LayoutGrid, CalendarDays, Clock, Users, Settings, Trash2 } from "lucide-react";
 import { AttendanceCalendar } from "@/components/headclerk/AttendanceCalendar";
 import { FacultyList } from "@/components/headclerk/FacultyList";
 import { YearReset } from "@/components/headclerk/YearReset";
@@ -417,6 +417,35 @@ function HeadClerkDashboardContent() {
     } else {
       resetPolicyForm();
       setShowPolicyDialog(true);
+    }
+  };
+
+  // ========== DELETE POLICY FUNCTION ==========
+  const handleDeletePolicy = async (policy: Policy) => {
+    if (!confirm(`⚠️ Are you sure you want to delete the ${policy.academicYear} policy?\n\nThis will also delete ALL user leave balances for this academic year.\n\nThis action CANNOT be undone!`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/headclerk/leave-policies?academicYear=${policy.academicYear}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete policy");
+      }
+
+      toast.success(`✅ Policy ${data.deletedPolicy} deleted! ${data.balancesDeleted} user balance(s) removed.`);
+      
+      // Refresh the policies list
+      await fetchPolicies();
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete policy";
+      toast.error(errorMessage);
     }
   };
 
@@ -897,6 +926,7 @@ function HeadClerkDashboardContent() {
           </EnhancedCard>
         </TabsContent>
 
+        {/* LEAVE POLICIES TAB - WITH DELETE BUTTON */}
         <TabsContent value="leave-policies" className="mt-0">
           <EnhancedCard 
             variant="elevated"
@@ -950,10 +980,16 @@ function HeadClerkDashboardContent() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <Button size="sm" variant="outline" onClick={() => handleEditPolicy(policy)} className="gap-1">
-                            <Pencil className="h-4 w-4" />
-                            Edit
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleEditPolicy(policy)} className="gap-1">
+                              <Pencil className="h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeletePolicy(policy)} className="gap-1">
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
