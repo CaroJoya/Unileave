@@ -105,7 +105,6 @@ const roles: { id: RoleKey; label: string }[] = [
   { id: "head_clerk", label: "Head Clerk" },
 ];
 
-// Default allocations with ALL 7 leave types
 const defaultAllocations: Record<RoleKey, { CL: number; EL: number; ML: number; CO: number; MAT: number; PAT: number; SPL: number }> = {
   faculty: { CL: 24, EL: 12, ML: 15, CO: 10, MAT: 180, PAT: 15, SPL: 10 },
   lab_assistant: { CL: 18, EL: 10, ML: 15, CO: 8, MAT: 180, PAT: 15, SPL: 10 },
@@ -116,7 +115,6 @@ const defaultAllocations: Record<RoleKey, { CL: number; EL: number; ML: number; 
   head_clerk: { CL: 20, EL: 12, ML: 15, CO: 10, MAT: 180, PAT: 15, SPL: 10 },
 };
 
-// Get initial tab from URL hash
 const getInitialHeadClerkTab = (): string => {
   if (typeof window !== 'undefined') {
     const hash = window.location.hash.replace('#', '');
@@ -133,7 +131,6 @@ function HeadClerkDashboardContent() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState(getInitialHeadClerkTab);
 
-  // Leave Types State
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -150,7 +147,6 @@ function HeadClerkDashboardContent() {
     addToPolicy: false,
   });
 
-  // Edit Leave Type State
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveType | null>(null);
   const [editLoading, setEditLoading] = useState(false);
@@ -165,7 +161,6 @@ function HeadClerkDashboardContent() {
     maxConsecutiveDays: "",
   });
 
-  // Leave Policies State
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [showPolicyDialog, setShowPolicyDialog] = useState(false);
   const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
@@ -176,7 +171,6 @@ function HeadClerkDashboardContent() {
     leaveAllocations: { ...defaultAllocations },
   });
 
-  // Overwork Config State
   const [overworkConfig, setOverworkConfig] = useState<OverworkConfig>({
     conversionHours: 5,
     minHoursPerEntry: 0.5,
@@ -185,7 +179,6 @@ function HeadClerkDashboardContent() {
   });
   const [savingConfig, setSavingConfig] = useState(false);
 
-  // Vacation Periods State
   const [vacations, setVacations] = useState<VacationPeriod[]>([]);
   const [showVacationDialog, setShowVacationDialog] = useState(false);
   const [editingVacation, setEditingVacation] = useState<VacationPeriod | null>(null);
@@ -198,12 +191,10 @@ function HeadClerkDashboardContent() {
     paidLeaveQuota: 27,
   });
 
-  // Attendance State
   const [departmentsList, setDepartmentsList] = useState<Department[]>([]);
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
   const [attendanceKey, setAttendanceKey] = useState(0);
 
-  // Handle tab change with hash
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     window.location.hash = tab;
@@ -270,7 +261,6 @@ function HeadClerkDashboardContent() {
     }
   };
 
-  // ✅ FIXED: openEditDialog with proper typing
   const openEditDialog = (type: LeaveType) => {
     setEditingLeaveType(type);
     setEditFormData({
@@ -286,7 +276,6 @@ function HeadClerkDashboardContent() {
     setEditDialogOpen(true);
   };
 
-  // ✅ FIXED: handleEditSubmit with FormEventHandler
   const handleEditSubmit: FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
     
@@ -382,7 +371,6 @@ function HeadClerkDashboardContent() {
 
   const fetchPolicies = useCallback(async () => {
     try {
-      // ✅ FIX: Add cache-busting parameter to prevent stale data
       const response = await fetch("/api/headclerk/leave-policies?_t=" + Date.now(), {
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -432,7 +420,6 @@ function HeadClerkDashboardContent() {
     }
   };
 
-  // ✅ FIXED: handleSavePolicy - Complete rewrite with proper cache handling
   const handleSavePolicy = async () => {
     if (!policyForm.academicYear) {
       toast.error("Please select an academic year");
@@ -443,7 +430,6 @@ function HeadClerkDashboardContent() {
     try {
       const method = editingPolicy ? "PUT" : "POST";
       
-      // Log what we're sending for debugging
       console.log("📤 Saving policy:", {
         method,
         academicYear: policyForm.academicYear,
@@ -479,7 +465,6 @@ function HeadClerkDashboardContent() {
         throw new Error(data.error || "Failed to save policy");
       }
 
-      // ✅ FIX: Show detailed success message
       if (data.balanceUpdate) {
         const { usersUpdated, errors } = data.balanceUpdate;
         
@@ -499,13 +484,8 @@ function HeadClerkDashboardContent() {
       setShowPolicyDialog(false);
       resetPolicyForm();
       
-      // ✅ FIX: Force a fresh fetch with cache-busting
       await fetchPolicies();
-      
-      // ✅ FIX: Show a confirmation that data was refreshed
       toast.info("🔄 Policy data refreshed");
-      
-      // ✅ FIX: Log success for debugging
       console.log("✅ Policy saved successfully:", data);
       
     } catch (error) {
@@ -748,7 +728,6 @@ function HeadClerkDashboardContent() {
     }
   }, [user, fetchLeaveTypes, fetchPolicies, fetchOverworkConfig, fetchVacations, fetchAttendanceData]);
 
-  // Nav items for Head Clerk
   const navItems = [
     { 
       label: "Leave Types", 
@@ -794,7 +773,6 @@ function HeadClerkDashboardContent() {
     },
   ];
 
-  // ========== RENDER ==========
   if (isLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -818,58 +796,36 @@ function HeadClerkDashboardContent() {
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6 mt-6">
         <TabsList className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg">
-          <TabsTrigger 
-            value="leave-types" 
-            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
-          >
+          <TabsTrigger value="leave-types" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2">
             <LayoutGrid className="h-4 w-4" />
             Leave Types
           </TabsTrigger>
-          <TabsTrigger 
-            value="leave-policies" 
-            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
-          >
+          <TabsTrigger value="leave-policies" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2">
             <CalendarDays className="h-4 w-4" />
             Policies
           </TabsTrigger>
-          <TabsTrigger 
-            value="year-reset" 
-            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
-          >
+          <TabsTrigger value="year-reset" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2">
             <Clock className="h-4 w-4" />
             Year Reset
           </TabsTrigger>
-          <TabsTrigger 
-            value="overwork" 
-            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
-          >
+          <TabsTrigger value="overwork" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2">
             <Settings className="h-4 w-4" />
             Overwork Config
           </TabsTrigger>
-          <TabsTrigger 
-            value="vacation" 
-            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
-          >
+          <TabsTrigger value="vacation" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2">
             <Sun className="h-4 w-4" />
             Vacation Periods
           </TabsTrigger>
-          <TabsTrigger 
-            value="attendance" 
-            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
-          >
+          <TabsTrigger value="attendance" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2">
             <Users className="h-4 w-4" />
             Attendance
           </TabsTrigger>
-          <TabsTrigger 
-            value="faculty" 
-            className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2"
-          >
+          <TabsTrigger value="faculty" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 gap-2">
             <Users className="h-4 w-4" />
             Faculty List
           </TabsTrigger>
         </TabsList>
 
-        {/* LEAVE TYPES TAB */}
         <TabsContent value="leave-types" className="mt-0">
           <EnhancedCard 
             variant="elevated"
@@ -918,30 +874,16 @@ function HeadClerkDashboardContent() {
                         <TableCell>{type.requiresAttachment ? "✅" : "❌"}</TableCell>
                         <TableCell>{type.deductsBalance ? "✅" : "❌"}</TableCell>
                         <TableCell>
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              type.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                            }`}
-                          >
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${type.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
                             {type.isActive ? "Active" : "Inactive"}
                           </span>
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => openEditDialog(type)}
-                              className="gap-1"
-                            >
+                            <Button size="sm" variant="outline" onClick={() => openEditDialog(type)} className="gap-1">
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => handleToggleActive(type)}
-                              className={type.isActive ? "text-red-600 hover:bg-red-50" : "text-green-600 hover:bg-green-50"}
-                            >
+                            <Button size="sm" variant="outline" onClick={() => handleToggleActive(type)} className={type.isActive ? "text-red-600 hover:bg-red-50" : "text-green-600 hover:bg-green-50"}>
                               {type.isActive ? "Deactivate" : "Activate"}
                             </Button>
                           </div>
@@ -955,7 +897,6 @@ function HeadClerkDashboardContent() {
           </EnhancedCard>
         </TabsContent>
 
-        {/* LEAVE POLICIES TAB */}
         <TabsContent value="leave-policies" className="mt-0">
           <EnhancedCard 
             variant="elevated"
@@ -1004,11 +945,7 @@ function HeadClerkDashboardContent() {
                           <span className="capitalize">{policy.applyRule}</span>
                         </TableCell>
                         <TableCell>
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              policy.isActive !== false ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                            }`}
-                          >
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${policy.isActive !== false ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
                             {policy.isActive !== false ? "Active" : "Inactive"}
                           </span>
                         </TableCell>
@@ -1027,12 +964,10 @@ function HeadClerkDashboardContent() {
           </EnhancedCard>
         </TabsContent>
 
-        {/* YEAR RESET TAB */}
         <TabsContent value="year-reset" className="mt-0">
           <YearReset />
         </TabsContent>
 
-        {/* OVERWORK CONFIG TAB */}
         <TabsContent value="overwork" className="mt-0">
           <EnhancedCard 
             variant="elevated"
@@ -1062,12 +997,7 @@ function HeadClerkDashboardContent() {
                       min="1"
                       max="24"
                       value={overworkConfig.conversionHours}
-                      onChange={(e) =>
-                        setOverworkConfig({
-                          ...overworkConfig,
-                          conversionHours: parseFloat(e.target.value) || 5,
-                        })
-                      }
+                      onChange={(e) => setOverworkConfig({ ...overworkConfig, conversionHours: parseFloat(e.target.value) || 5 })}
                       className="w-24"
                     />
                     <span className="text-muted-foreground">hours = 1 earned leave day</span>
@@ -1087,12 +1017,7 @@ function HeadClerkDashboardContent() {
                       min="0.5"
                       max="24"
                       value={overworkConfig.minHoursPerEntry}
-                      onChange={(e) =>
-                        setOverworkConfig({
-                          ...overworkConfig,
-                          minHoursPerEntry: parseFloat(e.target.value) || 0.5,
-                        })
-                      }
+                      onChange={(e) => setOverworkConfig({ ...overworkConfig, minHoursPerEntry: parseFloat(e.target.value) || 0.5 })}
                       className="w-24"
                     />
                     <span className="text-muted-foreground">hours minimum</span>
@@ -1112,12 +1037,7 @@ function HeadClerkDashboardContent() {
                       min="0.5"
                       max="24"
                       value={overworkConfig.maxHoursPerDay}
-                      onChange={(e) =>
-                        setOverworkConfig({
-                          ...overworkConfig,
-                          maxHoursPerDay: parseFloat(e.target.value) || 24,
-                        })
-                      }
+                      onChange={(e) => setOverworkConfig({ ...overworkConfig, maxHoursPerDay: parseFloat(e.target.value) || 24 })}
                       className="w-24"
                     />
                     <span className="text-muted-foreground">hours maximum per day</span>
@@ -1134,12 +1054,7 @@ function HeadClerkDashboardContent() {
                       type="checkbox"
                       id="autoConversionEnabled"
                       checked={overworkConfig.autoConversionEnabled}
-                      onChange={(e) =>
-                        setOverworkConfig({
-                          ...overworkConfig,
-                          autoConversionEnabled: e.target.checked,
-                        })
-                      }
+                      onChange={(e) => setOverworkConfig({ ...overworkConfig, autoConversionEnabled: e.target.checked })}
                       className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
                     />
                     <Label htmlFor="autoConversionEnabled" className="font-normal cursor-pointer text-sm">
@@ -1157,8 +1072,7 @@ function HeadClerkDashboardContent() {
                 <div className="bg-gray-50 rounded-xl p-4 space-y-2">
                   <p className="text-sm">
                     <span className="font-medium">Current Rule:</span> Every{" "}
-                    <span className="text-primary font-medium">{overworkConfig.conversionHours}</span> hours = 1 earned
-                    leave day
+                    <span className="text-primary font-medium">{overworkConfig.conversionHours}</span> hours = 1 earned leave day
                   </p>
                   <p className="text-sm">
                     <span className="font-medium">Example:</span> Staff with{" "}
@@ -1178,9 +1092,7 @@ function HeadClerkDashboardContent() {
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button variant="outline" onClick={fetchOverworkConfig}>
-                  Reset
-                </Button>
+                <Button variant="outline" onClick={fetchOverworkConfig}>Reset</Button>
                 <Button onClick={saveOverworkConfig} disabled={savingConfig} className="gap-2">
                   {savingConfig ? (
                     <>
@@ -1196,7 +1108,6 @@ function HeadClerkDashboardContent() {
           </EnhancedCard>
         </TabsContent>
 
-        {/* VACATION PERIODS TAB */}
         <TabsContent value="vacation" className="mt-0">
           <EnhancedCard 
             variant="elevated"
@@ -1219,7 +1130,6 @@ function HeadClerkDashboardContent() {
             }
           >
             <div className="space-y-6">
-              {/* Summer Vacation */}
               <div>
                 <h4 className="text-lg font-semibold mb-3 flex items-center gap-2 text-yellow-700">
                   <Sun className="h-5 w-5 text-yellow-500" />
@@ -1238,44 +1148,32 @@ function HeadClerkDashboardContent() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {vacations
-                        .filter((v) => v.vacationType === "Summer Vacation")
-                        .map((vacation) => (
-                          <TableRow key={vacation.id} className="hover:bg-gray-50 transition-colors">
-                            <TableCell className="font-medium">{vacation.year}</TableCell>
-                            <TableCell>
-                              {new Date(vacation.startDate).toLocaleDateString()} — {new Date(vacation.endDate).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>{vacation.totalDays} days</TableCell>
-                            <TableCell>{vacation.paidLeaveQuota} days</TableCell>
-                            <TableCell>
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                                }`}
-                              >
-                                {vacation.isActive ? "Active" : "Inactive"}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)} className="gap-1">
-                                  <Pencil className="h-4 w-4" />
-                                  Edit
+                      {vacations.filter((v) => v.vacationType === "Summer Vacation").map((vacation) => (
+                        <TableRow key={vacation.id} className="hover:bg-gray-50 transition-colors">
+                          <TableCell className="font-medium">{vacation.year}</TableCell>
+                          <TableCell>{new Date(vacation.startDate).toLocaleDateString()} — {new Date(vacation.endDate).toLocaleDateString()}</TableCell>
+                          <TableCell>{vacation.totalDays} days</TableCell>
+                          <TableCell>{vacation.paidLeaveQuota} days</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                              {vacation.isActive ? "Active" : "Inactive"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)} className="gap-1">
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                              </Button>
+                              {vacation.isActive && (
+                                <Button size="sm" variant="destructive" onClick={() => handleDeactivateVacation(vacation.id)}>
+                                  Deactivate
                                 </Button>
-                                {vacation.isActive && (
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => handleDeactivateVacation(vacation.id)}
-                                  >
-                                    Deactivate
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                       {vacations.filter((v) => v.vacationType === "Summer Vacation").length === 0 && (
                         <TableRow>
                           <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
@@ -1288,7 +1186,6 @@ function HeadClerkDashboardContent() {
                 </div>
               </div>
 
-              {/* Winter Vacation */}
               <div>
                 <h4 className="text-lg font-semibold mb-3 flex items-center gap-2 text-blue-700">
                   <Snowflake className="h-5 w-5 text-blue-500" />
@@ -1307,44 +1204,32 @@ function HeadClerkDashboardContent() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {vacations
-                        .filter((v) => v.vacationType === "Winter Vacation")
-                        .map((vacation) => (
-                          <TableRow key={vacation.id} className="hover:bg-gray-50 transition-colors">
-                            <TableCell className="font-medium">{vacation.year}</TableCell>
-                            <TableCell>
-                              {new Date(vacation.startDate).toLocaleDateString()} — {new Date(vacation.endDate).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>{vacation.totalDays} days</TableCell>
-                            <TableCell>{vacation.paidLeaveQuota} days</TableCell>
-                            <TableCell>
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                                }`}
-                              >
-                                {vacation.isActive ? "Active" : "Inactive"}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)} className="gap-1">
-                                  <Pencil className="h-4 w-4" />
-                                  Edit
+                      {vacations.filter((v) => v.vacationType === "Winter Vacation").map((vacation) => (
+                        <TableRow key={vacation.id} className="hover:bg-gray-50 transition-colors">
+                          <TableCell className="font-medium">{vacation.year}</TableCell>
+                          <TableCell>{new Date(vacation.startDate).toLocaleDateString()} — {new Date(vacation.endDate).toLocaleDateString()}</TableCell>
+                          <TableCell>{vacation.totalDays} days</TableCell>
+                          <TableCell>{vacation.paidLeaveQuota} days</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${vacation.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                              {vacation.isActive ? "Active" : "Inactive"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => handleEditVacation(vacation)} className="gap-1">
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                              </Button>
+                              {vacation.isActive && (
+                                <Button size="sm" variant="destructive" onClick={() => handleDeactivateVacation(vacation.id)}>
+                                  Deactivate
                                 </Button>
-                                {vacation.isActive && (
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => handleDeactivateVacation(vacation.id)}
-                                  >
-                                    Deactivate
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                       {vacations.filter((v) => v.vacationType === "Winter Vacation").length === 0 && (
                         <TableRow>
                           <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
@@ -1360,7 +1245,6 @@ function HeadClerkDashboardContent() {
           </EnhancedCard>
         </TabsContent>
 
-        {/* ATTENDANCE TAB */}
         <TabsContent value="attendance" className="mt-0">
           <EnhancedCard 
             variant="elevated"
@@ -1388,7 +1272,6 @@ function HeadClerkDashboardContent() {
           </EnhancedCard>
         </TabsContent>
 
-        {/* FACULTY LIST TAB */}
         <TabsContent value="faculty" className="mt-0">
           <EnhancedCard 
             variant="elevated"
@@ -1411,7 +1294,7 @@ function HeadClerkDashboardContent() {
         </TabsContent>
       </Tabs>
 
-      {/* ============ CREATE LEAVE TYPE DIALOG ============ */}
+      {/* CREATE LEAVE TYPE DIALOG */}
       <Dialog open={showCreateDialog} onOpenChange={(open) => {
         if (!open) resetForm();
         setShowCreateDialog(open);
@@ -1527,15 +1410,13 @@ function HeadClerkDashboardContent() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
             <Button onClick={handleCreateLeaveType}>Create</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* EDIT LEAVE TYPE DIALOG - FIXED */}
+      {/* EDIT LEAVE TYPE DIALOG */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => {
         if (!open) {
           setEditDialogOpen(false);
@@ -1630,9 +1511,7 @@ function HeadClerkDashboardContent() {
             </div>
 
             <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => setEditDialogOpen(false)}>
-                Cancel
-              </Button>
+              <Button variant="outline" type="button" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={editLoading}>
                 {editLoading ? "Saving..." : "Save Changes"}
               </Button>
@@ -1668,9 +1547,7 @@ function HeadClerkDashboardContent() {
                 </SelectTrigger>
                 <SelectContent>
                   {academicYears.map((year) => (
-                    <SelectItem key={year} value={year}>
-                      {year}
-                    </SelectItem>
+                    <SelectItem key={year} value={year}>{year}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1733,10 +1610,7 @@ function HeadClerkDashboardContent() {
                               ...policyForm,
                               leaveAllocations: {
                                 ...policyForm.leaveAllocations,
-                                [role.id]: {
-                                  ...policyForm.leaveAllocations[role.id],
-                                  CL: value,
-                                },
+                                [role.id]: { ...policyForm.leaveAllocations[role.id], CL: value },
                               },
                             });
                           }}
@@ -1754,10 +1628,7 @@ function HeadClerkDashboardContent() {
                               ...policyForm,
                               leaveAllocations: {
                                 ...policyForm.leaveAllocations,
-                                [role.id]: {
-                                  ...policyForm.leaveAllocations[role.id],
-                                  EL: value,
-                                },
+                                [role.id]: { ...policyForm.leaveAllocations[role.id], EL: value },
                               },
                             });
                           }}
@@ -1775,10 +1646,7 @@ function HeadClerkDashboardContent() {
                               ...policyForm,
                               leaveAllocations: {
                                 ...policyForm.leaveAllocations,
-                                [role.id]: {
-                                  ...policyForm.leaveAllocations[role.id],
-                                  ML: value,
-                                },
+                                [role.id]: { ...policyForm.leaveAllocations[role.id], ML: value },
                               },
                             });
                           }}
@@ -1796,10 +1664,7 @@ function HeadClerkDashboardContent() {
                               ...policyForm,
                               leaveAllocations: {
                                 ...policyForm.leaveAllocations,
-                                [role.id]: {
-                                  ...policyForm.leaveAllocations[role.id],
-                                  CO: value,
-                                },
+                                [role.id]: { ...policyForm.leaveAllocations[role.id], CO: value },
                               },
                             });
                           }}
@@ -1817,10 +1682,7 @@ function HeadClerkDashboardContent() {
                               ...policyForm,
                               leaveAllocations: {
                                 ...policyForm.leaveAllocations,
-                                [role.id]: {
-                                  ...policyForm.leaveAllocations[role.id],
-                                  MAT: value,
-                                },
+                                [role.id]: { ...policyForm.leaveAllocations[role.id], MAT: value },
                               },
                             });
                           }}
@@ -1838,10 +1700,7 @@ function HeadClerkDashboardContent() {
                               ...policyForm,
                               leaveAllocations: {
                                 ...policyForm.leaveAllocations,
-                                [role.id]: {
-                                  ...policyForm.leaveAllocations[role.id],
-                                  PAT: value,
-                                },
+                                [role.id]: { ...policyForm.leaveAllocations[role.id], PAT: value },
                               },
                             });
                           }}
@@ -1859,10 +1718,7 @@ function HeadClerkDashboardContent() {
                               ...policyForm,
                               leaveAllocations: {
                                 ...policyForm.leaveAllocations,
-                                [role.id]: {
-                                  ...policyForm.leaveAllocations[role.id],
-                                  SPL: value,
-                                },
+                                [role.id]: { ...policyForm.leaveAllocations[role.id], SPL: value },
                               },
                             });
                           }}
@@ -1876,9 +1732,7 @@ function HeadClerkDashboardContent() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPolicyDialog(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setShowPolicyDialog(false)}>Cancel</Button>
             <Button onClick={handleSavePolicy} disabled={saving}>
               {saving ? "Saving..." : editingPolicy ? "Update Policy" : "Create Policy"}
             </Button>
@@ -1944,9 +1798,7 @@ function HeadClerkDashboardContent() {
                 </SelectTrigger>
                 <SelectContent>
                   {[2024, 2025, 2026, 2027, 2028].map((year) => (
-                    <SelectItem key={year} value={year.toString()}>
-                      {year}
-                    </SelectItem>
+                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -2003,9 +1855,7 @@ function HeadClerkDashboardContent() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowVacationDialog(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setShowVacationDialog(false)}>Cancel</Button>
             <Button onClick={handleSaveVacation} disabled={savingVacation}>
               {savingVacation ? "Saving..." : editingVacation ? "Update" : "Create"}
             </Button>
