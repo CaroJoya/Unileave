@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-
 interface CollegeData {
   id: string;
   name: string;

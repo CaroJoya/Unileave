@@ -1,3 +1,4 @@
+// app/dashboard/page.tsx - Fixed duplicate imports
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -28,6 +29,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { EnhancedCard } from "@/components/ui/enhanced-card";
+
 interface LeaveBalance {
   allocated: number;
   used: number;
@@ -90,8 +92,8 @@ function DashboardContent() {
   const queryClient = useQueryClient();
 
   // React Query for all data - with proper refetch on focus
-  const { 
-    data: balanceData, 
+  const {
+    data: balanceData,
     isLoading: balancesLoading,
     refetch: refetchBalances
   } = useQuery({
@@ -102,8 +104,8 @@ function DashboardContent() {
     refetchOnWindowFocus: false,
   });
 
-  const { 
-    data: requestsData, 
+  const {
+    data: requestsData,
     isLoading: requestsLoading,
     refetch: refetchRequests
   } = useQuery({
@@ -114,8 +116,8 @@ function DashboardContent() {
     refetchOnWindowFocus: false,
   });
 
-  const { 
-    data: compOffData, 
+  const {
+    data: compOffData,
     isLoading: compOffLoading,
     refetch: refetchCompOff
   } = useQuery({
@@ -126,8 +128,8 @@ function DashboardContent() {
     refetchOnWindowFocus: false,
   });
 
-  const { 
-    data: overworkData, 
+  const {
+    data: overworkData,
     isLoading: overworkLoading,
     refetch: refetchOverwork
   } = useQuery({
@@ -149,7 +151,7 @@ function DashboardContent() {
         refetchOverwork();
       }
     };
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [refetchBalances, refetchRequests, refetchCompOff, refetchOverwork]);
@@ -163,7 +165,7 @@ function DashboardContent() {
       refetchCompOff();
       refetchOverwork();
     };
-    
+
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [refetchBalances, refetchRequests, refetchCompOff, refetchOverwork]);
@@ -172,12 +174,12 @@ function DashboardContent() {
   const dashboardData = (() => {
     const balances = balanceData?.balances || {};
     const requests = requestsData?.requests || [];
-    
+
     // Calculate totals using STANDARD_LEAVE_TYPES only
     let totalAllocated = 0;
     let totalUsed = 0;
     let totalAvailable = 0;
-    
+
     Object.entries(balances).forEach(([type, balance]) => {
       const b = balance as LeaveBalance;
       if (STANDARD_LEAVE_TYPES.includes(type)) {
@@ -186,7 +188,7 @@ function DashboardContent() {
         totalAvailable += (b?.available || 0);
       }
     });
-    
+
     const utilization = totalAllocated > 0 ? (totalUsed / totalAllocated) * 100 : 0;
 
     const pendingRequests = requests.filter(
@@ -217,7 +219,7 @@ function DashboardContent() {
     const compOffBalance = credits
       .filter((c: CompOffCredit) => c.status === 'active')
       .reduce((sum: number, c: CompOffCredit) => sum + (c.creditedDays - c.usedDays), 0);
-    
+
     const now = new Date();
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const expiringCompOffCredits = credits.filter((c: CompOffCredit) => {
@@ -334,40 +336,40 @@ function DashboardContent() {
   };
 
   const navItems = [
-    { 
-      label: "Dashboard", 
-      href: "/dashboard", 
-      icon: <LayoutDashboard className="h-4 w-4" /> 
+    {
+      label: "Dashboard",
+      href: "/dashboard",
+      icon: <LayoutDashboard className="h-4 w-4" />
     },
-    { 
-      label: "Request Leave", 
-      href: "/request-leave", 
-      icon: <FilePlus2 className="h-4 w-4" /> 
+    {
+      label: "Request Leave",
+      href: "/request-leave",
+      icon: <FilePlus2 className="h-4 w-4" />
     },
-    { 
-      label: "My Status", 
-      href: "/status", 
-      icon: <ListChecks className="h-4 w-4" /> 
+    {
+      label: "My Status",
+      href: "/status",
+      icon: <ListChecks className="h-4 w-4" />
     },
-    { 
-      label: "My Stats", 
-      href: "/stats", 
-      icon: <BarChart3 className="h-4 w-4" /> 
+    {
+      label: "My Stats",
+      href: "/stats",
+      icon: <BarChart3 className="h-4 w-4" />
     },
-    { 
-      label: "Vacation", 
-      href: "/vacation", 
-      icon: <Umbrella className="h-4 w-4" /> 
+    {
+      label: "Vacation",
+      href: "/vacation",
+      icon: <Umbrella className="h-4 w-4" />
     },
-    { 
-      label: "Comp Off", 
-      href: "/comp-off", 
-      icon: <Award className="h-4 w-4" /> 
+    {
+      label: "Comp Off",
+      href: "/comp-off",
+      icon: <Award className="h-4 w-4" />
     },
-    { 
-      label: "Overwork", 
-      href: "/overwork", 
-      icon: <Clock className="h-4 w-4" /> 
+    {
+      label: "Overwork",
+      href: "/overwork",
+      icon: <Clock className="h-4 w-4" />
     },
   ];
 
@@ -383,9 +385,9 @@ function DashboardContent() {
 
       {/* Refresh Button */}
       <div className="flex justify-end mb-6">
-        <Button 
-          variant="outline" 
-          size="sm" 
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => refreshAllData()}
           disabled={isLoading}
           className="gap-2 hover:bg-primary/5 transition-all duration-300"
@@ -447,8 +449,8 @@ function DashboardContent() {
 
       {/* ========== REVISION REQUESTS ALERT ========== */}
       {dashboardData.revisionRequests > 0 && (
-        <EnhancedCard 
-          variant="elevated" 
+        <EnhancedCard
+          variant="elevated"
           accentColor="purple"
           className="mb-6 border-purple-200/50"
           header={
@@ -467,9 +469,9 @@ function DashboardContent() {
           footer={
             <div className="flex justify-end">
               <Link href="/status">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="border-purple-300 text-purple-700 hover:bg-purple-50 hover:border-purple-400 transition-all duration-300"
                 >
                   Review Revision Requests
@@ -481,7 +483,7 @@ function DashboardContent() {
         >
           <div className="flex items-center gap-4">
             <div className="flex-1 h-2 bg-purple-100 rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-purple-500 rounded-full transition-all duration-500"
                 style={{ width: `${Math.min(dashboardData.revisionRequests * 20, 100)}%` }}
               />
@@ -504,8 +506,8 @@ function DashboardContent() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
         {/* Request Leave */}
         <Link href="/request-leave" className="group">
-          <EnhancedCard 
-            variant="elevated" 
+          <EnhancedCard
+            variant="elevated"
             accentColor="primary"
             className="h-full hover:border-primary/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
           >
@@ -524,8 +526,8 @@ function DashboardContent() {
 
         {/* My Status */}
         <Link href="/status" className="group">
-          <EnhancedCard 
-            variant="elevated" 
+          <EnhancedCard
+            variant="elevated"
             accentColor="blue"
             className="h-full hover:border-blue-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
           >
@@ -544,8 +546,8 @@ function DashboardContent() {
 
         {/* My Stats */}
         <Link href="/stats" className="group">
-          <EnhancedCard 
-            variant="elevated" 
+          <EnhancedCard
+            variant="elevated"
             accentColor="purple"
             className="h-full hover:border-purple-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
           >
@@ -564,8 +566,8 @@ function DashboardContent() {
 
         {/* Comp Off */}
         <Link href="/comp-off" className="group">
-          <EnhancedCard 
-            variant="elevated" 
+          <EnhancedCard
+            variant="elevated"
             accentColor="teal"
             className="h-full hover:border-teal-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
           >
@@ -586,7 +588,7 @@ function DashboardContent() {
       {/* ========== DETAILED SECTIONS ========== */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Leave Balance Details */}
-        <EnhancedCard 
+        <EnhancedCard
           variant="elevated"
           accentColor="primary"
           header={
@@ -610,7 +612,7 @@ function DashboardContent() {
                 const used = b?.used ?? 0;
                 const pending = b?.pending ?? 0;
                 const usedPercent = allocated > 0 ? (used / allocated) * 100 : 0;
-                
+
                 return (
                   <div key={type} className="group">
                     <div className="flex justify-between text-sm mb-1">
@@ -643,7 +645,7 @@ function DashboardContent() {
         </EnhancedCard>
 
         {/* Overwork Summary */}
-        <EnhancedCard 
+        <EnhancedCard
           variant="elevated"
           accentColor="amber"
           header={
@@ -725,7 +727,7 @@ function DashboardContent() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <Link href="/comp-off" className="group">
-          <EnhancedCard 
+          <EnhancedCard
             variant="elevated"
             accentColor="teal"
             className="hover:border-teal-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
@@ -744,7 +746,7 @@ function DashboardContent() {
         </Link>
 
         <Link href="/overwork" className="group">
-          <EnhancedCard 
+          <EnhancedCard
             variant="elevated"
             accentColor="amber"
             className="hover:border-amber-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"
@@ -763,7 +765,7 @@ function DashboardContent() {
         </Link>
 
         <Link href="/vacation" className="group">
-          <EnhancedCard 
+          <EnhancedCard
             variant="elevated"
             accentColor="blue"
             className="hover:border-blue-300/30 group-hover:shadow-xl transition-all duration-300 cursor-pointer"

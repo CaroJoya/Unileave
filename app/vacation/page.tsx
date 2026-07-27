@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
@@ -12,6 +14,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { EnhancedCard } from "@/components/ui/enhanced-card";
+
 interface VacationPeriod {
   id: string;
   vacationType: "Summer Vacation" | "Winter Vacation";

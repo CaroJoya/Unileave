@@ -1,4 +1,3 @@
-// app/hod/faculty-requests/page.tsx - COMPLETE FIXED FILE WITH OD SUPPORT
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -29,7 +28,6 @@ import { toast } from "sonner";
 import { Eye, Check, X, MessageSquare, RefreshCw, Briefcase } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getLeaveTypeLabel } from "@/lib/constants/leave-types";
-
 interface LeaveRequest {
   id: string;
   applicantId: string;

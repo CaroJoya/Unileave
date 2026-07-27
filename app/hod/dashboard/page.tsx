@@ -1,4 +1,3 @@
-// app/hod/dashboard/page.tsx - COMPLETE FIXED VERSION
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -23,7 +22,6 @@ import { RoleNavbar } from "@/components/layout/RoleNavbar";
 import { EnhancedCard } from "@/components/ui/enhanced-card";
 import { StatCard } from "@/components/ui/stat-card";
 import { SectionHeader } from "@/components/ui/section-header";
-
 interface DashboardData {
   pendingLeaves: number;
   pendingCompOff: number;

@@ -1,4 +1,3 @@
-// components/super-admin/SystemTools.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { useState } from "react";

@@ -1,4 +1,3 @@
-// app/headclerk/dashboard/page.tsx - COMPLETE FIXED VERSION
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";

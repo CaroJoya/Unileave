@@ -1,11 +1,9 @@
-// app/status/page.tsx - COMPLETE ENHANCED VERSION
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-//import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -20,9 +18,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { EnhancedCard } from "@/components/ui/enhanced-card";
-//import { SectionHeader } from "@/components/ui/section-header";
 import { StatCard } from "@/components/ui/stat-card";
-
 interface LeaveRequest {
   id: string;
   leaveType: string;

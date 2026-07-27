@@ -1,4 +1,3 @@
-// components/super-admin/DepartmentManager.tsx - COMPLETE FIXED FILE
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -31,7 +30,6 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { AlertTriangle } from "lucide-react";
-
 interface Department {
   id: string;
   name: string;

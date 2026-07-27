@@ -1,4 +1,3 @@
-// components/super-admin/UserManager.tsx - COMPLETE FILE WITH RESEND CREDENTIALS
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -31,7 +30,7 @@ import {
 import { toast } from "sonner";
 import { CreateUserModal } from "./CreateUserModal";
 import { Badge } from "@/components/ui/badge";
-import { Mail } from "lucide-react"; // ✅ Import Mail icon for Resend button
+import { Mail } from "lucide-react";
 
 interface User {
   uid: string;

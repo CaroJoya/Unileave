@@ -30,6 +30,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -43,7 +44,6 @@ import {
 } from "lucide-react";
 import type { Department, StaffUser, AttendanceRecord } from "@/types/attendance";
 import { EmployeeLeaveCard } from "./EmployeeLeaveCard";
-
 interface AttendanceCalendarProps {
   departments: Department[];
   staffUsers: StaffUser[];

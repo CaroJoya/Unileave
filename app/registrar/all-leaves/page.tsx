@@ -1,4 +1,3 @@
-// app/registrar/all-leaves/page.tsx - COMPLETE FIXED FILE WITH OD SUPPORT
 "use client";
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
@@ -36,7 +35,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Eye, Check, X, MessageSquare, RefreshCw, Search, FileText, AlertCircle, Download, Briefcase } from "lucide-react";
-
 interface LeaveRequest {
   id: string;
   applicantId: string;

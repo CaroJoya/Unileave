@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
@@ -25,7 +27,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { EnhancedCard } from "@/components/ui/enhanced-card";
 import { StatCard } from "@/components/ui/stat-card";
-// Types
+
+//types
 interface LeaveRequest {
   id: string;
   leaveType: string;
