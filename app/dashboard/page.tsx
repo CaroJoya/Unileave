@@ -1,4 +1,5 @@
-// app/dashboard/page.tsx - Fixed duplicate imports
+"use client";
+
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { useEffect, useCallback } from "react";
 import Link from "next/link";

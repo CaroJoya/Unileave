@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
@@ -10,6 +12,7 @@ import { Clock, TrendingUp, Award, Info, CheckCircle, XCircle, CalendarDays, Plu
 import { EnhancedCard } from "@/components/ui/enhanced-card";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatCard } from "@/components/ui/stat-card";
+
 interface OverworkEntry {
   id: string;
   hours: number;
