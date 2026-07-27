@@ -1,4 +1,4 @@
-// app/api/headclerk/leave-policies/route.ts - WITH SUPER ADMIN SUPPORT
+// app/api/headclerk/leave-policies/route.ts - COMPLETE FIXED VERSION
 import { NextResponse } from "next/server";
 import { getRTDB, getAuth } from "@/lib/firebase/admin";
 import { cookies } from "next/headers";
@@ -42,6 +42,7 @@ interface LeaveBalancesDoc {
   updatedAt: string;
 }
 
+// ============ GET HANDLER ============
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -95,13 +96,20 @@ export async function GET() {
         collegeId: data.collegeId,
       }));
 
-    return NextResponse.json({ policies: policiesList });
+    // ✅ FIX: Add cache-control headers to prevent browser caching
+    const response = NextResponse.json({ policies: policiesList });
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, private');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Surrogate-Control', 'no-store');
+    response.headers.set('Expires', '0');
+    return response;
   } catch (error) {
     console.error("Error fetching leave policies:", error);
     return NextResponse.json({ error: "Failed to fetch leave policies" }, { status: 500 });
   }
 }
 
+// ============ POST HANDLER (Create) ============
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -217,116 +225,7 @@ export async function POST(request: Request) {
   }
 }
 
-async function recalculateAllUserBalances(
-  rtdb: Database,
-  collegeId: string,
-  academicYear: string,
-  newAllocations: Record<string, Record<string, number>>
-): Promise<{ updated: number; errors: string[]; details: string[] }> {
-  const errors: string[] = [];
-  const details: string[] = [];
-  let updated = 0;
-
-  try {
-    const usersSnapshot = await rtdb.ref("users").once("value");
-    const allUsers = usersSnapshot.val() as Record<string, UserRecord> | null || {};
-    
-    const collegeUsers = Object.entries(allUsers)
-      .filter(([, user]) => user.collegeId === collegeId && user.status === "active")
-      .map(([uid, user]) => ({ ...user, uid }));
-
-    if (collegeUsers.length === 0) {
-      details.push(`ℹ️ No active users found in college ${collegeId}`);
-      return { updated: 0, errors: [], details };
-    }
-
-    details.push(`📊 Processing ${collegeUsers.length} users in college ${collegeId} for year ${academicYear}`);
-
-    for (const user of collegeUsers) {
-      try {
-        const userRole = user.roles?.[0] || "faculty";
-        const roleAllocation = newAllocations[userRole] || newAllocations.faculty || {};
-
-        const balanceKey = `${user.uid}_${academicYear}`;
-        const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
-        const balanceSnapshot = await balanceRef.once("value");
-        const existingBalance = balanceSnapshot.val() as LeaveBalancesDoc | null;
-
-        const newBalances: Record<string, LeaveBalance> = {};
-        let hasChanges = false;
-
-        for (const [leaveType, newAllocated] of Object.entries(roleAllocation)) {
-          const oldBalance = existingBalance?.balances?.[leaveType];
-          
-          if (oldBalance) {
-            const used = oldBalance.used || 0;
-            const pending = oldBalance.pending || 0;
-            const newAvailable = Math.max(0, newAllocated - used - pending);
-            
-            newBalances[leaveType] = {
-              allocated: newAllocated,
-              used: used,
-              pending: pending,
-              available: newAvailable,
-            };
-            hasChanges = true;
-          } else {
-            details.push(`➕ ${user.name}: Added ${leaveType} with ${newAllocated} days`);
-            newBalances[leaveType] = {
-              allocated: newAllocated,
-              used: 0,
-              pending: 0,
-              available: newAllocated,
-            };
-            hasChanges = true;
-          }
-        }
-
-        if (existingBalance) {
-          for (const [oldLeaveType, oldBalance] of Object.entries(existingBalance.balances)) {
-            if (!roleAllocation[oldLeaveType] && oldBalance.allocated > 0) {
-              details.push(`➖ ${user.name}: Removed ${oldLeaveType}`);
-              newBalances[oldLeaveType] = {
-                allocated: 0,
-                used: 0,
-                pending: 0,
-                available: 0,
-              };
-              hasChanges = true;
-            }
-          }
-        }
-
-        if (hasChanges) {
-          await balanceRef.update({
-            balances: newBalances,
-            updatedAt: new Date().toISOString(),
-          });
-          updated++;
-          details.push(`✅ ${user.name}: Balance updated (${Object.keys(newBalances).length} leave types)`);
-        } else {
-          details.push(`⏭️ ${user.name}: No changes needed`);
-        }
-      } catch (userError) {
-        const errorMsg = `❌ Error processing user ${user.name} (${user.uid}): ${userError}`;
-        console.error(errorMsg);
-        errors.push(errorMsg);
-        details.push(errorMsg);
-      }
-    }
-
-    details.push(`📊 Balance update completed. Updated: ${updated}, Errors: ${errors.length}`);
-    
-  } catch (error) {
-    const errorMsg = `❌ Failed to update user balances: ${error}`;
-    console.error(errorMsg);
-    errors.push(errorMsg);
-    details.push(errorMsg);
-  }
-
-  return { updated, errors, details };
-}
-
+// ============ PUT HANDLER (Update) - 🔥 FIXED ============
 export async function PUT(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -396,22 +295,45 @@ export async function PUT(request: Request) {
       }
     }
 
+    // 🔥 FIX 1: Preserve ALL existing fields and explicitly include collegeId
     const updatedPolicy = {
       ...existing,
-      leaveAllocations,
-      applyRule: applyRule || existing.applyRule,
+      id: academicYear,
+      academicYear: academicYear,
+      leaveAllocations: leaveAllocations,
+      applyRule: applyRule || existing.applyRule || "immediate",
+      collegeId: collegeId, // ✅ Explicitly include collegeId
       updatedAt: new Date().toISOString(),
     };
 
-    await rtdb.ref(`leavePolicies/${academicYear}`).set(updatedPolicy);
+    // 🔥 FIX 2: Use update() instead of set() to merge, not overwrite
+    const policyRef = rtdb.ref(`leavePolicies/${academicYear}`);
+    await policyRef.update(updatedPolicy);
+    
+    console.log(`✅ Policy updated at: leavePolicies/${academicYear}`);
+    console.log(`✅ Updated policy:`, JSON.stringify(updatedPolicy, null, 2));
 
-    console.log(`🔄 Policy updated. Recalculating balances for college ${collegeId}, year ${academicYear}`);
+    // 🔥 FIX 3: Verify the write succeeded and re-read the policy
+    const verifySnapshot = await rtdb.ref(`leavePolicies/${academicYear}`).once('value');
+    const verifiedPolicy = verifySnapshot.val();
+    console.log(`✅ Verified policy after write:`, JSON.stringify(verifiedPolicy, null, 2));
+
+    if (!verifiedPolicy) {
+      console.error(`❌ Policy verification failed! Policy at leavePolicies/${academicYear} is null.`);
+      return NextResponse.json({ 
+        error: "Policy update failed - verification error",
+        details: "Policy was not found after write"
+      }, { status: 500 });
+    }
+
+    // 🔥 FIX 4: Now recalculate balances using the verified policy
+    console.log(`🔄 Recalculating balances for college ${collegeId}, year ${academicYear}`);
     
     const { updated, errors, details } = await recalculateAllUserBalances(
       rtdb,
       collegeId,
       academicYear,
-      leaveAllocations
+      verifiedPolicy?.leaveAllocations || leaveAllocations
     );
 
     const performerRole = getPerformerRole(userData.roles || []);
@@ -456,4 +378,123 @@ export async function PUT(request: Request) {
     console.error("Error updating leave policy:", error);
     return NextResponse.json({ error: "Failed to update leave policy" }, { status: 500 });
   }
+}
+
+// ============ RECALCULATE USER BALANCES (Helper Function) ============
+async function recalculateAllUserBalances(
+  rtdb: Database,
+  collegeId: string,
+  academicYear: string,
+  newAllocations: Record<string, Record<string, number>>
+): Promise<{ updated: number; errors: string[]; details: string[] }> {
+  const errors: string[] = [];
+  const details: string[] = [];
+  let updated = 0;
+
+  try {
+    const usersSnapshot = await rtdb.ref("users").once("value");
+    const allUsers = usersSnapshot.val() as Record<string, UserRecord> | null || {};
+    
+    const collegeUsers = Object.entries(allUsers)
+      .filter(([, user]) => user.collegeId === collegeId && user.status === "active")
+      .map(([uid, user]) => ({ ...user, uid }));
+
+    if (collegeUsers.length === 0) {
+      details.push(`ℹ️ No active users found in college ${collegeId}`);
+      return { updated: 0, errors: [], details };
+    }
+
+    details.push(`📊 Processing ${collegeUsers.length} users in college ${collegeId} for year ${academicYear}`);
+
+    for (const user of collegeUsers) {
+      try {
+        const userRole = user.roles?.[0] || "faculty";
+        const roleAllocation = newAllocations[userRole] || newAllocations.faculty || {};
+
+        const balanceKey = `${user.uid}_${academicYear}`;
+        const balanceRef = rtdb.ref(`leaveBalances/${balanceKey}`);
+        const balanceSnapshot = await balanceRef.once("value");
+        const existingBalance = balanceSnapshot.val() as LeaveBalancesDoc | null;
+
+        const newBalances: Record<string, LeaveBalance> = {};
+        let hasChanges = false;
+
+        // 🔥 FIX: Preserve existing used/pending values while updating allocated/available
+        for (const [leaveType, newAllocated] of Object.entries(roleAllocation)) {
+          const oldBalance = existingBalance?.balances?.[leaveType];
+          
+          if (oldBalance) {
+            const used = oldBalance.used || 0;
+            const pending = oldBalance.pending || 0;
+            const newAvailable = Math.max(0, newAllocated - used - pending);
+            
+            // Only update if there's an actual change
+            if (oldBalance.allocated !== newAllocated || oldBalance.available !== newAvailable) {
+              newBalances[leaveType] = {
+                allocated: newAllocated,
+                used: used,
+                pending: pending,
+                available: newAvailable,
+              };
+              hasChanges = true;
+            } else {
+              newBalances[leaveType] = { ...oldBalance };
+            }
+          } else {
+            // New leave type - initialize
+            details.push(`➕ ${user.name}: Added ${leaveType} with ${newAllocated} days`);
+            newBalances[leaveType] = {
+              allocated: newAllocated,
+              used: 0,
+              pending: 0,
+              available: newAllocated,
+            };
+            hasChanges = true;
+          }
+        }
+
+        // 🔥 FIX: Remove leave types that are no longer in the policy
+        if (existingBalance) {
+          for (const [oldLeaveType, oldBalance] of Object.entries(existingBalance.balances)) {
+            if (!roleAllocation[oldLeaveType] && oldBalance.allocated > 0) {
+              details.push(`➖ ${user.name}: Removed ${oldLeaveType}`);
+              newBalances[oldLeaveType] = {
+                allocated: 0,
+                used: 0,
+                pending: 0,
+                available: 0,
+              };
+              hasChanges = true;
+            }
+          }
+        }
+
+        if (hasChanges) {
+          await balanceRef.update({
+            balances: newBalances,
+            updatedAt: new Date().toISOString(),
+          });
+          updated++;
+          details.push(`✅ ${user.name}: Balance updated (${Object.keys(newBalances).length} leave types)`);
+        } else {
+          details.push(`⏭️ ${user.name}: No changes needed`);
+        }
+      } catch (userError) {
+        const errorMsg = `❌ Error processing user ${user.name} (${user.uid}): ${userError}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
+        details.push(errorMsg);
+      }
+    }
+
+    details.push(`📊 Balance update completed. Updated: ${updated}, Errors: ${errors.length}`);
+    
+  } catch (error) {
+    const errorMsg = `❌ Failed to update user balances: ${error}`;
+    console.error(errorMsg);
+    errors.push(errorMsg);
+    details.push(errorMsg);
+  }
+
+  return { updated, errors, details };
 }

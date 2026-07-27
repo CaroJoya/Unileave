@@ -1,7 +1,7 @@
 "use client";
 
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, FormEventHandler } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -270,6 +270,7 @@ function HeadClerkDashboardContent() {
     }
   };
 
+  // ✅ FIXED: openEditDialog with proper typing
   const openEditDialog = (type: LeaveType) => {
     setEditingLeaveType(type);
     setEditFormData({
@@ -285,9 +286,14 @@ function HeadClerkDashboardContent() {
     setEditDialogOpen(true);
   };
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
+  // ✅ FIXED: handleEditSubmit with FormEventHandler
+  const handleEditSubmit: FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
-    if (!editingLeaveType) return;
+    
+    if (!editingLeaveType) {
+      toast.error("No leave type selected");
+      return;
+    }
 
     if (!editFormData.leaveName.trim()) {
       toast.error("Leave name is required");
@@ -373,9 +379,16 @@ function HeadClerkDashboardContent() {
   };
 
   // ========== LEAVE POLICIES FUNCTIONS ==========
+
   const fetchPolicies = useCallback(async () => {
     try {
-      const response = await fetch("/api/headclerk/leave-policies");
+      // ✅ FIX: Add cache-busting parameter to prevent stale data
+      const response = await fetch("/api/headclerk/leave-policies?_t=" + Date.now(), {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       const data = await response.json();
       setPolicies(data.policies || []);
     } catch (error) {
@@ -419,6 +432,7 @@ function HeadClerkDashboardContent() {
     }
   };
 
+  // ✅ FIXED: handleSavePolicy - Complete rewrite with proper cache handling
   const handleSavePolicy = async () => {
     if (!policyForm.academicYear) {
       toast.error("Please select an academic year");
@@ -429,9 +443,21 @@ function HeadClerkDashboardContent() {
     try {
       const method = editingPolicy ? "PUT" : "POST";
       
+      // Log what we're sending for debugging
+      console.log("📤 Saving policy:", {
+        method,
+        academicYear: policyForm.academicYear,
+        applyRule: policyForm.applyRule,
+        leaveAllocations: policyForm.leaveAllocations,
+        isEditing: !!editingPolicy
+      });
+      
       const response = await fetch("/api/headclerk/leave-policies", {
         method: method,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache"
+        },
         body: JSON.stringify({
           academicYear: policyForm.academicYear,
           leaveAllocations: policyForm.leaveAllocations,
@@ -453,6 +479,7 @@ function HeadClerkDashboardContent() {
         throw new Error(data.error || "Failed to save policy");
       }
 
+      // ✅ FIX: Show detailed success message
       if (data.balanceUpdate) {
         const { usersUpdated, errors } = data.balanceUpdate;
         
@@ -471,10 +498,19 @@ function HeadClerkDashboardContent() {
       
       setShowPolicyDialog(false);
       resetPolicyForm();
+      
+      // ✅ FIX: Force a fresh fetch with cache-busting
       await fetchPolicies();
+      
+      // ✅ FIX: Show a confirmation that data was refreshed
+      toast.info("🔄 Policy data refreshed");
+      
+      // ✅ FIX: Log success for debugging
+      console.log("✅ Policy saved successfully:", data);
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to save policy";
+      console.error("❌ Error saving policy:", error);
       toast.error(errorMessage);
     } finally {
       setSaving(false);
@@ -1014,7 +1050,6 @@ function HeadClerkDashboardContent() {
               </div>
             }
           >
-            {/* ... overwork config content ... */}
             <div className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
@@ -1183,7 +1218,6 @@ function HeadClerkDashboardContent() {
               </div>
             }
           >
-            {/* ... vacation periods content ... */}
             <div className="space-y-6">
               {/* Summer Vacation */}
               <div>
@@ -1501,7 +1535,7 @@ function HeadClerkDashboardContent() {
         </DialogContent>
       </Dialog>
 
-      {/* EDIT LEAVE TYPE DIALOG */}
+      {/* EDIT LEAVE TYPE DIALOG - FIXED */}
       <Dialog open={editDialogOpen} onOpenChange={(open) => {
         if (!open) {
           setEditDialogOpen(false);
